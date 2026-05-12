@@ -1,5 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import svgPaths from "../../imports/svg-svkvdgwod6";
+import { useAuth } from "../../contexts/AuthContext";
+import { MigrationTool } from "../SuperAdmin/MigrationTool";
+import {
+  subscribeToNotifications,
+  markAllNotificationsRead,
+} from "../../services/notificationService";
 import {
   Search,
   Dashboard,
@@ -38,6 +44,7 @@ import {
   FolderOpen,
   ChevronLeft,
   ChevronUp,
+  Logout,
 } from "@carbon/icons-react";
 
 // Softer spring animation curve
@@ -85,6 +92,37 @@ function Avatar() {
         className="absolute border border-neutral-200 border-solid inset-0 pointer-events-none rounded-[999px]"
       />
     </div>
+  );
+}
+
+function NotificationBell({ userId }: { userId: string }) {
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!userId) return;
+    const unsub = subscribeToNotifications(userId, (notifications) => {
+      setUnreadCount(notifications.filter((n) => !n.read).length);
+    });
+    return () => unsub();
+  }, [userId]);
+
+  return (
+    <button
+      onClick={() => markAllNotificationsRead(userId)}
+      className="box-border content-stretch flex flex-row items-center justify-center overflow-clip p-0 relative rounded-lg shrink-0 cursor-pointer transition-all duration-500 hover:bg-neutral-50 text-neutral-500 hover:text-neutral-700 size-10 min-w-10 group"
+      title={
+        unreadCount > 0
+          ? `${unreadCount} unread notifications. Click to mark read.`
+          : "No new notifications"
+      }
+    >
+      <Notification size={16} />
+      {unreadCount > 0 && (
+        <span className="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-[3px]">
+          {unreadCount > 9 ? "9+" : unreadCount}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -360,21 +398,25 @@ const roleNavConfigs: Record<
   { navItems: RoleNavItem[]; defaultSection: string }
 > = {
   superadmin: {
-    defaultSection: "scc",
+    defaultSection: "dashboard",
     navItems: [
       {
-        id: "scc",
+        id: "dashboard",
         icon: <Dashboard size={16} />,
-        label: "System Command Center",
+        label: "Dashboard",
       },
-      { id: "ai", icon: <Analytics size={16} />, label: "AI Operations" },
       {
-        id: "blockchain",
-        icon: <Security size={16} />,
-        label: "Blockchain & Cryptography",
+        id: "users",
+        icon: <UserMultiple size={16} />,
+        label: "User Management",
       },
-      { id: "iam", icon: <User size={16} />, label: "Identity & Access" },
-      { id: "pm", icon: <Renew size={16} />, label: "Process Mining" },
+      {
+        id: "departments",
+        icon: <Folder size={16} />,
+        label: "Departments",
+      },
+      { id: "migration", icon: <Renew size={16} />, label: "Migration Tool" },
+      { id: "settings", icon: <Settings size={16} />, label: "Settings" },
     ],
   },
   executive: {
@@ -504,8 +546,12 @@ const roleNavConfigs: Record<
 import {
   SuperAdminContent as SuperAdminContentComponent,
   defaultPages as superAdminDefaults,
+  superAdminSidebarContent,
 } from "../SuperAdmin/SuperAdminContent";
-import { ExecutiveContent, executiveDefaultPages } from "../Executive/ExecutiveContent";
+import {
+  ExecutiveContent,
+  executiveDefaultPages,
+} from "../Executive/ExecutiveContent";
 import { LegislativeContent } from "../Legislative/LegislativeContent";
 import { HRMOContent } from "../HRMO/HRMOContent";
 import { FinanceContent } from "../Finance/FinanceContent";
@@ -559,162 +605,76 @@ function getSidebarContent(role: string, section: string): SidebarContent {
 
   const map: Record<string, Record<string, SidebarContent>> = {
     superadmin: {
-      scc: {
-        title: "System Command Center",
+      dashboard: {
+        title: "Dashboard",
         sections: [
           {
-            title: "Monitoring",
+            title: "Overview",
             items: [
-              {
-                icon: <View size={16} className="text-neutral-900" />,
-                label: "Infrastructure Health",
-                isActive: true,
-              },
               {
                 icon: <Dashboard size={16} className="text-neutral-900" />,
-                label: "Global Error Logs",
-                hasDropdown: true,
-                children: [
-                  { label: "Filter by Department" },
-                  { label: "Filter by Severity" },
-                  { label: "Filter by Time" },
-                ],
+                label: "Dashboard Overview",
+                isActive: true,
               },
             ],
           },
         ],
       },
-      ai: {
-        title: "AI Operations",
+      users: {
+        title: "User Management",
         sections: [
           {
-            title: "Algorithms",
+            title: "Management",
             items: [
               {
-                icon: <Analytics size={16} className="text-neutral-900" />,
-                label: "Genetic Algorithm Tuning",
+                icon: <UserMultiple size={16} className="text-neutral-900" />,
+                label: "All Users",
                 isActive: true,
-                hasDropdown: true,
-                children: [
-                  { label: "Fitness Function Variables" },
-                  { label: "Workload Weighting" },
-                  { label: "Competency Mapping" },
-                  { label: "Local Optima Prevention" },
-                ],
-              },
-              {
-                icon: <ChartBar size={16} className="text-neutral-900" />,
-                label: "Predictive Analytics Engine",
-                hasDropdown: true,
-                children: [
-                  { label: "Burnout Classifiers" },
-                  { label: "Project Forecasting" },
-                  { label: "Confidence Intervals" },
-                  { label: "Feature Importance" },
-                ],
-              },
-              {
-                icon: <Report size={16} className="text-neutral-900" />,
-                label: "NLP Engine Diagnostics",
-                hasDropdown: true,
-                children: [
-                  { label: "Stand-Up Ingestion" },
-                  { label: "Voice-to-Text Pipeline" },
-                  { label: "Viber Chatbot Health" },
-                ],
               },
             ],
           },
         ],
       },
-      blockchain: {
-        title: "Blockchain & Cryptography",
+      departments: {
+        title: "Departments",
         sections: [
           {
-            title: "Ledger & Contracts",
+            title: "Management",
             items: [
               {
-                icon: <Security size={16} className="text-neutral-900" />,
-                label: "Ledger Diagnostics",
+                icon: <Folder size={16} className="text-neutral-900" />,
+                label: "All Departments",
                 isActive: true,
-                hasDropdown: true,
-                children: [
-                  { label: "Consensus Health" },
-                  { label: "Block Confirmation Times" },
-                  { label: "Node Synchronization" },
-                ],
-              },
-              {
-                icon: <DocumentAdd size={16} className="text-neutral-900" />,
-                label: "Smart Contract Management",
-                hasDropdown: true,
-                children: [
-                  { label: "Budget Allocation Logic" },
-                  { label: "Automated Fund Returns" },
-                  { label: "Audit Parameters" },
-                ],
               },
             ],
           },
         ],
       },
-      iam: {
-        title: "Identity & Access",
+      migration: {
+        title: "Data Migration",
         sections: [
           {
-            title: "Access Control",
-            items: [
-              {
-                icon: <User size={16} className="text-neutral-900" />,
-                label: "Global RBAC Configuration",
-                isActive: true,
-                hasDropdown: true,
-                children: [
-                  { label: "Role Assignment" },
-                  { label: "HRMO Integration" },
-                  { label: "Offboarding Automation" },
-                ],
-              },
-              {
-                icon: <Group size={16} className="text-neutral-900" />,
-                label: "Tenant Isolation Controls",
-                hasDropdown: true,
-                children: [
-                  { label: "Data Partitioning" },
-                  { label: "Privacy Compliance" },
-                  { label: "Cross-Dept Isolation" },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-      pm: {
-        title: "Process Mining",
-        sections: [
-          {
-            title: "Mining & Compliance",
+            title: "Tools",
             items: [
               {
                 icon: <Renew size={16} className="text-neutral-900" />,
-                label: "Discovery Visualizations",
+                label: "Migration Tool",
                 isActive: true,
-                hasDropdown: true,
-                children: [
-                  { label: "Heuristic Graphs" },
-                  { label: "Execution Paths" },
-                  { label: "Event Log Analysis" },
-                ],
               },
+            ],
+          },
+        ],
+      },
+      settings: {
+        title: "Settings",
+        sections: [
+          {
+            title: "Configuration",
+            items: [
               {
-                icon: <Flag size={16} className="text-neutral-900" />,
-                label: "Global Compliance Alerts",
-                hasDropdown: true,
-                children: [
-                  { label: "Procedure Deviations" },
-                  { label: "Circumvention Flags" },
-                  { label: "Audit Feed" },
-                ],
+                icon: <Settings size={16} className="text-neutral-900" />,
+                label: "System Settings",
+                isActive: true,
               },
             ],
           },
@@ -1136,6 +1096,8 @@ function getSidebarContent(role: string, section: string): SidebarContent {
                   { label: "Team Assignments" },
                   { label: "Leader Assignments" },
                   { label: "Chain of Command" },
+                  { label: "Team Intelligence" },
+                  { label: "Team Supervision" },
                 ],
               },
             ],
@@ -1355,12 +1317,15 @@ function IconNavigation({
   activeSection,
   onSectionChange,
   role,
+  onMigrationClick,
 }: {
   activeSection: string;
   onSectionChange: (section: string) => void;
   role: string;
+  onMigrationClick?: () => void;
 }) {
   const config = roleNavConfigs[role] || roleNavConfigs.superadmin;
+  const { user, logout } = useAuth();
 
   return (
     <div
@@ -1387,6 +1352,18 @@ function IconNavigation({
 
       <div className="flex-1" />
       <div className="flex flex-col gap-2 w-full items-center">
+        {role === "superadmin" && onMigrationClick && (
+          <IconNavButton
+            isActive={activeSection === "__migration"}
+            onClick={onMigrationClick}
+          >
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+              <path d="M3.5 2A1.5 1.5 0 0 0 2 3.5v9A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 12.5 2h-9zM3 3.5a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5v-9z" />
+              <path d="M5 5.5A.5.5 0 0 1 5.5 5h5a.5.5 0 0 1 0 1h-5A.5.5 0 0 1 5 5.5zM5 8a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5A.5.5 0 0 1 5 8zm0 2.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5z" />
+            </svg>
+          </IconNavButton>
+        )}
+        {user?.uid && <NotificationBell userId={user.uid} />}
         <IconNavButton
           isActive={activeSection === "settings"}
           onClick={() => onSectionChange("settings")}
@@ -1396,6 +1373,9 @@ function IconNavigation({
         <div className="size-8">
           <Avatar />
         </div>
+        <IconNavButton onClick={logout}>
+          <Logout size={16} className="text-red-500" />
+        </IconNavButton>
       </div>
     </div>
   );
@@ -1535,6 +1515,7 @@ function TwoLevelSidebar({ role }: { role: string }) {
   const config = roleNavConfigs[role] || roleNavConfigs.superadmin;
   const [activeSection, setActiveSection] = useState(config.defaultSection);
   const [activePage, setActivePage] = useState<string | undefined>(undefined);
+  const [showMigration, setShowMigration] = useState(false);
   const [prevRole, setPrevRole] = useState(role);
 
   if (prevRole !== role) {
@@ -1549,136 +1530,128 @@ function TwoLevelSidebar({ role }: { role: string }) {
     setActivePage(undefined);
   };
 
+  const handleMigrationClick = () => {
+    setShowMigration(true);
+    setActiveSection("__migration");
+    setActivePage(undefined);
+  };
+
+  const wrappedSectionChange = (section: string) => {
+    setShowMigration(false);
+    handleSectionChange(section);
+  };
+
   return (
     <div className="flex flex-row h-full min-h-0">
       <IconNavigation
         activeSection={activeSection}
-        onSectionChange={handleSectionChange}
+        onSectionChange={wrappedSectionChange}
         role={role}
+        onMigrationClick={handleMigrationClick}
       />
-      <DetailSidebar
-        activeSection={activeSection}
-        role={role}
-        activePage={activePage}
-        onPageChange={setActivePage}
-      />
-      {/* Main Content Area */}
-      {role === "superadmin" && (
-        <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
-          <SuperAdminContentComponent
+      {showMigration ? (
+        <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto rounded-r-2xl">
+          <MigrationTool />
+        </div>
+      ) : (
+        <>
+          <DetailSidebar
             activeSection={activeSection}
+            role={role}
             activePage={activePage}
+            onPageChange={setActivePage}
           />
-        </div>
-      )}
-      {role === "executive" && (
-        <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
-          <ExecutiveContent
-            activeSection={activeSection}
-            activePage={activePage}
-          />
-        </div>
-      )}
-      {role === "legislative" && (
-        <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
-          <LegislativeContent
-            activeSection={activeSection}
-            activePage={activePage}
-          />
-        </div>
-      )}
-      {role === "hrmo" && (
-        <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
-          <HRMOContent activeSection={activeSection} activePage={activePage} />
-        </div>
-      )}
-      {role === "finance" && (
-        <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
-          <FinanceContent
-            activeSection={activeSection}
-            activePage={activePage}
-          />
-        </div>
-      )}
-      {role === "depthead" && (
-        <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
-          <DeptHeadContent
-            activeSection={activeSection}
-            activePage={activePage}
-          />
-        </div>
-      )}
-      {role === "employee" && (
-        <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
-          <EmployeeContent
-            activeSection={activeSection}
-            activePage={activePage}
-          />
-        </div>
-      )}
-      {role !== "superadmin" &&
-        role !== "executive" &&
-        role !== "legislative" &&
-        role !== "hrmo" &&
-        role !== "finance" &&
-        role !== "depthead" &&
-        role !== "employee" && (
-          <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl flex items-center justify-center">
-            <div className="text-center text-neutral-400">
-              <Settings size={40} className="mx-auto mb-3 opacity-30" />
-              <p className="text-[14px] font-['Lexend:Regular',_sans-serif]">
-                Content coming soon
-              </p>
-              <p className="text-[12px] mt-1">Role: {role}</p>
+          {/* Main Content Area */}
+          {role === "superadmin" && (
+            <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
+              <SuperAdminContentComponent
+                activeSection={activeSection}
+                activePage={activePage}
+              />
             </div>
-          </div>
-        )}
+          )}
+          {role === "executive" && (
+            <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
+              <ExecutiveContent
+                activeSection={activeSection}
+                activePage={activePage}
+              />
+            </div>
+          )}
+          {role === "legislative" && (
+            <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
+              <LegislativeContent
+                activeSection={activeSection}
+                activePage={activePage}
+              />
+            </div>
+          )}
+          {role === "hrmo" && (
+            <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
+              <HRMOContent
+                activeSection={activeSection}
+                activePage={activePage}
+              />
+            </div>
+          )}
+          {role === "finance" && (
+            <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
+              <FinanceContent
+                activeSection={activeSection}
+                activePage={activePage}
+              />
+            </div>
+          )}
+          {role === "depthead" && (
+            <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
+              <DeptHeadContent
+                activeSection={activeSection}
+                activePage={activePage}
+              />
+            </div>
+          )}
+          {role === "employee" && (
+            <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
+              <EmployeeContent
+                activeSection={activeSection}
+                activePage={activePage}
+              />
+            </div>
+          )}
+          {role !== "superadmin" &&
+            role !== "executive" &&
+            role !== "legislative" &&
+            role !== "hrmo" &&
+            role !== "finance" &&
+            role !== "depthead" &&
+            role !== "employee" && (
+              <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl flex items-center justify-center">
+                <div className="text-center text-neutral-400">
+                  <Settings size={40} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-[14px] font-['Lexend:Regular',_sans-serif]">
+                    Content coming soon
+                  </p>
+                  <p className="text-[12px] mt-1">Role: {role}</p>
+                </div>
+              </div>
+            )}
+        </>
+      )}
     </div>
   );
 }
 
-// === ROLE TABS + FRAME ===
+// === FRAME (role from auth — no tabs) ===
 
-const roles = [
-  { id: "superadmin", label: "Super Admin" },
-  { id: "executive", label: "Executive" },
-  { id: "legislative", label: "Legislative" },
-  { id: "hrmo", label: "HRMO" },
-  { id: "finance", label: "Finance" },
-  { id: "depthead", label: "Dept. Head" },
-  { id: "employee", label: "Employee" },
-  { id: "councilor_pad", label: "Councilor Pad" },
-];
-
-export function Frame760() {
-  const [activeRole, setActiveRole] = useState("superadmin");
-
+export function Frame760({ role }: { role: string }) {
   return (
     <div className="bg-neutral-50 box-border content-stretch flex flex-col items-center justify-start p-6 relative size-full min-h-screen gap-4">
-      {/* Role Tabs */}
-      <div className="flex flex-row items-center gap-1 bg-white rounded-xl p-1.5 border border-neutral-200 shadow-sm">
-        {roles.map((role) => (
-          <button
-            key={role.id}
-            onClick={() => setActiveRole(role.id)}
-            className={`px-4 py-2 rounded-lg cursor-pointer transition-all duration-300 font-['Lexend:Regular',_sans-serif] font-normal text-[13px] leading-[20px] whitespace-nowrap ${
-              activeRole === role.id
-                ? "bg-neutral-100 text-neutral-900"
-                : "text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50"
-            }`}
-            style={{ transitionTimingFunction: softSpringEasing }}
-          >
-            {role.label}
-          </button>
-        ))}
-      </div>
-
       {/* Outlined Container */}
       <div className="border border-neutral-200 rounded-2xl overflow-hidden shadow-sm flex-1 w-full max-w-[1880px] min-h-0">
-        {activeRole === "councilor_pad" ? (
+        {role === "councilor_pad" ? (
           <CouncilorPanel />
         ) : (
-          <TwoLevelSidebar role={activeRole} />
+          <TwoLevelSidebar role={role} />
         )}
       </div>
     </div>

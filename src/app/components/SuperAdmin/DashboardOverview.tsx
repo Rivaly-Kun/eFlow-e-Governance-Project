@@ -1,0 +1,321 @@
+// ─── Super Admin Dashboard — Realtime Firebase Metrics ───────────
+import React, { useMemo } from "react";
+import { useDashboardMetrics } from "../../hooks/useFirebaseData";
+import { MetricCard, MetricCardWide } from "../ui/MetricCard";
+import type { UserProfile, Department } from "../../types";
+
+// ─── Pure CSS Gauge ──────────────────────────────────────────────
+function CSSGauge({ value, label, color }: { value: number; label: string; color: string }) {
+  const clamp = Math.min(100, Math.max(0, value));
+  const angle = (clamp / 100) * 180;
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative w-[140px] h-[75px] overflow-hidden">
+        <div className="absolute inset-0 rounded-t-full border-[10px] border-neutral-100" style={{ borderBottom: "none" }} />
+        <div
+          className="absolute inset-0 rounded-t-full border-[10px] border-transparent"
+          style={{
+            borderBottom: "none",
+            borderColor: `${color} transparent transparent ${color}`,
+            transform: `rotate(${angle - 180}deg)`,
+            transformOrigin: "center bottom",
+            transition: "transform 1s ease-out",
+            clipPath: "inset(0 0 0 0)",
+          }}
+        />
+      </div>
+      <div className="text-[24px] font-['Lexend:SemiBold',_sans-serif] font-semibold text-neutral-900 -mt-4 tabular-nums">
+        {clamp}%
+      </div>
+      <div className="text-[11px] font-['Lexend:Medium',_sans-serif] font-medium text-neutral-500 mt-0.5">{label}</div>
+    </div>
+  );
+}
+
+// ─── Pure CSS Horizontal Bar Chart ───────────────────────────────
+function HorizontalBarChart({ data, color }: { data: { label: string; value: number }[]; color: string }) {
+  const max = Math.max(...data.map((d) => d.value), 1);
+  return (
+    <div className="flex flex-col gap-2.5">
+      {data.map((d) => (
+        <div key={d.label} className="flex items-center gap-3">
+          <span className="text-[11px] font-['Lexend:Regular',_sans-serif] text-neutral-600 w-28 truncate shrink-0">
+            {d.label}
+          </span>
+          <div className="flex-1 h-5 bg-neutral-100 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-700"
+              style={{ width: `${(d.value / max) * 100}%`, backgroundColor: color }}
+            />
+          </div>
+          <span className="text-[11px] font-mono text-neutral-700 w-8 text-right tabular-nums">{d.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Recent Activity List ────────────────────────────────────────
+function RecentList({
+  title,
+  items,
+  emptyText,
+}: {
+  title: string;
+  items: { id: string; primary: string; secondary: string; badge?: string; badgeColor?: string }[];
+  emptyText: string;
+}) {
+  return (
+    <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
+      <div className="px-4 py-3 border-b border-neutral-100">
+        <span className="text-[12px] font-['Lexend:SemiBold',_sans-serif] font-semibold text-neutral-700">{title}</span>
+      </div>
+      {items.length === 0 ? (
+        <div className="px-4 py-8 text-center text-[12px] font-['Lexend:Regular',_sans-serif] text-neutral-400">
+          {emptyText}
+        </div>
+      ) : (
+        <div className="divide-y divide-neutral-50">
+          {items.map((item) => (
+            <div key={item.id} className="px-4 py-3 flex items-center justify-between hover:bg-neutral-50/50 transition-colors">
+              <div>
+                <div className="text-[12px] font-['Lexend:Medium',_sans-serif] font-medium text-neutral-900">{item.primary}</div>
+                <div className="text-[11px] font-['Lexend:Regular',_sans-serif] text-neutral-500">{item.secondary}</div>
+              </div>
+              {item.badge && (
+                <span
+                  className="px-2 py-0.5 rounded-full text-[10px] font-['Lexend:Medium',_sans-serif] font-medium"
+                  style={{
+                    backgroundColor: `${item.badgeColor || "#6366f1"}15`,
+                    color: item.badgeColor || "#6366f1",
+                  }}
+                >
+                  {item.badge}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Workload Heatmap ────────────────────────────────────────────
+function WorkloadHeatmap({ users }: { users: UserProfile[] }) {
+  const activeUsers = users.filter((u) => u.status === "active").slice(0, 20);
+  return (
+    <div className="bg-white rounded-xl border border-neutral-200 p-4">
+      <div className="text-[12px] font-['Lexend:SemiBold',_sans-serif] font-semibold text-neutral-700 mb-3">
+        Employee Workload Heatmap
+      </div>
+      {activeUsers.length === 0 ? (
+        <div className="text-[12px] text-neutral-400 py-4 text-center">No users found</div>
+      ) : (
+        <div className="grid grid-cols-5 gap-2">
+          {activeUsers.map((u) => {
+            const color =
+              u.workload >= 80
+                ? "bg-red-400"
+                : u.workload >= 60
+                  ? "bg-amber-400"
+                  : u.workload >= 30
+                    ? "bg-emerald-400"
+                    : "bg-emerald-200";
+            const initials = u.fullName
+              .split(" ")
+              .map((w) => w[0])
+              .join("")
+              .slice(0, 2)
+              .toUpperCase();
+            return (
+              <div
+                key={u.uid}
+                className={`${color} rounded-lg p-2 flex flex-col items-center justify-center text-white aspect-square`}
+                title={`${u.fullName}: ${u.workload}%`}
+              >
+                <span className="text-[11px] font-['Lexend:SemiBold',_sans-serif] font-semibold">{initials}</span>
+                <span className="text-[9px] opacity-80">{u.workload}%</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div className="flex items-center gap-3 mt-3 justify-center">
+        {["0-29%", "30-59%", "60-79%", "80-100%"].map((label, i) => (
+          <div key={label} className="flex items-center gap-1">
+            <div
+              className={`w-3 h-3 rounded ${
+                i === 0 ? "bg-emerald-200" : i === 1 ? "bg-emerald-400" : i === 2 ? "bg-amber-400" : "bg-red-400"
+              }`}
+            />
+            <span className="text-[9px] text-neutral-500">{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Dashboard Component ────────────────────────────────────
+export function DashboardOverview() {
+  const { metrics, users, departments, projects, tasks, loading } = useDashboardMetrics();
+
+  // Compute derived data
+  const deptDistribution = useMemo(() => {
+    const countMap: Record<string, number> = {};
+    users
+      .filter((u) => u.status === "active")
+      .forEach((u) => {
+        if (u.departmentId) {
+          countMap[u.departmentId] = (countMap[u.departmentId] || 0) + 1;
+        }
+      });
+    return departments
+      .filter((d) => d.status === "active")
+      .map((d) => ({ label: d.name || d.id, value: countMap[d.id] || 0 }))
+      .sort((a, b) => b.value - a.value);
+  }, [users, departments]);
+
+  const deptProjectCount = useMemo(() => {
+    const countMap: Record<string, number> = {};
+    projects.forEach((p) => {
+      if (p.department) {
+        countMap[p.department] = (countMap[p.department] || 0) + 1;
+      }
+    });
+    return departments
+      .filter((d) => d.status === "active")
+      .map((d) => ({ label: d.name || d.id, value: countMap[d.id] || 0 }))
+      .sort((a, b) => b.value - a.value);
+  }, [projects, departments]);
+
+  const latestUsers = useMemo(
+    () =>
+      [...users]
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, 5)
+        .map((u) => ({
+          id: u.uid,
+          primary: u.fullName,
+          secondary: u.email,
+          badge: u.role.replace("_", " "),
+          badgeColor: u.role === "super_admin" ? "#ef4444" : u.role === "department_head" ? "#6366f1" : "#10b981",
+        })),
+    [users]
+  );
+
+  const recentTasks = useMemo(
+    () =>
+      [...tasks]
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, 5)
+        .map((t) => ({
+          id: t.id,
+          primary: t.title,
+          secondary: t.assigneeName || t.department || "Unassigned",
+          badge: t.status.replace("_", " "),
+          badgeColor:
+            t.status === "completed"
+              ? "#10b981"
+              : t.status === "in_progress"
+                ? "#3b82f6"
+                : t.status === "for_review"
+                  ? "#f59e0b"
+                  : "#94a3b8",
+        })),
+    [tasks]
+  );
+
+  return (
+    <div>
+      {/* Breadcrumb */}
+      <div className="text-[11px] font-['Lexend:Regular',_sans-serif] text-neutral-400 mb-3">
+        Super Admin <span className="mx-1.5">/</span>{" "}
+        <span className="text-neutral-700">Dashboard Overview</span>
+      </div>
+
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="font-['Lexend:SemiBold',_sans-serif] font-semibold text-[20px] text-neutral-900">
+          Dashboard Overview
+        </h2>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-[11px] font-['Lexend:Regular',_sans-serif] text-neutral-500">Live data</span>
+        </div>
+      </div>
+
+      {/* Primary Metrics */}
+      <div className="grid grid-cols-4 gap-4 mb-4">
+        <MetricCard
+          label="Total Users"
+          value={metrics.totalUsers}
+          loading={loading}
+          icon={<svg viewBox="0 0 16 16" className="w-4 h-4" fill="currentColor"><path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10z"/></svg>}
+          color="#6366f1"
+        />
+        <MetricCard
+          label="Departments"
+          value={metrics.totalDepartments}
+          loading={loading}
+          icon={<svg viewBox="0 0 16 16" className="w-4 h-4" fill="currentColor"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zM2.5 2a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zm6.5.5A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zM1 10.5A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zm6.5.5A1.5 1.5 0 0 1 10.5 9h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 9 13.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3z"/></svg>}
+          color="#10b981"
+        />
+        <MetricCard
+          label="Active Projects"
+          value={metrics.activeProjects}
+          loading={loading}
+          icon={<svg viewBox="0 0 16 16" className="w-4 h-4" fill="currentColor"><path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h11A1.5 1.5 0 0 1 15 3.5v9a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-9zM2.5 3a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5h-11z"/><path d="M3.5 5.5a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 0 1H4a.5.5 0 0 1-.5-.5zM3.5 8a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1H4a.5.5 0 0 1-.5-.5z"/></svg>}
+          color="#f59e0b"
+        />
+        <MetricCard
+          label="Active Tasks"
+          value={metrics.activeTasks}
+          loading={loading}
+          icon={<svg viewBox="0 0 16 16" className="w-4 h-4" fill="currentColor"><path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/><path d="M10.97 4.97a.75.75 0 0 1 1.071 1.05l-3.992 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.236.236 0 0 1 .02-.022z"/></svg>}
+          color="#3b82f6"
+        />
+      </div>
+
+      {/* Secondary Metrics */}
+      <div className="grid grid-cols-5 gap-4 mb-6">
+        <MetricCardWide label="Pending Tasks" value={metrics.pendingTasks} color="#f59e0b" loading={loading} />
+        <MetricCardWide label="Completed Tasks" value={metrics.completedTasks} color="#10b981" loading={loading} />
+        <MetricCardWide label="Dept. Heads" value={metrics.departmentHeads} color="#6366f1" loading={loading} />
+        <MetricCardWide label="Overloaded" value={metrics.overloadedEmployees} color="#ef4444" loading={loading} />
+        <MetricCardWide label="Avg. Workload" value={metrics.averageWorkload} suffix="%" color="#3b82f6" loading={loading} />
+      </div>
+
+      {/* Charts Row */}
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="bg-white rounded-xl border border-neutral-200 p-4">
+          <div className="text-[12px] font-['Lexend:SemiBold',_sans-serif] font-semibold text-neutral-700 mb-3">
+            Users per Department
+          </div>
+          {deptDistribution.length > 0 ? (
+            <HorizontalBarChart data={deptDistribution} color="#6366f1" />
+          ) : (
+            <div className="text-[12px] text-neutral-400 py-4 text-center">No departments yet</div>
+          )}
+        </div>
+        <div className="bg-white rounded-xl border border-neutral-200 p-4">
+          <div className="text-[12px] font-['Lexend:SemiBold',_sans-serif] font-semibold text-neutral-700 mb-3">
+            Projects per Department
+          </div>
+          {deptProjectCount.length > 0 ? (
+            <HorizontalBarChart data={deptProjectCount} color="#10b981" />
+          ) : (
+            <div className="text-[12px] text-neutral-400 py-4 text-center">No projects yet</div>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom Row */}
+      <div className="grid grid-cols-3 gap-4">
+        <RecentList title="Latest Users" items={latestUsers} emptyText="No users yet" />
+        <RecentList title="Recent Task Activity" items={recentTasks} emptyText="No task activity yet" />
+        <WorkloadHeatmap users={users} />
+      </div>
+    </div>
+  );
+}

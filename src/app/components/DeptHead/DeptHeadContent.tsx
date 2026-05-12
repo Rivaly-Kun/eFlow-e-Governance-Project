@@ -1,22 +1,23 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import { MondayBoard } from "../ui/MondayBoard";
 import {
-  subscribeToTasks,
-  seedTasksIfEmpty,
   createTask,
   assignTask,
   verifyTask,
   Task,
 } from "../../services/taskService";
+import { Employee } from "../../services/employeeService";
 import {
-  seedEmployeesIfEmpty,
-  subscribeToEmployees,
-  Employee,
-} from "../../services/employeeService";
+  useTasks,
+  useEmployees,
+  useUsers,
+  useDepartments,
+  useEmployeeNotes,
+} from "../../hooks/useFirebaseData";
+import { useAuth } from "../../contexts/AuthContext";
+import { updateEmployeeNotes } from "../../services/employeeNotesService";
 import { Settings } from "@carbon/icons-react";
 import {
-  Folder,
-  FolderOpen,
   Filter,
   AlertTriangle,
   Clock,
@@ -28,12 +29,9 @@ import {
   UserCheck,
   Crown,
   ChevronRight,
-  ChevronDown,
   Gauge,
   TrendingUp,
-  TrendingDown,
   Shield,
-  Hammer,
   HardHat,
   ClipboardList,
   GitBranch,
@@ -55,7 +53,6 @@ import {
   CloudRain,
   Target,
   ArrowRight,
-  Mic,
   Merge,
   Bot,
   ListChecks,
@@ -64,16 +61,12 @@ import {
   BatteryFull,
   BatteryMedium,
   BatteryLow,
-  Truck,
-  Wrench,
   Route,
   Timer,
   Radio,
   AlertOctagon,
-  PlayCircle,
   Lock as LockIcon,
   ReceiptText,
-  Coins,
   Ban as BanIcon,
   Bell,
   RefreshCw,
@@ -195,6 +188,7 @@ const pesoShort = (n: number) => {
 
 // ==================== 15.1.A — AGGREGATED HEALTH (Master Board) ====================
 
+// ─── Project type derived from live data ──────────────────────────
 type Project = {
   id: string;
   name: string;
@@ -217,224 +211,120 @@ type Project = {
   mapY: number;
 };
 
-const PROJECTS: Project[] = [
-  {
-    id: "p4",
-    name: "Business Expo 2026",
-    code: "PRJ-2026-025",
-    lead: "Mr. Tumagsang",
-    timePct: 90,
-    tasksPct: 55,
-    budgetPct: 82,
-    totalBudget: 18_000_000,
-    health: "red",
-    bottleneck: "Awaiting Finance ORS Approval",
-    bottleneckAge: 5,
-    bpaNode: "Finance · ORS Review",
-    nextMilestone: "Venue Lock-in · Apr 22",
-    deadline: "May 15, 2026",
-    burnSpark: [10, 18, 26, 34, 48, 62, 74, 82],
-    status: "Blocked",
-    barangay: "Brgy. Cogon",
-    mapX: 52,
-    mapY: 48,
-  },
-  {
-    id: "p7",
-    name: "City Hall ICT Upgrade",
-    code: "PRJ-2026-038",
-    lead: "Mr. Quilos",
-    timePct: 88,
-    tasksPct: 42,
-    budgetPct: 76,
-    totalBudget: 32_000_000,
-    health: "red",
-    bottleneck: "Vendor non-responsive · 6 days",
-    bottleneckAge: 6,
-    bpaNode: "Procurement · Vendor Coordination",
-    nextMilestone: "Server Install · Apr 25",
-    deadline: "May 20, 2026",
-    burnSpark: [8, 16, 24, 34, 48, 58, 68, 76],
-    status: "Blocked",
-    barangay: "Brgy. Cogon",
-    mapX: 49,
-    mapY: 50,
-  },
-  {
-    id: "p9",
-    name: "Plaza Renovation",
-    code: "PRJ-2026-048",
-    lead: "Engr. Patriarca",
-    timePct: 72,
-    tasksPct: 41,
-    budgetPct: 85,
-    totalBudget: 24_000_000,
-    health: "red",
-    bottleneck: "Cement lot rejected · QA failure",
-    bottleneckAge: 4,
-    bpaNode: "Engineering QA / Supplier",
-    nextMilestone: "Replacement Pour · May 05",
-    deadline: "Jun 10, 2026",
-    burnSpark: [12, 22, 32, 46, 58, 70, 78, 85],
-    status: "Blocked",
-    barangay: "Brgy. Cogon",
-    mapX: 51,
-    mapY: 52,
-  },
-  {
-    id: "p2",
-    name: "Coastal Road Rehabilitation",
-    code: "PRJ-2026-018",
-    lead: "Engr. Dacayo",
-    timePct: 80,
-    tasksPct: 50,
-    budgetPct: 71,
-    totalBudget: 180_000_000,
-    health: "yellow",
-    bottleneck: "Supplier delay · aggregates",
-    bottleneckAge: 3,
-    bpaNode: "Procurement · Materials Release",
-    nextMilestone: "Base Course · May 02",
-    deadline: "Aug 30, 2026",
-    burnSpark: [8, 16, 24, 32, 42, 54, 64, 71],
-    status: "In Progress",
-    barangay: "Brgy. Linao",
-    mapX: 72,
-    mapY: 62,
-  },
-  {
-    id: "p6",
-    name: "Public Market Retrofit",
-    code: "PRJ-2026-034",
-    lead: "Engr. Tambago",
-    timePct: 75,
-    tasksPct: 48,
-    budgetPct: 69,
-    totalBudget: 38_000_000,
-    health: "yellow",
-    bottleneck: "2 laborers on sick leave",
-    bottleneckAge: 2,
-    bpaNode: "HRMO · Temporary Replacement",
-    nextMilestone: "Roof Trusses · Apr 30",
-    deadline: "Jul 18, 2026",
-    burnSpark: [10, 18, 26, 36, 46, 56, 62, 69],
-    status: "In Progress",
-    barangay: "Brgy. Cogon",
-    mapX: 55,
-    mapY: 46,
-  },
-  {
-    id: "p10",
-    name: "Barangay Health Stations",
-    code: "PRJ-2026-052",
-    lead: "Ms. Bontuyan",
-    timePct: 66,
-    tasksPct: 52,
-    budgetPct: 62,
-    totalBudget: 14_000_000,
-    health: "yellow",
-    bottleneck: "Permit backlog · Legal Review",
-    bottleneckAge: 3,
-    bpaNode: "Legal Review (shared queue)",
-    nextMilestone: "3rd Station Handover · May 08",
-    deadline: "Aug 05, 2026",
-    burnSpark: [6, 14, 22, 32, 42, 50, 56, 62],
-    status: "In Progress",
-    barangay: "Brgy. Dolores",
-    mapX: 32,
-    mapY: 35,
-  },
-  {
-    id: "p1",
-    name: "Eco-Park Phase 1",
-    code: "PRJ-2026-014",
-    lead: "Engr. Santos",
-    timePct: 62,
-    tasksPct: 68,
-    budgetPct: 58,
-    totalBudget: 50_000_000,
-    health: "green",
-    nextMilestone: "Concrete Pouring · Apr 28",
-    deadline: "Sep 30, 2026",
-    burnSpark: [6, 12, 20, 28, 38, 46, 52, 58],
-    status: "In Progress",
-    barangay: "Brgy. Linao",
-    mapX: 70,
-    mapY: 58,
-  },
-  {
-    id: "p8",
-    name: "Fire Station Annex",
-    code: "PRJ-2026-042",
-    lead: "Engr. Lumapas",
-    timePct: 55,
-    tasksPct: 60,
-    budgetPct: 52,
-    totalBudget: 18_000_000,
-    health: "green",
-    nextMilestone: "Foundation Pour · Apr 29",
-    deadline: "Oct 12, 2026",
-    burnSpark: [4, 10, 18, 24, 32, 40, 46, 52],
-    status: "In Progress",
-    barangay: "Brgy. Alegria",
-    mapX: 38,
-    mapY: 68,
-  },
-  {
-    id: "p3",
-    name: "Coastal Cleanup Drive",
-    code: "PRJ-2026-021",
-    lead: "Ms. Bontuyan",
-    timePct: 45,
-    tasksPct: 52,
-    budgetPct: 40,
-    totalBudget: 6_400_000,
-    health: "green",
-    nextMilestone: "Brgy. 7 Deployment · Apr 24",
-    deadline: "Sep 01, 2026",
-    burnSpark: [4, 10, 16, 22, 28, 32, 36, 40],
-    status: "In Progress",
-    barangay: "Brgy. Linao",
-    mapX: 75,
-    mapY: 66,
-  },
-  {
-    id: "p5",
-    name: "Drainage System · Dist. 4",
-    code: "PRJ-2026-031",
-    lead: "Engr. Villegas",
-    timePct: 30,
-    tasksPct: 35,
-    budgetPct: 28,
-    totalBudget: 22_000_000,
-    health: "green",
-    nextMilestone: "Survey Completion · May 05",
-    deadline: "Nov 22, 2026",
-    burnSpark: [2, 6, 10, 14, 18, 22, 26, 28],
-    status: "Planning",
-    barangay: "Brgy. San Isidro",
-    mapX: 22,
-    mapY: 52,
-  },
-  {
-    id: "p11",
-    name: "Smart Traffic Lights · Phase 1",
-    code: "PRJ-2026-061",
-    lead: "Engr. Bautista",
-    timePct: 22,
-    tasksPct: 26,
-    budgetPct: 18,
-    totalBudget: 28_000_000,
-    health: "green",
-    nextMilestone: "Vendor Shortlist · May 12",
-    deadline: "Dec 15, 2026",
-    burnSpark: [2, 4, 6, 8, 10, 12, 16, 18],
-    status: "Planning",
-    barangay: "Brgy. Cogon",
-    mapX: 58,
-    mapY: 44,
-  },
-];
+// Derive projects from live task data instead of hardcoding
+function deriveProjectsFromTasks(
+  tasks: Task[],
+  employees: Employee[],
+): Project[] {
+  // Group tasks by department
+  const deptGroups = new Map<string, Task[]>();
+  tasks.forEach((t) => {
+    const dept = t.department || "UNASSIGNED";
+    if (!deptGroups.has(dept)) deptGroups.set(dept, []);
+    deptGroups.get(dept)!.push(t);
+  });
+
+  const DEPT_NAMES: Record<string, string> = {
+    EPW: "Engineering & Public Works",
+    CPD: "City Planning & Development",
+    FIN: "Finance & Budget",
+    HSW: "Health & Social Welfare",
+    ITS: "IT & Digital Services",
+    BPLO: "Business Permit & Licensing",
+  };
+
+  return Array.from(deptGroups.entries()).map(([dept, deptTasks], idx) => {
+    const total = deptTasks.length;
+    const completed = deptTasks.filter((t) => t.status === "completed").length;
+    const inProgress = deptTasks.filter(
+      (t) => t.status === "in_progress",
+    ).length;
+    const blocked = deptTasks.filter((t) => t.status === "for_review").length;
+    const tasksPct = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    // Find lead employee for this department
+    const deptEmp = employees.filter((e) => e.department === dept);
+    const lead =
+      deptEmp.find((e) => e.jobTitle?.includes("Head"))?.name ||
+      deptEmp[0]?.name ||
+      "Unassigned";
+
+    // Nearest deadline
+    const deadlines = deptTasks
+      .filter((t) => t.deadline || t.dueDate)
+      .map((t) => new Date(t.deadline || t.dueDate!))
+      .sort((a, b) => a.getTime() - b.getTime());
+    const nearestDl = deadlines[0];
+    const now = new Date();
+    const daysLeft = nearestDl
+      ? Math.ceil((nearestDl.getTime() - now.getTime()) / 86400000)
+      : 999;
+    const timePct = nearestDl
+      ? Math.min(95, Math.max(10, 100 - daysLeft * 2))
+      : 20;
+
+    // Health calc
+    const overdue = deptTasks.filter((t) => {
+      const dl = t.deadline || t.dueDate;
+      if (!dl || t.status === "completed") return false;
+      return new Date(dl).getTime() < Date.now();
+    }).length;
+    const health: "green" | "yellow" | "red" =
+      overdue > 0
+        ? "red"
+        : inProgress + blocked > total / 2
+          ? "yellow"
+          : "green";
+
+    // Status
+    const status: Project["status"] =
+      overdue > 0
+        ? "Blocked"
+        : completed === total && total > 0
+          ? "Closing"
+          : inProgress > 0
+            ? "In Progress"
+            : "Planning";
+
+    // Build sparkline from progress
+    const spark = Array.from({ length: 8 }, (_, i) =>
+      Math.round((tasksPct / 8) * (i + 1)),
+    );
+
+    const barangays = deptTasks.map((t) => t.barangay).filter(Boolean);
+
+    return {
+      id: dept,
+      name: DEPT_NAMES[dept] || dept,
+      code: `DEPT-${dept}`,
+      lead,
+      timePct,
+      tasksPct,
+      budgetPct: Math.round(tasksPct * 0.9), // estimate
+      totalBudget: 0,
+      health,
+      bottleneck: overdue > 0 ? `${overdue} overdue task(s)` : undefined,
+      bottleneckAge:
+        overdue > 0 ? (daysLeft < 0 ? Math.abs(daysLeft) : 0) : undefined,
+      bpaNode: overdue > 0 ? `${dept} · Overdue Review` : undefined,
+      nextMilestone: nearestDl
+        ? `Next deadline · ${nearestDl.toLocaleDateString("en-PH", { month: "short", day: "numeric" })}`
+        : "No deadlines",
+      deadline: nearestDl
+        ? nearestDl.toLocaleDateString("en-PH", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          })
+        : "-",
+      burnSpark: spark,
+      status,
+      barangay: barangays[0] || "-",
+      mapX: 30 + idx * 10,
+      mapY: 40 + idx * 5,
+    };
+  });
+}
 
 type BoardView = "table" | "gantt" | "resource" | "kanban" | "map" | "calendar";
 
@@ -493,6 +383,23 @@ function HealthChip({ health }: { health: Project["health"] }) {
 }
 
 function AggregatedHealth() {
+  // Fetch realtime data
+  const { tasks } = useTasks();
+  const { employees: allEmployees } = useEmployees();
+  const { userProfile } = useAuth();
+
+  // Filter to department
+  const deptTasks = useMemo(() => {
+    if (!userProfile?.departmentId) return tasks;
+    return tasks.filter(
+      (t) => !t.department || t.department === userProfile.departmentId,
+    );
+  }, [tasks, userProfile?.departmentId]);
+
+  const PROJECTS = useMemo(
+    () => deriveProjectsFromTasks(deptTasks, allEmployees || []),
+    [deptTasks, allEmployees],
+  );
   const [view, setView] = useState<BoardView>("table");
   const [onlyCritical, setOnlyCritical] = useState(false);
   const [sortBy, setSortBy] = useState<"health" | "budget" | "deadline">(
@@ -1545,7 +1452,6 @@ function BurnGauge({ project }: { project: BurnProject }) {
   const spentPct = (project.spent / project.allocated) * 100;
   const timePct = (project.month / project.total) * 100;
   const delta = spentPct - timePct;
-  const healthy = Math.abs(delta) <= 10;
   const over = delta > 10;
   const under = delta < -10;
 
@@ -2857,7 +2763,7 @@ const FLOW_EDGES: FlowEdge[] = [
   { from: "n5", to: "n6" },
 ];
 
-function edgeTone(fromNode: FlowNode, toNode: FlowNode) {
+function edgeTone(_fromNode: FlowNode, toNode: FlowNode) {
   const ratio =
     toNode.slaHours === 0 ? 1 : toNode.actualHours / toNode.slaHours;
   if (ratio > 2)
@@ -4691,7 +4597,11 @@ const INITIAL_COLS: ColumnTask[] = [
   },
 ];
 
-function ManualOverride() {
+function ManualOverride({}: {
+  tasks?: Task[];
+  employees?: Employee[];
+  departmentId?: string;
+}) {
   const [cols, setCols] = useState<ColumnTask[]>(INITIAL_COLS);
   const [drag, setDrag] = useState<{
     colId: string;
@@ -4961,7 +4871,11 @@ const NEARBY_TICKETS: Ticket[] = [
   },
 ];
 
-function IdleTimeMinimization() {
+function IdleTimeMinimization({}: {
+  tasks?: Task[];
+  employees?: Employee[];
+  departmentId?: string;
+}) {
   const [units, setUnits] = useState<DispatchUnit[]>(INITIAL_UNITS);
   const [log, setLog] = useState<{ at: string; message: string }[]>([
     {
@@ -5517,7 +5431,11 @@ function BurnDownChart({ prog }: { prog: BurndownProgram }) {
   );
 }
 
-function RealTimeSpendTracking() {
+function RealTimeSpendTracking({}: {
+  tasks?: Task[];
+  employees?: Employee[];
+  departmentId?: string;
+}) {
   const [quarter, setQuarter] = useState<"Q1" | "Q2" | "Q3" | "Q4">("Q2");
 
   const totalAlloc = BD_PROGRAMS.reduce((s, p) => s + p.allocated, 0);
@@ -5650,7 +5568,11 @@ const PENDING: PendingRequest[] = [
   },
 ];
 
-function OverrunPrevention() {
+function OverrunPrevention({}: {
+  tasks?: Task[];
+  employees?: Employee[];
+  departmentId?: string;
+}) {
   const STARTING_BALANCE = 5_200_000;
   const CRITICAL_BUFFER = 500_000;
   const [selected, setSelected] = useState<Set<string>>(new Set(["pr1"]));
@@ -5686,10 +5608,7 @@ function OverrunPrevention() {
         : "SAFE";
 
   // Gauge arc
-  const R = 62;
-  const C = Math.PI * R;
   const clampedPct = Math.max(0, Math.min(100, projectedPct));
-  const gaugeDash = (clampedPct / 100) * C;
 
   return (
     <div className="p-8 min-h-full">
@@ -6011,7 +5930,11 @@ const LEADERS: DelinquentLeader[] = [
   },
 ];
 
-function LeaderExpenseReports() {
+function LeaderExpenseReports({}: {
+  tasks?: Task[];
+  employees?: Employee[];
+  departmentId?: string;
+}) {
   const [rows, setRows] = useState<DelinquentLeader[]>(LEADERS);
   const [suspendConfirm, setSuspendConfirm] = useState<string | null>(null);
 
@@ -6200,36 +6123,477 @@ function LeaderExpenseReports() {
   );
 }
 
+function useDeptDirectoryEmployees() {
+  const { employees: allEmployees, loading: employeesLoading } = useEmployees();
+  const { users, loading: usersLoading } = useUsers();
+  const { departments } = useDepartments();
+  const { userProfile } = useAuth();
+
+  const departmentNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    departments.forEach((dept) => {
+      if (dept.id) {
+        map.set(dept.id, dept.name);
+      }
+    });
+    return map;
+  }, [departments]);
+
+  const usersAsEmployees = useMemo<Employee[]>(() => {
+    const initialsFor = (name: string) =>
+      name
+        .split(" ")
+        .filter(Boolean)
+        .map((part) => part[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase();
+
+    const titleForRole = (role?: string) =>
+      role
+        ? role
+            .split("_")
+            .map((part) => part[0]?.toUpperCase() + part.slice(1))
+            .join(" ")
+        : "Employee";
+
+    return users.map((user) => {
+      const name = user.fullName || user.email || "Unnamed User";
+      const departmentId = user.departmentId || "";
+      return {
+        id: user.uid,
+        name,
+        jobTitle: titleForRole(user.role),
+        jobDescription: "",
+        currentWorkload: typeof user.workload === "number" ? user.workload : 0,
+        department: departmentId || undefined,
+        departmentName: departmentId
+          ? departmentNameById.get(departmentId) || departmentId
+          : undefined,
+        initials: initialsFor(name),
+        email: user.email || undefined,
+      };
+    });
+  }, [users, departmentNameById]);
+
+  const userById = useMemo(
+    () => new Map(users.map((user) => [user.uid, user])),
+    [users],
+  );
+
+  const userByEmail = useMemo(() => {
+    const map = new Map<string, (typeof users)[number]>();
+    users.forEach((user) => {
+      if (user.email) {
+        map.set(user.email.toLowerCase(), user);
+      }
+    });
+    return map;
+  }, [users]);
+
+  const headUsers = useMemo(() => {
+    const ids = new Set<string>();
+    const emails = new Set<string>();
+    departments.forEach((dept) => {
+      if (!dept.headUserId) return;
+      ids.add(dept.headUserId);
+      const head = userById.get(dept.headUserId);
+      if (head?.email) {
+        emails.add(head.email.toLowerCase());
+      }
+    });
+    return { ids, emails };
+  }, [departments, userById]);
+
+  const directoryEmployees = useMemo(() => {
+    const merged = new Map<string, Employee>();
+    const emails = new Set<string>();
+
+    allEmployees.forEach((emp) => {
+      merged.set(emp.id, emp);
+      if (emp.email) {
+        emails.add(emp.email.toLowerCase());
+      }
+    });
+
+    usersAsEmployees.forEach((emp) => {
+      const emailKey = emp.email?.toLowerCase();
+      if (emailKey && emails.has(emailKey)) {
+        return;
+      }
+      if (!merged.has(emp.id)) {
+        merged.set(emp.id, emp);
+      }
+    });
+
+    return Array.from(merged.values());
+  }, [allEmployees, usersAsEmployees]);
+
+  const deptEmployees = useMemo(() => {
+    if (!userProfile?.departmentId) return directoryEmployees;
+    const currentEmail = userProfile.email?.toLowerCase();
+    const departmentId = userProfile.departmentId;
+
+    return directoryEmployees.filter((emp) => {
+      if (emp.department !== departmentId) return false;
+      if (userProfile.uid && emp.id === userProfile.uid) return false;
+      if (currentEmail && emp.email?.toLowerCase() === currentEmail) {
+        return false;
+      }
+
+      const matchById = userById.get(emp.id);
+      const matchByEmail = emp.email
+        ? userByEmail.get(emp.email.toLowerCase())
+        : undefined;
+      const matchedUser = matchById || matchByEmail;
+
+      if (matchedUser?.role === "department_head") return false;
+      if (headUsers.ids.has(emp.id)) return false;
+      if (emp.email && headUsers.emails.has(emp.email.toLowerCase())) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [
+    directoryEmployees,
+    headUsers,
+    userByEmail,
+    userById,
+    userProfile?.departmentId,
+    userProfile?.email,
+    userProfile?.uid,
+  ]);
+
+  const directoryLoading = employeesLoading || usersLoading;
+
+  return { deptEmployees, directoryLoading, userProfile };
+}
+
+// ==================== SUBORDINATE MANAGER ====================
+
+function SubordinateManager({
+  employees = [],
+}: {
+  tasks?: Task[];
+  employees?: Employee[];
+  departmentId?: string;
+}) {
+  const deptEmployees = useMemo(() => {
+    if (!employees) return employees || [];
+    return employees;
+  }, [employees]);
+
+  return (
+    <div className="p-8 min-h-full">
+      <PageHeader
+        title="Team Supervision"
+        subtitle="Manage subordinate profiles, track performance, and write direct feedback"
+      />
+      <div className="mt-6 space-y-4">
+        {deptEmployees.length === 0 ? (
+          <div className="text-sm text-neutral-500">
+            No employees found in your department.
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            {deptEmployees.map((emp) => (
+              <div
+                key={emp.id}
+                className="bg-white border border-neutral-200 rounded-lg p-4"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className="font-medium text-neutral-900">{emp.name}</h4>
+                    <p className="text-xs text-neutral-500">{emp.jobTitle}</p>
+                    <p className="text-xs text-neutral-400 mt-1">{emp.email}</p>
+                  </div>
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full ${emp.currentWorkload > 80 ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}
+                  >
+                    Load: {emp.currentWorkload}%
+                  </span>
+                </div>
+                {(emp as any).skills && (emp as any).skills.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1">
+                    {(emp as any).skills.map((s: string) => (
+                      <span
+                        key={s}
+                        className="bg-neutral-100 text-neutral-600 text-[10px] px-2 py-0.5 rounded"
+                      >
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ==================== EMPLOYEE INSIGHTS ====================
+
+type EmployeeNoteDraft = {
+  strengths: string;
+  weaknesses: string;
+  notes: string;
+  tags: string;
+};
+
+function EmployeeInsights() {
+  const { deptEmployees, directoryLoading, userProfile } =
+    useDeptDirectoryEmployees();
+  const { notes, loading: notesLoading } = useEmployeeNotes();
+  const [drafts, setDrafts] = useState<Record<string, EmployeeNoteDraft>>({});
+  const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+
+  React.useEffect(() => {
+    // Always sync drafts with saved notes from Firebase
+    const next: Record<string, EmployeeNoteDraft> = {};
+    deptEmployees.forEach((emp) => {
+      const existing = notes[emp.id];
+      next[emp.id] = {
+        strengths: existing?.strengths || "",
+        weaknesses: existing?.weaknesses || "",
+        notes: existing?.notes || "",
+        tags: existing?.tags?.join(", ") || "",
+      };
+    });
+    setDrafts(next);
+  }, [deptEmployees, notes]);
+
+  const handleChange = (
+    employeeId: string,
+    field: keyof EmployeeNoteDraft,
+    value: string,
+  ) => {
+    setDrafts((prev) => ({
+      ...prev,
+      [employeeId]: {
+        ...(prev[employeeId] || {
+          strengths: "",
+          weaknesses: "",
+          notes: "",
+          tags: "",
+        }),
+        [field]: value,
+      },
+    }));
+    setSavedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(employeeId);
+      return next;
+    });
+  };
+
+  const handleSave = async (employeeId: string) => {
+    const draft = drafts[employeeId];
+    if (!draft) return;
+
+    const tags = draft.tags
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+
+    setSavingIds((prev) => new Set(prev).add(employeeId));
+    try {
+      await updateEmployeeNotes(employeeId, {
+        strengths: draft.strengths.trim(),
+        weaknesses: draft.weaknesses.trim(),
+        notes: draft.notes.trim(),
+        tags,
+        updatedBy: userProfile?.uid,
+      });
+      setSavedIds((prev) => new Set(prev).add(employeeId));
+    } finally {
+      setSavingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(employeeId);
+        return next;
+      });
+    }
+  };
+
+  if (directoryLoading || notesLoading) {
+    return (
+      <div className="p-8 min-h-full bg-neutral-50 flex items-center justify-center">
+        <div className="text-[12px] text-neutral-500">Loading team notes…</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-8 min-h-full">
+      <PageHeader
+        title="Team Intelligence"
+        subtitle="Capture strengths, weaknesses, and notes for AI-assisted assignments"
+      />
+
+      {deptEmployees.length === 0 ? (
+        <div className="text-sm text-neutral-500">
+          No employees found in your department.
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          {deptEmployees.map((emp) => {
+            const draft = drafts[emp.id] || {
+              strengths: "",
+              weaknesses: "",
+              notes: "",
+              tags: "",
+            };
+            const isSaving = savingIds.has(emp.id);
+            const isSaved = savedIds.has(emp.id);
+
+            return (
+              <div
+                key={emp.id}
+                className="bg-white border border-neutral-200 rounded-xl p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[13px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">
+                      {emp.name}
+                    </div>
+                    <div className="text-[11px] text-neutral-500">
+                      {emp.jobTitle}
+                    </div>
+                    <div className="text-[10px] text-neutral-400">
+                      {emp.email}
+                    </div>
+                  </div>
+                  <div
+                    className={`text-[10px] px-2 py-0.5 rounded-full ${emp.currentWorkload > 80 ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}
+                  >
+                    Load: {emp.currentWorkload}%
+                  </div>
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-wider text-neutral-400 block mb-1">
+                      Strengths
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={draft.strengths}
+                      onChange={(e) =>
+                        handleChange(emp.id, "strengths", e.target.value)
+                      }
+                      placeholder="e.g., permit processing, compliance review"
+                      className="w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 text-[12px] text-neutral-800 outline-none focus:border-neutral-400 focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-wider text-neutral-400 block mb-1">
+                      Weaknesses
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={draft.weaknesses}
+                      onChange={(e) =>
+                        handleChange(emp.id, "weaknesses", e.target.value)
+                      }
+                      placeholder="e.g., slow turnaround on field inspections"
+                      className="w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 text-[12px] text-neutral-800 outline-none focus:border-neutral-400 focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-wider text-neutral-400 block mb-1">
+                      Notes / Description
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={draft.notes}
+                      onChange={(e) =>
+                        handleChange(emp.id, "notes", e.target.value)
+                      }
+                      placeholder="Context for AI and supervisors"
+                      className="w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 text-[12px] text-neutral-800 outline-none focus:border-neutral-400 focus:bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-wider text-neutral-400 block mb-1">
+                      Tags
+                    </label>
+                    <input
+                      type="text"
+                      value={draft.tags}
+                      onChange={(e) =>
+                        handleChange(emp.id, "tags", e.target.value)
+                      }
+                      placeholder="permits, inspections, compliance"
+                      className="h-[34px] w-full rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 text-[12px] text-neutral-800 outline-none focus:border-neutral-400 focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between">
+                  <button
+                    onClick={() => handleSave(emp.id)}
+                    disabled={isSaving}
+                    className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[11px] font-['Lexend:Medium',_sans-serif] text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isSaving ? "Saving..." : "Save Notes"}
+                  </button>
+                  {isSaved && (
+                    <span className="text-[10px] text-emerald-600">Saved</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ==================== TASK BOARD ====================
 
 export function DeptHeadTaskBoard() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  // Fetch realtime data from Firebase
+  const { tasks } = useTasks();
+  const { deptEmployees, directoryLoading, userProfile } =
+    useDeptDirectoryEmployees();
+  const { notes, loading: notesLoading } = useEmployeeNotes();
 
-  useEffect(() => {
-    // Seed dummy employees on first load
-    seedEmployeesIfEmpty();
-    seedTasksIfEmpty();
+  // Filter tasks by department
+  const deptTasks = useMemo(() => {
+    if (!userProfile?.departmentId) return tasks;
+    return tasks.filter(
+      (t) =>
+        !t.department ||
+        t.department === userProfile.departmentId ||
+        t.status === "pending_assignment",
+    );
+  }, [tasks, userProfile?.departmentId]);
 
-    const unsubscribeTasks = subscribeToTasks((data) => {
-      setTasks(data);
-    });
-    const unsubscribeEmployees = subscribeToEmployees((data) => {
-      setEmployees(data);
-    });
-
-    return () => {
-      unsubscribeTasks();
-      unsubscribeEmployees();
-    };
-  }, []);
+  if (directoryLoading || notesLoading) {
+    return (
+      <div className="p-8 h-full bg-neutral-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-[13px] font-['Lexend:Regular',_sans-serif] text-neutral-600">
+            Loading tasks and team members...
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 h-full bg-neutral-50">
       <MondayBoard
-        tasks={tasks}
-        employees={employees}
+        tasks={deptTasks}
+        employees={deptEmployees}
+        employeeNotes={notes}
         role="depthead"
+        departmentFilter={userProfile?.departmentId}
         onCreateTask={createTask}
         onAssign={assignTask}
         onVerify={verifyTask}
@@ -6246,11 +6610,12 @@ export const deptheadPages: Record<
 > = {
   deptportfolio: {
     "Portfolio Overview": DeptHeadTaskBoard,
-    "Aggregated Health": DeptHeadTaskBoard,
+    "Aggregated Health": AggregatedHealth,
     "Budget Status": BudgetStatus,
     "Timeline Review": TimelineReview,
     "Programs & Activities": TeamAssignments,
     "Team Assignments": TeamAssignments,
+    "Team Intelligence": EmployeeInsights,
     "Leader Assignments": LeaderAssignments,
     "Chain of Command": ChainOfCommand,
   },
@@ -6269,6 +6634,7 @@ export const deptheadPages: Record<
     "Optimal Distribution Matrix": OptimalDistributionMatrix,
     "Manual Override": ManualOverride,
     "Idle Time Minimization": IdleTimeMinimization,
+    "Team Supervision": SubordinateManager,
   },
   budget: {
     "Program Budget Burn-down": RealTimeSpendTracking,

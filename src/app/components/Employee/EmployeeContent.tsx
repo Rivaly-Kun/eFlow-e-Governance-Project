@@ -6,6 +6,7 @@ import {
   updateTaskStatus,
   Task,
 } from "../../services/taskService";
+import { useAuth } from "../../contexts/AuthContext";
 import {
   Settings,
   CheckCircle2,
@@ -29,8 +30,6 @@ import {
   Image as ImageIcon,
   Paperclip,
   Send,
-  Play,
-  Pause,
   ChevronRight,
   Wallet,
   Scan,
@@ -112,12 +111,6 @@ function Chip({
 
 // ==================== 19.1 GA-DELEGATED ASSIGNMENTS ====================
 type TaskStatus = "To Do" | "In Progress" | "Stuck" | "Done";
-const STATUS_TONE: Record<TaskStatus, "neutral" | "blue" | "red" | "green"> = {
-  "To Do": "neutral",
-  "In Progress": "blue",
-  Stuck: "red",
-  Done: "green",
-};
 
 const TASKS_SEED = [
   {
@@ -386,7 +379,7 @@ function DailyStandUp() {
   const [text, setText] = useState(
     "We finished paving the road sa Brgy. Linao, pero na-delay yung delivery ng cement para bukas. Kailangan mag follow-up sa supplier.",
   );
-  const [processed, setProcessed] = useState(true);
+  const processed = true;
 
   React.useEffect(() => {
     if (!recording) return;
@@ -824,7 +817,7 @@ function peso(n: number) {
 }
 
 function LiquidationPortal() {
-  const [cards, setCards] = useState(ADVANCES_SEED);
+  const [cards] = useState(ADVANCES_SEED);
   const [selectedId, setSelectedId] = useState<string | null>("CA-2026-041");
   const selected = cards.find((c) => c.id === selectedId) || null;
   const [spent, setSpent] = useState<string>(
@@ -2079,20 +2072,20 @@ function AICoaching() {
 
 export function EmployeeTaskBoard() {
   const [tasks, setTasks] = useState<Task[]>([]);
-
-  // Demo employee from the live Firebase seed data
-  const employeeId = "emp_004";
+  const { userProfile } = useAuth();
 
   useEffect(() => {
+    if (!userProfile?.uid) return;
+
     seedTasksIfEmpty();
 
     const unsubscribe = subscribeToTasks((data) => {
       // Filter to only show tasks assigned to this employee
-      const myTasks = data.filter((t) => t.assigneeId === employeeId);
+      const myTasks = data.filter((t) => t.assigneeId === userProfile.uid);
       setTasks(myTasks);
     });
     return () => unsubscribe();
-  }, []);
+  }, [userProfile?.uid]);
 
   const handleExecute = (taskId: string) =>
     updateTaskStatus(taskId, "in_progress");

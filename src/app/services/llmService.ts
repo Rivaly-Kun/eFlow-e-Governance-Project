@@ -1,5 +1,6 @@
 import { Employee } from "./employeeService";
 import { Task } from "./taskService";
+import type { EmployeeNotesMap } from "./employeeNotesService";
 
 const API_BASE = (import.meta.env.VITE_LLM_BASE_URL || "/api").replace(/\/$/, "");
 const CHAT_ENDPOINT = `${API_BASE}/chat`;
@@ -31,21 +32,26 @@ const fetchAuthKey = async () => {
   return authKeyPromise;
 };
 
-export interface LLMRecommendation {
-  recommendedEmployeeId: string;
+export interface LLMTeamRecommendation {
+  recommendedEmployeeIds: string[];
   reasoning: string;
   burnoutWarning: boolean;
 }
 
-export const recommendAssignee = async (
+export const recommendTeam = async (
   task: Task,
-  employees: Employee[]
-): Promise<LLMRecommendation | null> => {
+  employees: Employee[],
+  employeeNotes?: EmployeeNotesMap,
+): Promise<LLMTeamRecommendation | null> => {
   const employeesContext = employees
-    .map(
-      (e) =>
-        `- ID: ${e.id}\n  Name: ${e.name}\n  Team: ${e.departmentName ?? e.department ?? "Unassigned"}\n  Job: ${e.jobTitle}\n  Description: ${e.jobDescription}\n  Workload (0-100): ${e.currentWorkload}`
-    )
+    .map((e) => {
+      const notes = employeeNotes?.[e.id];
+      const noteText = notes
+        ? `\n  Strengths: ${notes.strengths || "-"}\n  Weaknesses: ${notes.weaknesses || "-"}\n  Notes: ${notes.notes || "-"}\n  Tags: ${(notes.tags || []).join(", ") || "-"}`
+        : "";
+
+      return `- ID: ${e.id}\n  Name: ${e.name}\n  Team: ${e.departmentName ?? e.department ?? "Unassigned"}\n  Job: ${e.jobTitle}\n  Description: ${e.jobDescription}\n  Workload (0-100): ${e.currentWorkload}${noteText}`;
+    })
     .join("\n\n");
 
   const prompt = `You are an AI assistant helping a Department Head assign tasks to employees using a Genetic Algorithm-like evaluation approach.
@@ -58,15 +64,16 @@ Available Employees:
 ${employeesContext}
 
 Instructions:
-1. Evaluate all employees based on their job descriptions, matching their skills to the task requirements.
-2. Evaluate their current workload. A workload above 80 indicates a high risk of burnout.
-3. Recommend the mathematically optimal assignee. If the best match has a workload > 80, issue a burnout warning but you may still recommend them if they are the only logical fit, or you can recommend the second best.
-4. Output your response as a strict JSON object with no markdown formatting or extra text.
+1. Select a team of 1 to N employees. You may choose as many as needed based on complexity.
+2. Use job descriptions and manager notes (strengths/weaknesses/tags) to match skills.
+3. Consider workload. Workload above 80 indicates burnout risk.
+4. Choose a lead candidate among the team (include them in the list).
+5. Output your response as strict JSON with no markdown.
 
 Required JSON format:
 {
-  "recommendedEmployeeId": "id_of_employee",
-  "reasoning": "Detailed explanation of why this employee is the best fit, including workload assessment.",
+  "recommendedEmployeeIds": ["id_1", "id_2"],
+  "reasoning": "Why this team and size were selected, plus workload assessment.",
   "burnoutWarning": true/false
 }`;
 
@@ -103,10 +110,18 @@ Required JSON format:
     const jsonMatch = contentString.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
+      const ids = Array.isArray(parsed.recommendedEmployeeIds)
+        ? parsed.recommendedEmployeeIds.filter(
+            (id: unknown): id is string => typeof id === "string",
+          )
+        : typeof parsed.recommendedEmployeeIds === "string"
+          ? [parsed.recommendedEmployeeIds]
+          : [];
       return {
-        recommendedEmployeeId: parsed.recommendedEmployeeId,
-        reasoning: parsed.reasoning,
-        burnoutWarning: parsed.burnoutWarning === true || parsed.burnoutWarning === "true",
+        recommendedEmployeeIds: ids,
+        reasoning: parsed.reasoning || "",
+        burnoutWarning:
+          parsed.burnoutWarning === true || parsed.burnoutWarning === "true",
       };
     }
 
