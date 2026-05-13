@@ -699,13 +699,13 @@ export function MondayBoard({
           </div>
 
           <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start justify-between gap-3 mb-4">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.24em] text-neutral-400">
                   Team Pool
                 </div>
                 <h3 className="text-[18px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900 mt-1">
-                  Live departments from Firebase
+                  Your Subordinates
                 </h3>
               </div>
               <div className="flex items-center gap-2">
@@ -727,7 +727,7 @@ export function MondayBoard({
             </div>
 
             {teamPoolOpen && (
-              <div className="mt-4 space-y-2.5">
+              <div className="mt-4 space-y-3">
                 {teamGroups.length > 0 ? (
                   teamGroups.map((team) => {
                     const burnoutCount = team.members.filter(
@@ -736,38 +736,9 @@ export function MondayBoard({
                     return (
                       <div
                         key={team.key}
-                        className="rounded-2xl border border-neutral-200 bg-white p-3"
+                        className="rounded-2xl border border-neutral-200 bg-white p-4"
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-[13px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">
-                              {team.label}
-                            </div>
-                            <div className="text-[11px] text-neutral-500 flex items-center gap-2">
-                              <span>
-                                {team.members.length} teammates · avg workload{" "}
-                                {team.avgWorkload}%
-                              </span>
-                              {burnoutCount > 0 && (
-                                <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
-                                  <Flame size={10} /> {burnoutCount} at risk
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <div className="h-1.5 w-16 rounded-full bg-neutral-100 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${team.avgWorkload >= 80 ? "bg-red-500" : team.avgWorkload >= 60 ? "bg-amber-400" : "bg-emerald-500"}`}
-                                style={{ width: `${team.avgWorkload}%` }}
-                              />
-                            </div>
-                            <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-[10px] uppercase tracking-wider text-neutral-500">
-                              {team.key}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-1.5">
+                        <div className="flex flex-wrap gap-2">
                           {team.members.slice(0, 6).map((member) => {
                             const isSelected = selectedMembers.some(
                               (m) => m.id === member.id,
@@ -789,15 +760,22 @@ export function MondayBoard({
                                 }}
                                 onDragEnd={() => setMemberDragId(null)}
                                 onClick={() => handleMemberToggle(member)}
-                                className={`group relative inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] cursor-pointer ${isSelected ? "border-violet-300 bg-violet-50 text-violet-700" : "border-neutral-200 bg-neutral-50 text-neutral-600"} ${memberDragId === member.id ? "opacity-60" : ""}`}
+                                className={`group relative inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[12px] cursor-move transition-all ${isSelected ? "border-violet-300 bg-violet-50 text-violet-700 shadow-md ring-2 ring-violet-200" : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:shadow-md"} ${memberDragId === member.id ? "opacity-60 scale-95" : ""}`}
                                 title={`${member.name} · ${member.jobTitle} · Workload: ${member.currentWorkload}%`}
                               >
                                 <span
-                                  className={`flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-['Lexend:Medium',_sans-serif] text-white ${member.currentWorkload >= 80 ? "bg-red-500" : member.currentWorkload >= 60 ? "bg-amber-500" : "bg-neutral-900"}`}
+                                  className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-['Lexend:SemiBold',_sans-serif] text-white ${member.currentWorkload >= 80 ? "bg-red-500" : member.currentWorkload >= 60 ? "bg-amber-500" : "bg-neutral-900"}`}
                                 >
                                   {getInitials(member.name)}
                                 </span>
-                                {member.name}
+                                <div className="flex flex-col gap-0">
+                                  <span className="font-['Lexend:SemiBold',_sans-serif]">
+                                    {member.name}
+                                  </span>
+                                  <span className="text-[9px] opacity-70">
+                                    {member.jobTitle}
+                                  </span>
+                                </div>
                               </span>
                             );
                           })}
