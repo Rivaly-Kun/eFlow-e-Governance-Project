@@ -22,7 +22,6 @@ import {
   Search,
   GripVertical,
   Clock,
-  Flame,
 } from "lucide-react";
 import type { EmployeeNotesMap } from "../../services/employeeNotesService";
 
@@ -115,6 +114,19 @@ export function MondayBoard({
     return employees.filter((e) => e.department === departmentFilter);
   }, [employees, departmentFilter]);
 
+  const deptEmployeesWithNotes = useMemo(
+    () => deptEmployees.filter((emp) => Boolean(employeeNotes?.[emp.id])),
+    [deptEmployees, employeeNotes],
+  );
+
+  const employeesForAi = useMemo(
+    () =>
+      deptEmployeesWithNotes.length > 0
+        ? deptEmployeesWithNotes
+        : deptEmployees,
+    [deptEmployees, deptEmployeesWithNotes],
+  );
+
   // Filter tasks by department if provided
   const deptTasks = useMemo(() => {
     if (!departmentFilter) return tasks;
@@ -147,6 +159,9 @@ export function MondayBoard({
   const [aiRecommendations, setAiRecommendations] = useState<
     Record<string, LLMTeamRecommendation>
   >({});
+  const [dismissedRecommendations, setDismissedRecommendations] = useState<
+    Set<string>
+  >(new Set());
   const [aiOfflineTaskIds, setAiOfflineTaskIds] = useState<Set<string>>(
     new Set(),
   );
@@ -197,10 +212,15 @@ export function MondayBoard({
     [deptEmployees],
   );
 
-  const clearRecommendation = (taskId: string) => {
+  const dismissRecommendation = (taskId: string) => {
     setAiRecommendations((prev) => {
       const next = { ...prev };
       delete next[taskId];
+      return next;
+    });
+    setDismissedRecommendations((prev) => {
+      const next = new Set(prev);
+      next.add(taskId);
       return next;
     });
   };
@@ -214,6 +234,29 @@ export function MondayBoard({
     ids
       .map((id) => employeeById[id])
       .filter((member): member is Employee => Boolean(member));
+
+  const buildImportRecommendation = useCallback(
+    (task: Task): LLMTeamRecommendation | null => {
+      if (dismissedRecommendations.has(task.id)) return null;
+      if (
+        !task.recommendedEmployeeIds ||
+        task.recommendedEmployeeIds.length === 0
+      )
+        return null;
+
+      return {
+        recommendedEmployeeIds: task.recommendedEmployeeIds,
+        leadEmployeeId:
+          task.recommendationLeadId || task.recommendedEmployeeIds[0],
+        reasoning:
+          task.recommendationReasoning ||
+          "Imported suggestion based on proposal analysis.",
+        burnoutWarning: task.burnoutWarning === true,
+        source: "import",
+      };
+    },
+    [dismissedRecommendations],
+  );
 
   const assignTaskToMembers = (
     task: Task,
@@ -235,7 +278,7 @@ export function MondayBoard({
       teamMemberNames: members.map((member) => member.name),
     });
 
-    clearRecommendation(task.id);
+    dismissRecommendation(task.id);
     setAssignmentPanels((prev) => ({ ...prev, [task.id]: false }));
   };
 
@@ -247,10 +290,15 @@ export function MondayBoard({
       next.delete(task.id);
       return next;
     });
+    setDismissedRecommendations((prev) => {
+      const next = new Set(prev);
+      next.delete(task.id);
+      return next;
+    });
     try {
       const recommendation = await recommendTeam(
         task,
-        deptEmployees,
+        employeesForAi,
         employeeNotes,
       );
       if (recommendation) {
@@ -274,7 +322,15 @@ export function MondayBoard({
     if (!newTaskTitle.trim() || !newTaskDeadline || !onCreateTask) return;
 
     const members = selectedMembers;
-    const lead = members.length ? pickLead(members) : undefined;
+    const leadOverride = composerAiRecommendation?.leadEmployeeId
+      ? employeeById[composerAiRecommendation.leadEmployeeId]
+      : undefined;
+    const lead =
+      leadOverride && members.some((member) => member.id === leadOverride.id)
+        ? leadOverride
+        : members.length
+          ? pickLead(members)
+          : undefined;
     const teamId = lead?.department || departmentFilter || "";
     const teamName = lead?.departmentName || lead?.department || "Custom Team";
     const status = members.length ? "todo" : "pending_assignment";
@@ -339,7 +395,7 @@ export function MondayBoard({
 
       const recommendation = await recommendTeam(
         draftTask,
-        deptEmployees,
+        employeesForAi,
         employeeNotes,
       );
 
@@ -396,7 +452,12 @@ export function MondayBoard({
     const members = resolveMembersByIds(recommendation.recommendedEmployeeIds);
     if (!members.length) return;
 
-    assignTaskToMembers(task, members);
+    // Use the designated lead from recommendation instead of lowest workload
+    const leadOverride = recommendation.leadEmployeeId
+      ? employeeById[recommendation.leadEmployeeId]
+      : undefined;
+
+    assignTaskToMembers(task, members, leadOverride);
   };
 
   // ─── Filter tasks by search ─────────────────────────────────────
@@ -730,9 +791,6 @@ export function MondayBoard({
               <div className="mt-4 space-y-3">
                 {teamGroups.length > 0 ? (
                   teamGroups.map((team) => {
-                    const burnoutCount = team.members.filter(
-                      (m) => m.currentWorkload >= 75,
-                    ).length;
                     return (
                       <div
                         key={team.key}
@@ -855,7 +913,8 @@ export function MondayBoard({
             </div>
 
             {items.map((task) => {
-              const recommendation = aiRecommendations[task.id];
+              const recommendation =
+                aiRecommendations[task.id] || buildImportRecommendation(task);
               const recommendedMembers = recommendation
                 ? resolveMembersByIds(recommendation.recommendedEmployeeIds)
                 : [];
@@ -1181,7 +1240,9 @@ export function MondayBoard({
                           <div className="flex flex-wrap items-start justify-between gap-2">
                             <div>
                               <div className="text-[11px] uppercase tracking-wider text-violet-700">
-                                AI Recommendation
+                                {recommendation.source === "import"
+                                  ? "Imported Suggestion"
+                                  : "AI Recommendation"}
                               </div>
                               <div className="mt-0.5 text-[13px] font-['Lexend:SemiBold',_sans-serif] text-violet-950">
                                 {recommendedMembers.length
@@ -1238,7 +1299,7 @@ export function MondayBoard({
                               <Check className="h-3 w-3" /> Confirm Assignment
                             </button>
                             <button
-                              onClick={() => clearRecommendation(task.id)}
+                              onClick={() => dismissRecommendation(task.id)}
                               className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-600 transition hover:bg-neutral-50"
                             >
                               <X className="h-3 w-3" /> Reject

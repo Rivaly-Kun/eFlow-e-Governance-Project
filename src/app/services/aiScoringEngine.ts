@@ -4,6 +4,7 @@
 
 import { Employee } from "./employeeService";
 import { Task } from "./taskService";
+import type { EmployeeNotesMap } from "./employeeNotesService";
 
 export interface ScoredCandidate {
   employeeId: string;
@@ -47,16 +48,32 @@ const STOP_WORDS = new Set([
 ]);
 
 // ─── Score calculation ───────────────────────────────────────────
-function computeSkillMatch(employee: Employee, task: Task): number {
-  const taskText = `${task.title} ${task.description || ""} ${(task.tags || []).join(" ")}`;
-  const empText = `${employee.jobTitle} ${employee.jobDescription} ${employee.departmentName || ""}`;
+function computeSkillMatch(
+  employee: Employee,
+  task: Task,
+  employeeNotes?: EmployeeNotesMap,
+): number {
+  // Include requiredSkills in task text
+  const taskText = `${task.title} ${task.description || ""} ${(task.tags || []).join(" ")} ${((task as Record<string, unknown>).requiredSkills as string[] || []).join(" ")}`;
+
+  const notes = employeeNotes?.[employee.id];
+  const noteText = notes
+    ? `${notes.strengths || ""} ${notes.weaknesses || ""} ${notes.notes || ""} ${(notes.tags || []).join(" ")}`
+    : "";
+
+  // Include notes — this is where all real skill data lives
+  const empText = `${employee.jobTitle} ${employee.jobDescription} ${employee.departmentName || ""} ${noteText}`;
 
   const taskKw = extractKeywords(taskText);
-  const empKw = new Set(extractKeywords(empText));
+  const empKwArray = extractKeywords(empText);
 
   if (taskKw.length === 0) return 50; // No keywords = neutral score
 
-  const matches = taskKw.filter((kw) => empKw.has(kw)).length;
+  // Use partial/substring matching — "presentation" matches "presentations", "facilit" matches "facilitation"
+  const matches = taskKw.filter((kw) =>
+    empKwArray.some((ek) => ek.includes(kw) || kw.includes(ek))
+  ).length;
+
   return Math.min(100, (matches / Math.max(taskKw.length, 1)) * 100 + 20);
 }
 
@@ -91,11 +108,11 @@ function computeDeadlineUrgency(task: Task): number {
 }
 
 // ─── Main scoring function ───────────────────────────────────────
-export function scoreEmployees(task: Task, employees: Employee[]): ScoredCandidate[] {
+export function scoreEmployees(task: Task, employees: Employee[], employeeNotes?: EmployeeNotesMap): ScoredCandidate[] {
   const urgency = computeDeadlineUrgency(task);
 
   const scored = employees.map((emp): ScoredCandidate => {
-    const skillMatch = computeSkillMatch(emp, task);
+    const skillMatch = computeSkillMatch(emp, task, employeeNotes);
     const workloadAvailability = computeWorkloadAvailability(emp);
     const burnoutPenalty = computeBurnoutPenalty(emp);
     const departmentCompatibility = computeDeptCompatibility(emp, task);
@@ -146,8 +163,8 @@ export function scoreEmployees(task: Task, employees: Employee[]): ScoredCandida
 }
 
 // ─── Get top recommendation ──────────────────────────────────────
-export function getTopRecommendation(task: Task, employees: Employee[]): ScoredCandidate | null {
-  const scored = scoreEmployees(task, employees);
+export function getTopRecommendation(task: Task, employees: Employee[], employeeNotes?: EmployeeNotesMap): ScoredCandidate | null {
+  const scored = scoreEmployees(task, employees, employeeNotes);
   return scored.length > 0 ? scored[0] : null;
 }
 

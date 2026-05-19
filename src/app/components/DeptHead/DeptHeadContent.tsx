@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { MondayBoard } from "../ui/MondayBoard";
+import ProposalImport from "./ProposalImport";
 import {
   createTask,
   assignTask,
@@ -6613,7 +6614,7 @@ export const deptheadPages: Record<
     "Aggregated Health": AggregatedHealth,
     "Budget Status": BudgetStatus,
     "Timeline Review": TimelineReview,
-    "Programs & Activities": TeamAssignments,
+    "Programs & Activities": ProposalImport,
     "Team Assignments": TeamAssignments,
     "Team Intelligence": EmployeeInsights,
     "Leader Assignments": LeaderAssignments,

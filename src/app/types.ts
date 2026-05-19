@@ -82,6 +82,11 @@ export interface Task {
   deadline?: string;
   dueDate?: string;
   tags?: string[];
+  recommendedEmployeeIds?: string[];
+  recommendationReasoning?: string;
+  recommendationSource?: "llm" | "fallback" | "import";
+  recommendationLeadId?: string;
+  burnoutWarning?: boolean;
   createdAt: number;
   updatedAt: number;
 }

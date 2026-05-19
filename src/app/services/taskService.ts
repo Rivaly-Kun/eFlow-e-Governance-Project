@@ -38,6 +38,11 @@ export interface Task {
   updatedAt: number;
   auditHash?: string;
   feedback?: string;
+  recommendedEmployeeIds?: string[];
+  recommendationReasoning?: string;
+  recommendationSource?: "llm" | "fallback" | "import";
+  recommendationLeadId?: string;
+  burnoutWarning?: boolean;
   // ─── Enhanced fields ───
   barangay?: string;
   estimatedHours?: number;
@@ -78,9 +83,26 @@ const normalizeTaskRecord = (id: string, record: Record<string, unknown>): Task 
         : undefined;
   const teamMemberIds = normalizeStringArray(record.teamMemberIds);
   const teamMemberNames = normalizeStringArray(record.teamMemberNames);
+  const recommendedEmployeeIds = normalizeStringArray(record.recommendedEmployeeIds);
   const status = isTaskStatus(record.status) ? record.status : "pending_assignment";
   const createdAt = typeof record.createdAt === "number" ? record.createdAt : Date.now();
   const updatedAt = typeof record.updatedAt === "number" ? record.updatedAt : createdAt;
+  const recommendationReasoning =
+    typeof record.recommendationReasoning === "string"
+      ? record.recommendationReasoning
+      : undefined;
+  const recommendationSource =
+    typeof record.recommendationSource === "string"
+      ? (record.recommendationSource as Task["recommendationSource"])
+      : undefined;
+  const recommendationLeadId =
+    typeof record.recommendationLeadId === "string"
+      ? record.recommendationLeadId
+      : undefined;
+  const burnoutWarning =
+    typeof record.burnoutWarning === "boolean"
+      ? record.burnoutWarning
+      : undefined;
 
   return {
     id,
@@ -107,6 +129,11 @@ const normalizeTaskRecord = (id: string, record: Record<string, unknown>): Task 
           : undefined,
     dueDate: typeof record.dueDate === "string" ? record.dueDate : undefined,
     tags: normalizeStringArray(record.tags),
+    recommendedEmployeeIds: recommendedEmployeeIds.length > 0 ? recommendedEmployeeIds : undefined,
+    recommendationReasoning,
+    recommendationSource,
+    recommendationLeadId,
+    burnoutWarning,
     createdAt,
     updatedAt,
     auditHash: typeof record.auditHash === "string" ? record.auditHash : undefined,
@@ -193,6 +220,11 @@ export interface CreateTaskPayload {
   teamMemberNames?: string[];
   assigneeId?: string;
   assigneeName?: string;
+  recommendedEmployeeIds?: string[];
+  recommendationReasoning?: string;
+  recommendationSource?: "llm" | "fallback" | "import";
+  recommendationLeadId?: string;
+  burnoutWarning?: boolean;
   barangay?: string;
   estimatedHours?: number;
   budgetImpact?: number;
@@ -234,6 +266,22 @@ export const createTask = async (
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
+
+    if (p.recommendedEmployeeIds && p.recommendedEmployeeIds.length > 0) {
+      newTask.recommendedEmployeeIds = p.recommendedEmployeeIds;
+    }
+    if (p.recommendationReasoning) {
+      newTask.recommendationReasoning = p.recommendationReasoning;
+    }
+    if (p.recommendationSource) {
+      newTask.recommendationSource = p.recommendationSource;
+    }
+    if (p.recommendationLeadId) {
+      newTask.recommendationLeadId = p.recommendationLeadId;
+    }
+    if (typeof p.burnoutWarning === "boolean") {
+      newTask.burnoutWarning = p.burnoutWarning;
+    }
   } else {
     // Legacy 3-arg call
     newTask = {
