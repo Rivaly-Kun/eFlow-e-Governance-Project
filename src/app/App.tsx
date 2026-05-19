@@ -11,9 +11,18 @@ function mapFirebaseRoleToSidebar(role: string): string {
     case "super_admin":
       return "superadmin";
     case "department_head":
+    case "depthead":
       return "depthead";
     case "employee":
       return "employee";
+    case "executive":
+      return "executive";
+    case "legislative":
+      return "legislative";
+    case "hrmo":
+      return "hrmo";
+    case "finance":
+      return "finance";
     case "councilor_pad":
       return "councilor_pad";
     default:

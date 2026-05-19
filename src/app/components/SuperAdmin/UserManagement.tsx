@@ -9,16 +9,43 @@ import { FormField, TextInput, SelectInput } from "../ui/FormField";
 import { useToast } from "../ui/Toast";
 import type { UserProfile, UserRole } from "../../types";
 
+const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
+  { value: "employee", label: "Employee" },
+  { value: "department_head", label: "Department Head" },
+  { value: "executive", label: "Executive" },
+  { value: "legislative", label: "Legislative" },
+  { value: "hrmo", label: "HRMO" },
+  { value: "finance", label: "Finance" },
+  { value: "councilor_pad", label: "Councilor Pad" },
+  { value: "super_admin", label: "Super Admin" },
+];
+
+const ROLE_LABELS: Record<string, string> = {
+  super_admin: "Super Admin",
+  department_head: "Department Head",
+  employee: "Employee",
+  executive: "Executive",
+  legislative: "Legislative",
+  hrmo: "HRMO",
+  finance: "Finance",
+  councilor_pad: "Councilor Pad",
+};
+
 // ─── Status / Role badges ────────────────────────────────────────
 function RoleBadge({ role }: { role: string }) {
   const colors: Record<string, string> = {
     super_admin: "bg-red-100 text-red-700",
     department_head: "bg-violet-100 text-violet-700",
     employee: "bg-emerald-100 text-emerald-700",
+    executive: "bg-indigo-100 text-indigo-700",
+    legislative: "bg-sky-100 text-sky-700",
+    hrmo: "bg-rose-100 text-rose-700",
+    finance: "bg-amber-100 text-amber-700",
+    councilor_pad: "bg-cyan-100 text-cyan-700",
   };
   return (
     <span className={`px-2 py-0.5 rounded-full text-[10px] font-['Lexend:Medium',_sans-serif] font-medium ${colors[role] || "bg-neutral-100 text-neutral-600"}`}>
-      {role.replace("_", " ")}
+      {ROLE_LABELS[role] || role.replace(/_/g, " ")}
     </span>
   );
 }
@@ -170,11 +197,7 @@ function CreateUserModal({
             <SelectInput
               value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}
-              options={[
-                { value: "employee", label: "Employee" },
-                { value: "department_head", label: "Department Head" },
-                { value: "super_admin", label: "Super Admin" },
-              ]}
+              options={ROLE_OPTIONS}
             />
           </FormField>
           <FormField label="Department" error={errors.departmentId} required>
@@ -303,11 +326,7 @@ function EditUserModal({
             <SelectInput
               value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}
-              options={[
-                { value: "employee", label: "Employee" },
-                { value: "department_head", label: "Department Head" },
-                { value: "super_admin", label: "Super Admin" },
-              ]}
+              options={ROLE_OPTIONS}
             />
           </FormField>
           <FormField label="Department">

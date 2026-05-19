@@ -2155,26 +2155,19 @@ export function EmployeeContent({
   activeSection: string;
   activePage?: string;
 }) {
-  const section = employeePages[activeSection];
-  if (!section) {
-    return (
-      <div className="h-full flex items-center justify-center text-center text-neutral-400">
-        <div>
-          <Settings size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="text-[14px] font-['Lexend:Regular',_sans-serif]">
-            Content coming soon
-          </p>
-          <p className="text-[12px] mt-1">Section: {activeSection}</p>
-        </div>
+  const label = activePage || "Blank Dashboard";
+
+  return (
+    <div className="h-full flex items-center justify-center text-center text-neutral-400">
+      <div>
+        <Settings size={40} className="mx-auto mb-3 opacity-30" />
+        <p className="text-[14px] font-['Lexend:Regular',_sans-serif]">
+          Blank dashboard
+        </p>
+        <p className="text-[12px] mt-1">{label}</p>
       </div>
-    );
-  }
-  const pageKey =
-    activePage && section[activePage]
-      ? activePage
-      : employeeDefaultPages[activeSection];
-  const Page = section[pageKey] || Object.values(section)[0];
-  return <Page />;
+    </div>
+  );
 }
 
 export default EmployeeContent;

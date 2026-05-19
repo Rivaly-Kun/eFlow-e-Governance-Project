@@ -2,7 +2,15 @@
 // All Firebase RTDB node types live here.
 
 // ─── Roles ───────────────────────────────────────────────────────
-export type UserRole = "super_admin" | "department_head" | "employee";
+export type UserRole =
+  | "super_admin"
+  | "department_head"
+  | "employee"
+  | "executive"
+  | "legislative"
+  | "hrmo"
+  | "finance"
+  | "councilor_pad";
 
 export interface RolePermissions {
   manage_users: boolean;

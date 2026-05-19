@@ -420,79 +420,42 @@ const roleNavConfigs: Record<
     ],
   },
   executive: {
-    defaultSection: "portfolio",
+    defaultSection: "workspace",
     navItems: [
       {
-        id: "portfolio",
-        icon: <Dashboard size={16} />,
-        label: "Executive Portfolio",
-      },
-      { id: "transform", icon: <Home size={16} />, label: "Project Transform" },
-      {
-        id: "financial",
-        icon: <ChartBar size={16} />,
-        label: "Financial Oversight",
-      },
-      {
-        id: "audit",
-        icon: <Security size={16} />,
-        label: "Immutable Audit Review",
+        id: "workspace",
+        icon: <Folder size={16} />,
+        label: "Department Workspace",
       },
     ],
   },
   legislative: {
-    defaultSection: "legdash",
+    defaultSection: "workspace",
     navItems: [
       {
-        id: "legdash",
-        icon: <Task size={16} />,
-        label: "Legislative Dashboard",
-      },
-      {
-        id: "session",
-        icon: <DocumentAdd size={16} />,
-        label: "Session Management",
-      },
-      {
-        id: "committee",
-        icon: <Group size={16} />,
-        label: "Committee Affairs",
+        id: "workspace",
+        icon: <Folder size={16} />,
+        label: "Department Workspace",
       },
     ],
   },
   hrmo: {
-    defaultSection: "workforce",
+    defaultSection: "workspace",
     navItems: [
       {
-        id: "workforce",
-        icon: <Analytics size={16} />,
-        label: "Workforce Analytics",
-      },
-      { id: "wellness", icon: <Flag size={16} />, label: "Employee Wellness" },
-      {
-        id: "compliance",
-        icon: <CheckmarkOutline size={16} />,
-        label: "Civil Service Compliance",
+        id: "workspace",
+        icon: <Folder size={16} />,
+        label: "Department Workspace",
       },
     ],
   },
   finance: {
-    defaultSection: "projfin",
+    defaultSection: "workspace",
     navItems: [
       {
-        id: "projfin",
-        icon: <Dashboard size={16} />,
-        label: "Project Financials",
-      },
-      {
-        id: "liquidation",
-        icon: <Pending size={16} />,
-        label: "Expense & Liquidation Audit",
-      },
-      {
-        id: "crypto",
-        icon: <Security size={16} />,
-        label: "Cryptographic Accountability",
+        id: "workspace",
+        icon: <Folder size={16} />,
+        label: "Department Workspace",
       },
     ],
   },
@@ -502,41 +465,20 @@ const roleNavConfigs: Record<
       {
         id: "deptportfolio",
         icon: <Folder size={16} />,
-        label: "Project Portfolio",
-      },
-      { id: "command", icon: <Flag size={16} />, label: "Department Command" },
-      {
-        id: "intworkforce",
-        icon: <UserMultiple size={16} />,
-        label: "Intelligent Workforce",
-      },
-      {
-        id: "budget",
-        icon: <ChartBar size={16} />,
-        label: "Financial Management",
+        label: "Department Workspace",
       },
     ],
   },
   employee: {
     defaultSection: "workspace",
     navItems: [
-      { id: "workspace", icon: <Task size={16} />, label: "My Workspace" },
-      {
-        id: "empfin",
-        icon: <DocumentAdd size={16} />,
-        label: "Project Financials",
-      },
-      {
-        id: "achievement",
-        icon: <Group size={16} />,
-        label: "Collaborative Achievement",
-      },
+      { id: "workspace", icon: <Folder size={16} />, label: "Department Workspace" },
     ],
   },
   councilor_pad: {
-    defaultSection: "councilor",
+    defaultSection: "workspace",
     navItems: [
-      { id: "councilor", icon: <User size={16} />, label: "Councilor Panel" },
+      { id: "workspace", icon: <Folder size={16} />, label: "Department Workspace" },
     ],
   },
 };
@@ -557,7 +499,6 @@ import { HRMOContent } from "../HRMO/HRMOContent";
 import { FinanceContent } from "../Finance/FinanceContent";
 import { DeptHeadContent } from "../DeptHead/DeptHeadContent";
 import { EmployeeContent } from "../Employee/EmployeeContent";
-import { CouncilorPanel } from "../Legislative/CouncilorPanel";
 
 function getSidebarContent(role: string, section: string): SidebarContent {
   const settingsContent: SidebarContent = {
@@ -682,6 +623,21 @@ function getSidebarContent(role: string, section: string): SidebarContent {
       },
     },
     executive: {
+      workspace: {
+        title: "Department Workspace",
+        sections: [
+          {
+            title: "Dashboard",
+            items: [
+              {
+                icon: <FolderOpen size={16} className="text-neutral-900" />,
+                label: "Blank Dashboard",
+                isActive: true,
+              },
+            ],
+          },
+        ],
+      },
       portfolio: {
         title: "Executive Portfolio",
         sections: [
@@ -798,6 +754,21 @@ function getSidebarContent(role: string, section: string): SidebarContent {
       },
     },
     legislative: {
+      workspace: {
+        title: "Department Workspace",
+        sections: [
+          {
+            title: "Dashboard",
+            items: [
+              {
+                icon: <FolderOpen size={16} className="text-neutral-900" />,
+                label: "Blank Dashboard",
+                isActive: true,
+              },
+            ],
+          },
+        ],
+      },
       legdash: {
         title: "Legislative Dashboard",
         sections: [
@@ -886,6 +857,21 @@ function getSidebarContent(role: string, section: string): SidebarContent {
       },
     },
     hrmo: {
+      workspace: {
+        title: "Department Workspace",
+        sections: [
+          {
+            title: "Dashboard",
+            items: [
+              {
+                icon: <FolderOpen size={16} className="text-neutral-900" />,
+                label: "Blank Dashboard",
+                isActive: true,
+              },
+            ],
+          },
+        ],
+      },
       workforce: {
         title: "Workforce Analytics",
         sections: [
@@ -975,6 +961,21 @@ function getSidebarContent(role: string, section: string): SidebarContent {
       },
     },
     finance: {
+      workspace: {
+        title: "Department Workspace",
+        sections: [
+          {
+            title: "Dashboard",
+            items: [
+              {
+                icon: <FolderOpen size={16} className="text-neutral-900" />,
+                label: "Blank Dashboard",
+                isActive: true,
+              },
+            ],
+          },
+        ],
+      },
       projfin: {
         title: "Project Financials",
         sections: [
@@ -1072,106 +1073,27 @@ function getSidebarContent(role: string, section: string): SidebarContent {
     },
     depthead: {
       deptportfolio: {
-        title: "Project Portfolio",
+        title: "Department Workspace",
         sections: [
           {
-            title: "Projects",
+            title: "Core Workflows",
             items: [
-              {
-                icon: <Folder size={16} className="text-neutral-900" />,
-                label: "Portfolio Overview",
-                isActive: true,
-                hasDropdown: true,
-                children: [
-                  { label: "Aggregated Health" },
-                  { label: "Budget Status" },
-                  { label: "Timeline Review" },
-                ],
-              },
               {
                 icon: <FolderOpen size={16} className="text-neutral-900" />,
                 label: "Programs & Activities",
-                hasDropdown: true,
-                children: [
-                  { label: "Team Assignments" },
-                  { label: "Leader Assignments" },
-                  { label: "Chain of Command" },
-                  { label: "Team Intelligence" },
-                  { label: "Team Supervision" },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-      command: {
-        title: "Department Command",
-        sections: [
-          {
-            title: "AI Insights",
-            items: [
-              {
-                icon: <Flag size={16} className="text-neutral-900" />,
-                label: "AI Bottleneck Detection",
                 isActive: true,
-                hasDropdown: true,
-                children: [
-                  { label: "Process Mining Graphs" },
-                  { label: "Delay Node Alerts" },
-                  { label: "Intervention Mandates" },
-                ],
               },
               {
-                icon: <Report size={16} className="text-neutral-900" />,
-                label: "NLP Stand-Up Synthesis",
-                hasDropdown: true,
-                children: [
-                  { label: "Daily Summary" },
-                  { label: "Action Items Extraction" },
-                  { label: "Redundancy Filtering" },
-                ],
+                icon: <Task size={16} className="text-neutral-900" />,
+                label: "Task Composer",
               },
-            ],
-          },
-        ],
-      },
-      intworkforce: {
-        title: "Intelligent Workforce",
-        sections: [
-          {
-            title: "Allocation",
-            items: [
+              {
+                icon: <Analytics size={16} className="text-neutral-900" />,
+                label: "Team Intelligence",
+              },
               {
                 icon: <UserMultiple size={16} className="text-neutral-900" />,
-                label: "Algorithmic Task Allocation",
-                isActive: true,
-                hasDropdown: true,
-                children: [
-                  { label: "Optimal Distribution Matrix" },
-                  { label: "Manual Override" },
-                  { label: "Idle Time Minimization" },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-      budget: {
-        title: "Financial Management",
-        sections: [
-          {
-            title: "Budget Tracking",
-            items: [
-              {
-                icon: <ChartBar size={16} className="text-neutral-900" />,
-                label: "Program Budget Burn-down",
-                isActive: true,
-                hasDropdown: true,
-                children: [
-                  { label: "Real-Time Spend Tracking" },
-                  { label: "Overrun Prevention" },
-                  { label: "Leader Expense Reports" },
-                ],
+                label: "Team Supervision",
               },
             ],
           },
@@ -1180,41 +1102,15 @@ function getSidebarContent(role: string, section: string): SidebarContent {
     },
     employee: {
       workspace: {
-        title: "My Workspace",
+        title: "Department Workspace",
         sections: [
           {
-            title: "Tasks & Input",
+            title: "Dashboard",
             items: [
               {
-                icon: <Task size={16} className="text-neutral-900" />,
-                label: "Active Tasks",
+                icon: <FolderOpen size={16} className="text-neutral-900" />,
+                label: "Blank Dashboard",
                 isActive: true,
-                hasDropdown: true,
-                children: [
-                  { label: "GA-Delegated Assignments" },
-                  { label: "Context-Aware Reminders" },
-                  { label: "One-Tap Complete" },
-                ],
-              },
-              {
-                icon: <Report size={16} className="text-neutral-900" />,
-                label: "Daily Stand-Up Input",
-                hasDropdown: true,
-                children: [
-                  { label: "Text Update" },
-                  { label: "Voice Note" },
-                  { label: "Auto-Transcription" },
-                ],
-              },
-              {
-                icon: <Integration size={16} className="text-neutral-900" />,
-                label: "Mobile & Viber Integration",
-                hasDropdown: true,
-                children: [
-                  { label: "Viber Account Linking" },
-                  { label: "Keyword Notifications" },
-                  { label: "Remote DB Updates" },
-                ],
               },
             ],
           },
@@ -1277,12 +1173,29 @@ function getSidebarContent(role: string, section: string): SidebarContent {
         ],
       },
     },
+    councilor_pad: {
+      workspace: {
+        title: "Department Workspace",
+        sections: [
+          {
+            title: "Dashboard",
+            items: [
+              {
+                icon: <FolderOpen size={16} className="text-neutral-900" />,
+                label: "Blank Dashboard",
+                isActive: true,
+              },
+            ],
+          },
+        ],
+      },
+    },
   };
 
   const roleMap = map[role];
   if (roleMap && roleMap[section]) return roleMap[section];
   const config = roleNavConfigs[role] || roleNavConfigs.superadmin;
-  return map[role]?.[config.defaultSection] || map.superadmin.scc;
+  return map[role]?.[config.defaultSection] || map.superadmin.dashboard;
 }
 
 // === LAYOUT COMPONENTS ===
@@ -1618,13 +1531,22 @@ function TwoLevelSidebar({ role }: { role: string }) {
               />
             </div>
           )}
+          {role === "councilor_pad" && (
+            <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
+              <LegislativeContent
+                activeSection={activeSection}
+                activePage={activePage}
+              />
+            </div>
+          )}
           {role !== "superadmin" &&
             role !== "executive" &&
             role !== "legislative" &&
             role !== "hrmo" &&
             role !== "finance" &&
             role !== "depthead" &&
-            role !== "employee" && (
+            role !== "employee" &&
+            role !== "councilor_pad" && (
               <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl flex items-center justify-center">
                 <div className="text-center text-neutral-400">
                   <Settings size={40} className="mx-auto mb-3 opacity-30" />
@@ -1648,11 +1570,7 @@ export function Frame760({ role }: { role: string }) {
     <div className="bg-neutral-50 box-border content-stretch flex flex-col items-center justify-start p-6 relative size-full min-h-screen gap-4">
       {/* Outlined Container */}
       <div className="border border-neutral-200 rounded-2xl overflow-hidden shadow-sm flex-1 w-full max-w-[1880px] min-h-0">
-        {role === "councilor_pad" ? (
-          <CouncilorPanel />
-        ) : (
-          <TwoLevelSidebar role={role} />
-        )}
+        <TwoLevelSidebar role={role} />
       </div>
     </div>
   );

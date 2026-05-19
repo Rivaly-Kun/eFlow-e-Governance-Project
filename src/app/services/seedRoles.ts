@@ -36,6 +36,56 @@ const DEFAULT_ROLES: Record<string, RoleDefinition> = {
       view_own_tasks: true,
     },
   },
+  executive: {
+    permissions: {
+      manage_users: false,
+      manage_departments: false,
+      assign_roles: false,
+      assign_tasks: false,
+      manage_department: false,
+      view_own_tasks: true,
+    },
+  },
+  legislative: {
+    permissions: {
+      manage_users: false,
+      manage_departments: false,
+      assign_roles: false,
+      assign_tasks: false,
+      manage_department: false,
+      view_own_tasks: true,
+    },
+  },
+  hrmo: {
+    permissions: {
+      manage_users: false,
+      manage_departments: false,
+      assign_roles: false,
+      assign_tasks: false,
+      manage_department: false,
+      view_own_tasks: true,
+    },
+  },
+  finance: {
+    permissions: {
+      manage_users: false,
+      manage_departments: false,
+      assign_roles: false,
+      assign_tasks: false,
+      manage_department: false,
+      view_own_tasks: true,
+    },
+  },
+  councilor_pad: {
+    permissions: {
+      manage_users: false,
+      manage_departments: false,
+      assign_roles: false,
+      assign_tasks: false,
+      manage_department: false,
+      view_own_tasks: true,
+    },
+  },
 };
 
 let seedPromise: Promise<void> | null = null;
@@ -49,6 +99,23 @@ export async function seedRolesIfEmpty(): Promise<void> {
     if (!snap.exists()) {
       await set(rolesRef, DEFAULT_ROLES);
       console.log("[eFlow] Seeded default roles/permissions to Firebase.");
+      return;
+    }
+
+    const currentRoles = (snap.val() || {}) as Record<string, RoleDefinition>;
+    const mergedRoles: Record<string, RoleDefinition> = { ...currentRoles };
+    let hasMissingRoles = false;
+
+    Object.entries(DEFAULT_ROLES).forEach(([key, value]) => {
+      if (!mergedRoles[key]) {
+        mergedRoles[key] = value;
+        hasMissingRoles = true;
+      }
+    });
+
+    if (hasMissingRoles) {
+      await set(rolesRef, mergedRoles);
+      console.log("[eFlow] Added missing default roles/permissions to Firebase.");
     }
   })().finally(() => {
     seedPromise = null;

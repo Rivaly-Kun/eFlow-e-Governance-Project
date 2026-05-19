@@ -1192,28 +1192,15 @@ export const legislativeDefaultPages: Record<string, string> = {
 };
 
 export function LegislativeContent({ activeSection, activePage }: { activeSection: string; activePage?: string }) {
-  const section = legislativePages[activeSection];
-  if (!section) {
-    return (
-      <div className="flex items-center justify-center h-full text-neutral-400">
-        <div className="text-center">
-          <Settings size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="text-[14px] font-['Lexend:Regular',_sans-serif]">Select a page from the sidebar</p>
-          <p className="text-[12px] mt-1">Section: {activeSection}</p>
-        </div>
-      </div>
-    );
-  }
+  const label = activePage || "Blank Dashboard";
 
-  const pageName = activePage || legislativeDefaultPages[activeSection] || Object.keys(section)[0];
-  const PageComponent = section[pageName];
-  if (!PageComponent) {
-    const fallback = Object.values(section)[0];
-    if (fallback) {
-      const FallbackComp = fallback;
-      return <FallbackComp />;
-    }
-    return null;
-  }
-  return <PageComponent />;
+  return (
+    <div className="flex items-center justify-center h-full text-neutral-400">
+      <div className="text-center">
+        <Settings size={40} className="mx-auto mb-3 opacity-30" />
+        <p className="text-[14px] font-['Lexend:Regular',_sans-serif]">Blank dashboard</p>
+        <p className="text-[12px] mt-1">{label}</p>
+      </div>
+    </div>
+  );
 }

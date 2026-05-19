@@ -6336,6 +6336,20 @@ function SubordinateManager({
   );
 }
 
+function TeamSupervision() {
+  const { deptEmployees, directoryLoading } = useDeptDirectoryEmployees();
+
+  if (directoryLoading) {
+    return (
+      <div className="p-8 min-h-full bg-neutral-50 flex items-center justify-center">
+        <div className="text-[12px] text-neutral-500">Loading team members...</div>
+      </div>
+    );
+  }
+
+  return <SubordinateManager employees={deptEmployees} />;
+}
+
 // ==================== EMPLOYEE INSIGHTS ====================
 
 type EmployeeNoteDraft = {
@@ -6603,6 +6617,27 @@ export function DeptHeadTaskBoard() {
   );
 }
 
+export const hiddenDeptHeadComponents = [
+  AggregatedHealth,
+  BudgetStatus,
+  TimelineReview,
+  TeamAssignments,
+  LeaderAssignments,
+  ChainOfCommand,
+  ProcessMiningGraphs,
+  DelayNodeAlerts,
+  InterventionMandates,
+  DailySummary,
+  ActionItemsExtraction,
+  RedundancyFiltering,
+  OptimalDistributionMatrix,
+  ManualOverride,
+  IdleTimeMinimization,
+  RealTimeSpendTracking,
+  OverrunPrevention,
+  LeaderExpenseReports,
+];
+
 // ==================== ROUTER ====================
 
 export const deptheadPages: Record<
@@ -6610,46 +6645,15 @@ export const deptheadPages: Record<
   Record<string, React.ComponentType>
 > = {
   deptportfolio: {
-    "Portfolio Overview": DeptHeadTaskBoard,
-    "Aggregated Health": AggregatedHealth,
-    "Budget Status": BudgetStatus,
-    "Timeline Review": TimelineReview,
     "Programs & Activities": ProposalImport,
-    "Team Assignments": TeamAssignments,
+    "Task Composer": DeptHeadTaskBoard,
     "Team Intelligence": EmployeeInsights,
-    "Leader Assignments": LeaderAssignments,
-    "Chain of Command": ChainOfCommand,
-  },
-  command: {
-    "AI Bottleneck Detection": ProcessMiningGraphs,
-    "Process Mining Graphs": ProcessMiningGraphs,
-    "Delay Node Alerts": DelayNodeAlerts,
-    "Intervention Mandates": InterventionMandates,
-    "NLP Stand-Up Synthesis": DailySummary,
-    "Daily Summary": DailySummary,
-    "Action Items Extraction": ActionItemsExtraction,
-    "Redundancy Filtering": RedundancyFiltering,
-  },
-  intworkforce: {
-    "Algorithmic Task Allocation": OptimalDistributionMatrix,
-    "Optimal Distribution Matrix": OptimalDistributionMatrix,
-    "Manual Override": ManualOverride,
-    "Idle Time Minimization": IdleTimeMinimization,
-    "Team Supervision": SubordinateManager,
-  },
-  budget: {
-    "Program Budget Burn-down": RealTimeSpendTracking,
-    "Real-Time Spend Tracking": RealTimeSpendTracking,
-    "Overrun Prevention": OverrunPrevention,
-    "Leader Expense Reports": LeaderExpenseReports,
+    "Team Supervision": TeamSupervision,
   },
 };
 
 export const deptheadDefaultPages: Record<string, string> = {
-  deptportfolio: "Aggregated Health",
-  command: "Process Mining Graphs",
-  intworkforce: "Optimal Distribution Matrix",
-  budget: "Real-Time Spend Tracking",
+  deptportfolio: "Task Composer",
 };
 
 export function DeptHeadContent({
