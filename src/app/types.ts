@@ -95,6 +95,17 @@ export interface Task {
   recommendationSource?: "llm" | "fallback" | "import";
   recommendationLeadId?: string;
   burnoutWarning?: boolean;
+  proposalId?: string;
+  proposalTitle?: string;
+  programId?: string;
+  programTitle?: string;
+  projectId?: string;
+  projectTitle?: string;
+  activityId?: string;
+  activityTitle?: string;
+  activitySchedule?: string;
+  hierarchyPath?: string;
+  importBatchId?: string;
   createdAt: number;
   updatedAt: number;
 }

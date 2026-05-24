@@ -232,10 +232,24 @@ export default function ProposalImport() {
   const buildTaskPayloads = useCallback(
     (decomposed: ProposalDecompositionResult) => {
       const payloads: Record<string, CreateTaskPayload> = {};
+      const proposalTitle =
+        decomposed.proposal?.title ||
+        fileName.replace(/\.pdf$/i, "") ||
+        "Imported Proposal";
+      const proposalSlug = proposalTitle
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 48);
+      const proposalId = `proposal-${proposalSlug || "imported"}`;
+      const importBatchId = `${proposalId}-${Date.now()}`;
 
       decomposed.programs.forEach((program, pi) => {
+        const programId = `${proposalId}-program-${pi + 1}`;
         program.projects.forEach((project, pj) => {
+          const projectId = `${programId}-project-${pj + 1}`;
           project.activities.forEach((activity, ai) => {
+            const activityId = `${projectId}-activity-${ai + 1}`;
             activity.tasks.forEach((task, ti) => {
               const key = taskKey(pi, pj, ai, ti);
               const contextLines = [
@@ -254,6 +268,10 @@ export default function ProposalImport() {
                 .filter(Boolean)
                 .join("\n\n");
               const recommendedIds = task.recommendedEmployeeIds || [];
+              const recommendedMembers = recommendedIds
+                .map((id) => employeeById[id])
+                .filter((member): member is Employee => Boolean(member));
+              const leadMember = recommendedMembers[0];
 
               payloads[key] = {
                 title: task.title,
@@ -264,7 +282,15 @@ export default function ProposalImport() {
                 status: "pending_assignment",
                 department: userProfile?.departmentId || "",
                 teamId: userProfile?.departmentId || "",
-                teamName: userProfile?.departmentId || "Imported",
+                teamName:
+                  leadMember?.departmentName ||
+                  leadMember?.department ||
+                  userProfile?.departmentId ||
+                  "Imported",
+                teamMemberIds: recommendedMembers.map((member) => member.id),
+                teamMemberNames: recommendedMembers.map((member) => member.name),
+                assigneeId: leadMember?.id,
+                assigneeName: leadMember?.name,
                 recommendedEmployeeIds: recommendedIds,
                 recommendationReasoning: task.recommendationReasoning,
                 recommendationSource:
@@ -273,6 +299,24 @@ export default function ProposalImport() {
                     : undefined,
                 recommendationLeadId: recommendedIds[0],
                 burnoutWarning: task.burnoutWarning,
+                proposalId,
+                proposalTitle,
+                programId,
+                programTitle: program.title,
+                projectId,
+                projectTitle: project.title,
+                activityId,
+                activityTitle: activity.title,
+                activitySchedule: activity.schedule || "",
+                hierarchyPath: [
+                  proposalTitle,
+                  program.title,
+                  project.title,
+                  activity.title,
+                ]
+                  .filter(Boolean)
+                  .join(" > "),
+                importBatchId,
               };
             });
           });
@@ -281,7 +325,7 @@ export default function ProposalImport() {
 
       return payloads;
     },
-    [userProfile?.departmentId],
+    [employeeById, fileName, userProfile?.departmentId],
   );
 
   const autoCreateTasks = useCallback(

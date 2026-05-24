@@ -284,6 +284,14 @@ type PartSection = {
   tasks: ProposalDecompositionTask[];
 };
 
+const cleanHierarchyTitle = (value: string, fallback: string): string => {
+  const noSchedule = value.replace(/\bMonth\s*\d+(?:\s*-\s*\d+)?\b/gi, " ");
+  const noBullets = noSchedule.replace(/[Ø•]/g, " ");
+  const firstActionBoundary = noBullets.split(/\s+\d+\.\s+/)[0] || noBullets;
+  const normalized = firstActionBoundary.replace(/\s+/g, " ").trim();
+  return normalized || fallback;
+};
+
 const extractPartSections = (proposalText: string): PartSection[] | null => {
   const sourceText = extractActionTable(proposalText);
   const partRegex =
@@ -301,18 +309,29 @@ const extractPartSections = (proposalText: string): PartSection[] | null => {
         ? matches[index + 1].index ?? sourceText.length
         : sourceText.length;
     const sectionText = sourceText.slice(start, end);
-    const title = (match[1] || `Part ${index + 1}`).trim();
+    const rawTitle = (match[1] || `Part ${index + 1}`).trim();
+    const title = cleanHierarchyTitle(rawTitle, `Part ${index + 1}`);
     const scheduleMatch = sectionText.match(/Month\s*\d+(?:\s*-\s*\d+)?/i);
     const schedule = scheduleMatch
       ? scheduleMatch[0].replace(/\s+/g, " ")
       : undefined;
 
-    const numberedLines = sectionText
+    const numberedLinesFromRows = sectionText
       .split(/\n/)
       .map((line) => line.trim())
       .filter((line) => /^\d+\./.test(line))
       .map((line) => line.replace(/^\d+\.\s*/, ""))
       .filter(Boolean);
+    const numberedLinesInline = Array.from(
+      sectionText.matchAll(
+        /\b\d+\.\s*([^Ø•\n]+?)(?=\s+\d+\.\s*|\s+Month\s*\d|$)/gi,
+      ),
+    )
+      .map((matchLine) => (matchLine[1] || "").trim())
+      .filter(Boolean);
+    const numberedLines = Array.from(
+      new Set([...numberedLinesFromRows, ...numberedLinesInline]),
+    );
 
     const sentences = sectionText
       .split(/[.\n]/)
@@ -325,13 +344,22 @@ const extractPartSections = (proposalText: string): PartSection[] | null => {
     const taskLines = numberedLines.length > 0 ? numberedLines : sentences;
     const tasks: ProposalDecompositionTask[] = taskLines
       .slice(0, 3)
-      .map((line, idx) => ({
-        title: line.substring(0, 80) || `Task ${idx + 1}`,
-        description: line,
-        estimatedDuration: "TBD",
-        requiredSkills: inferSkillsFromText(line),
-        priority: "medium" as const,
-      }));
+      .map((line, idx) => {
+        const normalizedLine = line
+          .replace(/[Ø•]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        return {
+          title: cleanHierarchyTitle(normalizedLine, `Task ${idx + 1}`).substring(
+            0,
+            100,
+          ),
+          description: normalizedLine,
+          estimatedDuration: "TBD",
+          requiredSkills: inferSkillsFromText(normalizedLine),
+          priority: "medium" as const,
+        };
+      });
 
     if (tasks.length === 0) {
       tasks.push({
@@ -434,30 +462,29 @@ const buildStructuredDecomposition = (
   const parts = extractPartSections(proposalText);
   if (!parts) return null;
 
-  const programTitle = proposalTitle || "Imported Proposal";
-  const projects: ProposalDecompositionProject[] = parts.map((part) => ({
-    title: part.title,
+  const programs: ProposalDecompositionProgram[] = parts.map((part, index) => ({
+    title: part.title || `Program ${index + 1}`,
     description: part.description,
-    activities: [
+    projects: [
       {
-        title: part.title,
+        title: `${part.title} Implementation`,
         description: part.description,
-        schedule: part.schedule,
-        methodology: [],
-        tasks: part.tasks,
+        activities: [
+          {
+            title: part.title,
+            description: part.description,
+            schedule: part.schedule,
+            methodology: [],
+            tasks: part.tasks,
+          },
+        ],
       },
     ],
   }));
 
   const result: ProposalDecompositionResult = {
     proposal: { title: proposalTitle, description: proposalText.substring(0, 200) },
-    programs: [
-      {
-        title: programTitle,
-        description: proposalText.substring(0, 300),
-        projects,
-      },
-    ],
+    programs,
   };
 
   applyLocalRecommendations(result, employees, employeeNotes);

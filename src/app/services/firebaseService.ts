@@ -221,6 +221,12 @@ export function subscribeToAllTasks(callback: (tasks: Task[]) => void) {
 }
 
 function normalizeTask(id: string, val: any): Task {
+  const normalizeOptionalString = (value: unknown): string | undefined => {
+    if (typeof value !== "string") return undefined;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  };
+
   return {
     id,
     title: val.title || "Untitled",
@@ -241,6 +247,38 @@ function normalizeTask(id: string, val: any): Task {
     deadline: val.deadline || val.dueDate || undefined,
     dueDate: val.dueDate || undefined,
     tags: Array.isArray(val.tags) ? val.tags : [],
+    recommendedEmployeeIds: Array.isArray(val.recommendedEmployeeIds)
+      ? val.recommendedEmployeeIds
+      : [],
+    recommendationReasoning:
+      typeof val.recommendationReasoning === "string"
+        ? val.recommendationReasoning
+        : undefined,
+    recommendationSource:
+      val.recommendationSource === "llm" ||
+      val.recommendationSource === "fallback" ||
+      val.recommendationSource === "import"
+        ? val.recommendationSource
+        : undefined,
+    recommendationLeadId:
+      typeof val.recommendationLeadId === "string"
+        ? val.recommendationLeadId
+        : undefined,
+    burnoutWarning:
+      typeof val.burnoutWarning === "boolean"
+        ? val.burnoutWarning
+        : undefined,
+    proposalId: normalizeOptionalString(val.proposalId),
+    proposalTitle: normalizeOptionalString(val.proposalTitle),
+    programId: normalizeOptionalString(val.programId),
+    programTitle: normalizeOptionalString(val.programTitle),
+    projectId: normalizeOptionalString(val.projectId),
+    projectTitle: normalizeOptionalString(val.projectTitle),
+    activityId: normalizeOptionalString(val.activityId),
+    activityTitle: normalizeOptionalString(val.activityTitle),
+    activitySchedule: normalizeOptionalString(val.activitySchedule),
+    hierarchyPath: normalizeOptionalString(val.hierarchyPath),
+    importBatchId: normalizeOptionalString(val.importBatchId),
     createdAt: val.createdAt || 0,
     updatedAt: val.updatedAt || val.createdAt || 0,
   };

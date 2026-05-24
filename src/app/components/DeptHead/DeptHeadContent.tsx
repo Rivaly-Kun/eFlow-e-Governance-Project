@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from "react";
 import { MondayBoard } from "../ui/MondayBoard";
-import ProposalImport from "./ProposalImport";
 import {
   createTask,
   assignTask,
   verifyTask,
+  updateTask,
+  deleteTask,
   Task,
 } from "../../services/taskService";
 import { Employee } from "../../services/employeeService";
@@ -6612,6 +6613,8 @@ export function DeptHeadTaskBoard() {
         onCreateTask={createTask}
         onAssign={assignTask}
         onVerify={verifyTask}
+        onUpdateTask={updateTask}
+        onDeleteTask={deleteTask}
       />
     </div>
   );
@@ -6645,7 +6648,7 @@ export const deptheadPages: Record<
   Record<string, React.ComponentType>
 > = {
   deptportfolio: {
-    "Programs & Activities": ProposalImport,
+    "Programs & Activities": DeptHeadTaskBoard,
     "Task Composer": DeptHeadTaskBoard,
     "Team Intelligence": EmployeeInsights,
     "Team Supervision": TeamSupervision,

@@ -1,4 +1,4 @@
-import { ref, onValue, push, update, set, get } from "firebase/database";
+import { ref, onValue, push, update, set, get, remove } from "firebase/database";
 import { database } from "../../firebase";
 import { EMPLOYEE_SEED_BY_ID, TASK_SEED, getDepartmentLabel } from "./eflowSeedData";
 import { createNotification } from "./notificationService";
@@ -17,7 +17,21 @@ export interface TaskAssignmentDetails {
   teamMemberNames?: string[];
 }
 
-export interface Task {
+export interface TaskHierarchy {
+  proposalId?: string;
+  proposalTitle?: string;
+  programId?: string;
+  programTitle?: string;
+  projectId?: string;
+  projectTitle?: string;
+  activityId?: string;
+  activityTitle?: string;
+  activitySchedule?: string;
+  hierarchyPath?: string;
+  importBatchId?: string;
+}
+
+export interface Task extends TaskHierarchy {
   id: string;
   title: string;
   description?: string;
@@ -47,7 +61,6 @@ export interface Task {
   barangay?: string;
   estimatedHours?: number;
   budgetImpact?: number;
-  projectId?: string;
 }
 
 export interface TaskActivity {
@@ -71,10 +84,16 @@ const isTaskStatus = (value: unknown): value is TaskStatus =>
 const normalizeStringArray = (value: unknown) =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 
+const normalizeOptionalString = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
 const normalizeTaskRecord = (id: string, record: Record<string, unknown>): Task => {
   const assigneeId = typeof record.assigneeId === "string" ? record.assigneeId : typeof record.assignedTo === "string" ? record.assignedTo : undefined;
-  const teamId = typeof record.teamId === "string" ? record.teamId : typeof record.department === "string" ? record.department : undefined;
-  const teamName = typeof record.teamName === "string" ? record.teamName : getDepartmentLabel(teamId);
+  const teamId = normalizeOptionalString(record.teamId) || normalizeOptionalString(record.department);
+  const teamName = normalizeOptionalString(record.teamName) || getDepartmentLabel(teamId);
   const assigneeName =
     typeof record.assigneeName === "string"
       ? record.assigneeName
@@ -141,7 +160,17 @@ const normalizeTaskRecord = (id: string, record: Record<string, unknown>): Task 
     barangay: typeof record.barangay === "string" ? record.barangay : undefined,
     estimatedHours: typeof record.estimatedHours === "number" ? record.estimatedHours : undefined,
     budgetImpact: typeof record.budgetImpact === "number" ? record.budgetImpact : undefined,
-    projectId: typeof record.projectId === "string" ? record.projectId : undefined,
+    proposalId: normalizeOptionalString(record.proposalId),
+    proposalTitle: normalizeOptionalString(record.proposalTitle),
+    programId: normalizeOptionalString(record.programId),
+    programTitle: normalizeOptionalString(record.programTitle),
+    projectId: normalizeOptionalString(record.projectId),
+    projectTitle: normalizeOptionalString(record.projectTitle),
+    activityId: normalizeOptionalString(record.activityId),
+    activityTitle: normalizeOptionalString(record.activityTitle),
+    activitySchedule: normalizeOptionalString(record.activitySchedule),
+    hierarchyPath: normalizeOptionalString(record.hierarchyPath),
+    importBatchId: normalizeOptionalString(record.importBatchId),
   };
 };
 
@@ -228,7 +257,49 @@ export interface CreateTaskPayload {
   barangay?: string;
   estimatedHours?: number;
   budgetImpact?: number;
+  proposalId?: string;
+  proposalTitle?: string;
+  programId?: string;
+  programTitle?: string;
   projectId?: string;
+  projectTitle?: string;
+  activityId?: string;
+  activityTitle?: string;
+  activitySchedule?: string;
+  hierarchyPath?: string;
+  importBatchId?: string;
+}
+
+export interface UpdateTaskPayload {
+  title?: string;
+  description?: string;
+  deadline?: string;
+  priority?: "low" | "medium" | "high";
+  tags?: string[];
+  status?: TaskStatus;
+  department?: string;
+  teamId?: string;
+  teamName?: string;
+  teamMemberIds?: string[];
+  teamMemberNames?: string[];
+  assigneeId?: string;
+  assigneeName?: string;
+  recommendedEmployeeIds?: string[];
+  recommendationReasoning?: string;
+  recommendationSource?: "llm" | "fallback" | "import";
+  recommendationLeadId?: string;
+  burnoutWarning?: boolean;
+  proposalId?: string;
+  proposalTitle?: string;
+  programId?: string;
+  programTitle?: string;
+  projectId?: string;
+  projectTitle?: string;
+  activityId?: string;
+  activityTitle?: string;
+  activitySchedule?: string;
+  hierarchyPath?: string;
+  importBatchId?: string;
 }
 
 export const createTask = async (
@@ -263,6 +334,16 @@ export const createTask = async (
       estimatedHours: p.estimatedHours || 0,
       budgetImpact: p.budgetImpact || 0,
       projectId: p.projectId || "",
+      proposalId: p.proposalId || "",
+      proposalTitle: p.proposalTitle || "",
+      programId: p.programId || "",
+      programTitle: p.programTitle || "",
+      projectTitle: p.projectTitle || "",
+      activityId: p.activityId || "",
+      activityTitle: p.activityTitle || "",
+      activitySchedule: p.activitySchedule || "",
+      hierarchyPath: p.hierarchyPath || "",
+      importBatchId: p.importBatchId || "",
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -335,6 +416,107 @@ export const assignTask = async (taskId: string, assigneeId: string, assigneeNam
   } catch {
     // Non-critical
   }
+};
+
+export const updateTask = async (
+  taskId: string,
+  payload: UpdateTaskPayload,
+) => {
+  const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
+  const updatePayload: Record<string, unknown> = { updatedAt: Date.now() };
+  const changedKeys: string[] = [];
+
+  const applyStringField = (key: keyof UpdateTaskPayload, targetKey = key) => {
+    if (!(key in payload)) return;
+    updatePayload[targetKey as string] = payload[key] ?? "";
+    changedKeys.push(targetKey as string);
+  };
+
+  applyStringField("title");
+  applyStringField("description");
+  applyStringField("department");
+  applyStringField("teamId");
+  applyStringField("teamName");
+  applyStringField("assigneeId");
+  applyStringField("assigneeName");
+  applyStringField("recommendationReasoning");
+  applyStringField("recommendationLeadId");
+  applyStringField("proposalId");
+  applyStringField("proposalTitle");
+  applyStringField("programId");
+  applyStringField("programTitle");
+  applyStringField("projectId");
+  applyStringField("projectTitle");
+  applyStringField("activityId");
+  applyStringField("activityTitle");
+  applyStringField("activitySchedule");
+  applyStringField("hierarchyPath");
+  applyStringField("importBatchId");
+
+  if ("deadline" in payload) {
+    const value = payload.deadline ?? "";
+    updatePayload.deadline = value;
+    updatePayload.dueDate = value;
+    changedKeys.push("deadline", "dueDate");
+  }
+  if ("priority" in payload && payload.priority) {
+    updatePayload.priority = payload.priority;
+    changedKeys.push("priority");
+  }
+  if ("status" in payload && payload.status) {
+    updatePayload.status = payload.status;
+    changedKeys.push("status");
+  }
+  if ("recommendationSource" in payload && payload.recommendationSource) {
+    updatePayload.recommendationSource = payload.recommendationSource;
+    changedKeys.push("recommendationSource");
+  }
+  if ("burnoutWarning" in payload && typeof payload.burnoutWarning === "boolean") {
+    updatePayload.burnoutWarning = payload.burnoutWarning;
+    changedKeys.push("burnoutWarning");
+  }
+  if ("tags" in payload && Array.isArray(payload.tags)) {
+    updatePayload.tags = payload.tags;
+    changedKeys.push("tags");
+  }
+  if ("teamMemberIds" in payload && Array.isArray(payload.teamMemberIds)) {
+    updatePayload.teamMemberIds = payload.teamMemberIds;
+    changedKeys.push("teamMemberIds");
+  }
+  if ("teamMemberNames" in payload && Array.isArray(payload.teamMemberNames)) {
+    updatePayload.teamMemberNames = payload.teamMemberNames;
+    changedKeys.push("teamMemberNames");
+  }
+  if (
+    "recommendedEmployeeIds" in payload &&
+    Array.isArray(payload.recommendedEmployeeIds)
+  ) {
+    updatePayload.recommendedEmployeeIds = payload.recommendedEmployeeIds;
+    changedKeys.push("recommendedEmployeeIds");
+  }
+
+  if (changedKeys.length === 0) return;
+
+  await update(taskRef, updatePayload);
+  await logTaskActivity(
+    taskId,
+    "updated",
+    `Task updated: ${Array.from(new Set(changedKeys)).join(", ")}`,
+  );
+};
+
+export const deleteTask = async (taskId: string) => {
+  const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
+  const snapshot = await get(taskRef);
+  const taskTitle =
+    snapshot.exists() && typeof snapshot.val()?.title === "string"
+      ? snapshot.val().title
+      : taskId;
+
+  await remove(taskRef);
+  await remove(ref(database, `${ACTIVITIES_PATH}/${taskId}`));
+
+  console.info(`Task deleted: ${taskTitle}`);
 };
 
 // ─── Reassign with activity logging ──────────────────────────────
