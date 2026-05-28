@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -10,6 +16,14 @@ import {
 import { ref, onValue, set, get, update } from "firebase/database";
 import { auth, database } from "../../firebase";
 import type { UserProfile, UserRole } from "../types";
+
+type ManagedUserEmployeeNotes = {
+  strengths: string;
+  weaknesses: string;
+  notes: string;
+  tags: string[];
+  updatedBy?: string;
+};
 
 // ─── Context Value ───────────────────────────────────────────────
 interface AuthContextValue {
@@ -23,7 +37,7 @@ interface AuthContextValue {
     password: string,
     fullName: string,
     role: UserRole,
-    departmentId?: string
+    departmentId?: string,
   ) => Promise<void>;
   /** Create a user on behalf of admin — re-authenticates admin after */
   createManagedUser: (
@@ -31,7 +45,8 @@ interface AuthContextValue {
     adminPassword: string,
     newEmail: string,
     newPassword: string,
-    profile: Omit<UserProfile, "uid" | "createdAt" | "lastLogin">
+    profile: Omit<UserProfile, "uid" | "createdAt" | "lastLogin">,
+    employeeNotes?: ManagedUserEmployeeNotes,
   ) => Promise<string>;
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -51,12 +66,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
       setUser((prevUser) => {
-        if (prevUser?.uid === "bypass-admin-uid") return prevUser;
+        if (prevUser?.uid === "SuperAdmin") return prevUser;
         return firebaseUser;
       });
       if (!firebaseUser) {
         setUserProfile((prevProfile) => {
-          if (prevProfile?.uid === "bypass-admin-uid") return prevProfile;
+          if (prevProfile?.uid === "SuperAdmin") return prevProfile;
           return null;
         });
         setLoading(false);
@@ -69,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user) return;
 
-    if (user.uid === "bypass-admin-uid") {
+    if (user.uid === "SuperAdmin") {
       setLoading(false);
       return;
     }
@@ -103,7 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error("Failed to read user profile:", err);
         setError("Failed to load user profile. Please try again.");
         setLoading(false);
-      }
+      },
     );
 
     return () => unsub();
@@ -113,9 +128,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       // ─── HARDCODED BYPASS FOR TESTING ───
-      if ((email === "admin" || email === "admin@gmail.com" || email === "admin@eflow.gov.ph") && password === "admin123") {
+      if (
+        (email === "admin" ||
+          email === "admin@gmail.com" ||
+          email === "admin@eflow.gov.ph") &&
+        password === "admin123"
+      ) {
         const mockProfile: UserProfile = {
-          uid: "bypass-admin-uid",
+          uid: "SuperAdmin",
           employeeId: "ADMIN-000",
           fullName: "Super Admin",
           email: "admin@gmail.com",
@@ -128,7 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           createdAt: Date.now(),
           lastLogin: Date.now(),
         };
-        setUser({ uid: "bypass-admin-uid", email: "admin@gmail.com" } as User);
+        setUser({ uid: "SuperAdmin", email: "admin@gmail.com" } as User);
         setUserProfile(mockProfile);
         setLoading(false);
         return;
@@ -141,20 +161,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const profileSnap = await get(ref(database, `users/${cred.user.uid}`));
       if (!profileSnap.exists()) {
         await signOut(auth);
-        throw new Error("No eFlow profile found for this account. Contact your IT administrator.");
+        throw new Error(
+          "No eFlow profile found for this account. Contact your IT administrator.",
+        );
       }
 
       const profile = profileSnap.val();
       if (profile.status === "inactive") {
         await signOut(auth);
-        throw new Error("Your account has been deactivated. Contact your IT administrator.");
+        throw new Error(
+          "Your account has been deactivated. Contact your IT administrator.",
+        );
       }
 
       // Update lastLogin
-      await update(ref(database, `users/${cred.user.uid}`), { lastLogin: Date.now() });
+      await update(ref(database, `users/${cred.user.uid}`), {
+        lastLogin: Date.now(),
+      });
     } catch (err: any) {
       const msg =
-        err?.code === "auth/user-not-found" || err?.code === "auth/wrong-password"
+        err?.code === "auth/user-not-found" ||
+        err?.code === "auth/wrong-password"
           ? "Invalid email or password."
           : err?.code === "auth/invalid-credential"
             ? "Invalid email or password."
@@ -172,11 +199,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       password: string,
       fullName: string,
       role: UserRole,
-      departmentId = ""
+      departmentId = "",
     ) => {
       setError(null);
       try {
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        const cred = await createUserWithEmailAndPassword(
+          auth,
+          email,
+          password,
+        );
 
         const profileData: Omit<UserProfile, "uid"> = {
           employeeId: "",
@@ -204,7 +235,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw err;
       }
     },
-    []
+    [],
   );
 
   const createManagedUser = useCallback(
@@ -213,24 +244,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       adminPassword: string,
       newEmail: string,
       newPassword: string,
-      profile: Omit<UserProfile, "uid" | "createdAt" | "lastLogin">
+      profile: Omit<UserProfile, "uid" | "createdAt" | "lastLogin">,
+      employeeNotes?: ManagedUserEmployeeNotes,
     ): Promise<string> => {
       setError(null);
       try {
         // Create the new user (this signs us in as that user)
-        const cred = await createUserWithEmailAndPassword(auth, newEmail, newPassword);
+        const cred = await createUserWithEmailAndPassword(
+          auth,
+          newEmail,
+          newPassword,
+        );
         const newUid = cred.user.uid;
 
         // Write their profile
+        const now = Date.now();
         const profileData = {
           ...profile,
-          createdAt: Date.now(),
+          createdAt: now,
           lastLogin: 0,
         };
-        await set(ref(database, `users/${newUid}`), profileData);
+        const updates: Record<string, unknown> = {
+          [`users/${newUid}`]: profileData,
+        };
+
+        if (employeeNotes) {
+          updates[`employeeNotes/${newUid}`] = {
+            strengths: employeeNotes.strengths,
+            weaknesses: employeeNotes.weaknesses,
+            notes: employeeNotes.notes,
+            tags: employeeNotes.tags,
+            updatedAt: now,
+            updatedBy: employeeNotes.updatedBy,
+          };
+        }
+
+        await update(ref(database), updates);
 
         // Re-authenticate as admin
-        if ((adminEmail === "admin" || adminEmail === "admin@gmail.com" || adminEmail === "admin@eflow.gov.ph") && adminPassword === "admin123") {
+        if (
+          (adminEmail === "admin" ||
+            adminEmail === "admin@gmail.com" ||
+            adminEmail === "admin@eflow.gov.ph") &&
+          adminPassword === "admin123"
+        ) {
           await signOut(auth);
         } else {
           await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
@@ -240,7 +297,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (err: any) {
         // Try to re-authenticate admin even on error
         try {
-          if ((adminEmail === "admin" || adminEmail === "admin@gmail.com" || adminEmail === "admin@eflow.gov.ph") && adminPassword === "admin123") {
+          if (
+            (adminEmail === "admin" ||
+              adminEmail === "admin@gmail.com" ||
+              adminEmail === "admin@eflow.gov.ph") &&
+            adminPassword === "admin123"
+          ) {
             await signOut(auth);
           } else {
             await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
@@ -258,7 +320,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw err;
       }
     },
-    []
+    [],
   );
 
   const resetPassword = useCallback(async (email: string) => {
@@ -273,11 +335,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     try {
       setUser((prevUser) => {
-        if (prevUser?.uid === "bypass-admin-uid") return null;
+        if (prevUser?.uid === "SuperAdmin") return null;
         return prevUser;
       });
       setUserProfile((prevProfile) => {
-        if (prevProfile?.uid === "bypass-admin-uid") return null;
+        if (prevProfile?.uid === "SuperAdmin") return null;
         return prevProfile;
       });
       await signOut(auth);

@@ -3,6 +3,7 @@ import React, { useState, useMemo } from "react";
 import { useUsers, useDepartments } from "../../hooks/useFirebaseData";
 import { useAuth } from "../../contexts/AuthContext";
 import { updateUserProfile, deactivateUser, activateUser, incrementDeptEmployeeCount } from "../../services/firebaseService";
+import { parsePdsFile, type PdsEmployeeNotes } from "../../services/pdsParser";
 import { DataTable, Column } from "../ui/DataTable";
 import { Modal, ModalButton } from "../ui/Modal";
 import { FormField, TextInput, SelectInput } from "../ui/FormField";
@@ -95,8 +96,22 @@ function CreateUserModal({
     workload: 0,
   });
   const [adminPassword, setAdminPassword] = useState("");
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [importedNotes, setImportedNotes] = useState<PdsEmployeeNotes | null>(null);
+  const [pdsFileName, setPdsFileName] = useState("");
+  const [pdsError, setPdsError] = useState("");
+  const [pdsImporting, setPdsImporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const resetForm = () => {
+    setForm({ fullName: "", email: "", password: "", role: "employee", departmentId: "", workload: 0 });
+    setAdminPassword("");
+    setImportedNotes(null);
+    setPdsFileName("");
+    setPdsError("");
+    setErrors({});
+  };
 
   const validate = () => {
     const errs: Record<string, string> = {};
@@ -109,11 +124,55 @@ function CreateUserModal({
     return Object.keys(errs).length === 0;
   };
 
+  const handlePdsFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    if (!/\.xlsx$/i.test(file.name)) {
+      const message = "Please upload a .xlsx Personal Data Sheet.";
+      setPdsError(message);
+      toast(message, "error");
+      return;
+    }
+
+    setPdsImporting(true);
+    setPdsError("");
+
+    try {
+      const parsed = await parsePdsFile(file, departments);
+      setForm((prev) => ({
+        ...prev,
+        fullName: parsed.profile.fullName || prev.fullName,
+        email: parsed.profile.email || prev.email,
+        role: parsed.profile.role,
+        departmentId: parsed.profile.departmentId || prev.departmentId,
+        workload: parsed.profile.workload,
+      }));
+      setImportedNotes(parsed.employeeNotes);
+      setPdsFileName(file.name);
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.fullName;
+        delete next.email;
+        delete next.departmentId;
+        return next;
+      });
+      toast("PDS imported. Review the pre-filled fields before creating the user.", "success");
+    } catch (err: any) {
+      const message = err?.message || "Failed to import PDS file.";
+      setPdsError(message);
+      toast(message, "error");
+    } finally {
+      setPdsImporting(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!validate()) return;
     setSaving(true);
     try {
-      const newUid = await createManagedUser(
+      await createManagedUser(
         user?.email || "",
         adminPassword,
         form.email.trim(),
@@ -128,7 +187,13 @@ function CreateUserModal({
           workload: form.workload,
           burnoutLevel: form.workload >= 80 ? "high" : form.workload >= 50 ? "medium" : "low",
           status: "active",
-        }
+        },
+        importedNotes
+          ? {
+              ...importedNotes,
+              updatedBy: user?.uid,
+            }
+          : undefined
       );
 
       // Increment department employee count
@@ -136,9 +201,7 @@ function CreateUserModal({
 
       toast(`User "${form.fullName}" created successfully`, "success");
       onClose();
-      setForm({ fullName: "", email: "", password: "", role: "employee", departmentId: "", workload: 0 });
-      setAdminPassword("");
-      setErrors({});
+      resetForm();
     } catch (err: any) {
       toast(err?.message || "Failed to create user", "error");
     } finally {
@@ -162,6 +225,44 @@ function CreateUserModal({
       }
     >
       <div className="space-y-4">
+        <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-900">
+                Import from PDS
+              </p>
+              <p className="mt-0.5 text-[11px] font-['Lexend:Regular',_sans-serif] text-neutral-500">
+                Upload a CSC PDS .xlsx to pre-fill profile fields.
+              </p>
+              {pdsFileName && (
+                <p className="mt-1 text-[11px] font-['Lexend:Regular',_sans-serif] text-emerald-700">
+                  Imported {pdsFileName}; Team Intelligence notes will be saved automatically.
+                </p>
+              )}
+              {pdsError && (
+                <p className="mt-1 text-[11px] font-['Lexend:Regular',_sans-serif] text-red-600">
+                  {pdsError}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={pdsImporting}
+              className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {pdsImporting ? "Importing..." : "Choose .xlsx"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              onChange={handlePdsFileChange}
+            />
+          </div>
+        </div>
+
         <FormField label="Full Name" error={errors.fullName} required>
           <TextInput
             value={form.fullName}
