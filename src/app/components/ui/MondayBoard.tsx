@@ -12,6 +12,7 @@ import {
   CreateTaskPayload,
   UpdateTaskPayload,
   updateTaskStatus,
+  undoCompletedTask,
 } from "../../services/taskService";
 import { Employee } from "../../services/employeeService";
 import {
@@ -44,6 +45,7 @@ import {
   Crown,
   Users,
   Layers,
+  RotateCcw,
 } from "lucide-react";
 
 // ─── PDF Extraction ───────────────────────────────────────────────
@@ -117,6 +119,7 @@ interface MondayBoardProps {
   role: "depthead" | "employee";
   departmentFilter?: string;
   currentUserId?: string;
+  currentUserName?: string;
   onAssign?: (
     taskId: string,
     assigneeId: string,
@@ -124,7 +127,7 @@ interface MondayBoardProps {
     assignment?: TaskAssignmentDetails,
   ) => void;
   onExecute?: (taskId: string) => void;
-  onSubmit?: (taskId: string) => void;
+  onSubmit?: (taskId: string, submission: TaskSubmissionDraft) => void;
   onVerify?: (taskId: string, approve: boolean, feedback?: string) => void;
   onCreateTask?: (
     titleOrPayload: string | CreateTaskPayload,
@@ -152,6 +155,11 @@ interface TaskEditorDraft {
   teamMemberIds: string[];
   leadMemberId: string | null;
 }
+
+type TaskSubmissionDraft = {
+  note: string;
+  attachments: File[];
+};
 
 // ─── Constants ────────────────────────────────────────────────────
 
@@ -367,6 +375,114 @@ const getDeadlineInfo = (task: Task) => {
   };
 };
 
+const formatShortDateTime = (value?: number) => {
+  if (!value) return "";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return "";
+  return dt.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+function SubmissionDetails({
+  submission,
+}: {
+  submission?: Task["latestSubmission"];
+}) {
+  if (!submission) return null;
+  const submittedAt = formatShortDateTime(submission.submittedAt);
+
+  return (
+    <div className="mt-1.5 rounded-lg border border-violet-100 bg-violet-50/60 px-2 py-1.5">
+      <div className="text-[10px] uppercase tracking-wider text-violet-600 font-['Lexend:Medium',_sans-serif]">
+        Submission
+      </div>
+      {submission.note && (
+        <div className="text-[11px] text-neutral-700 mt-0.5">
+          Note: {submission.note}
+        </div>
+      )}
+      <div className="text-[10px] text-neutral-500 mt-0.5">
+        By {submission.submitterName || "Unknown"}
+        {submittedAt ? ` - ${submittedAt}` : ""}
+      </div>
+      {submission.attachments && submission.attachments.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1">
+          {submission.attachments.map((url, idx) => (
+            <a
+              key={`${url}-${idx}`}
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[10px] text-violet-700 underline"
+            >
+              Attachment {idx + 1}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RejectionNotice({
+  note,
+  rejectedAt,
+}: {
+  note?: string;
+  rejectedAt?: number;
+}) {
+  if (!note) return null;
+  const rejectedAtLabel = formatShortDateTime(rejectedAt);
+
+  return (
+    <div className="mt-1.5 rounded-lg border border-red-100 bg-red-50 px-2 py-1.5">
+      <div className="text-[10px] uppercase tracking-wider text-red-600 font-['Lexend:Medium',_sans-serif]">
+        Rejection
+      </div>
+      <div className="text-[11px] text-red-700 mt-0.5">Note: {note}</div>
+      {rejectedAtLabel && (
+        <div className="text-[10px] text-red-500 mt-0.5">
+          Rejected {rejectedAtLabel}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReopenNotice({
+  reason,
+  reopenedAt,
+  reopenedByName,
+}: {
+  reason?: string;
+  reopenedAt?: number;
+  reopenedByName?: string;
+}) {
+  if (!reason) return null;
+  const reopenedAtLabel = formatShortDateTime(reopenedAt);
+
+  return (
+    <div className="mt-1.5 rounded-lg border border-amber-100 bg-amber-50 px-2 py-1.5">
+      <div className="text-[10px] uppercase tracking-wider text-amber-700 font-['Lexend:Medium',_sans-serif]">
+        Reopened
+      </div>
+      <div className="text-[11px] text-amber-800 mt-0.5">
+        Reason: {reason}
+      </div>
+      {(reopenedByName || reopenedAtLabel) && (
+        <div className="text-[10px] text-amber-600 mt-0.5">
+          {reopenedByName ? `By ${reopenedByName}` : "Reopened"}
+          {reopenedAtLabel ? ` - ${reopenedAtLabel}` : ""}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Assignment Modal ─────────────────────────────────────────────
 
 function AssignmentModal({
@@ -416,8 +532,7 @@ function AssignmentModal({
       const next = prev.includes(id)
         ? prev.filter((x) => x !== id)
         : [...prev, id];
-      if (draftLead && !next.includes(draftLead))
-        setDraftLead(next[0] || null);
+      if (draftLead && !next.includes(draftLead)) setDraftLead(next[0] || null);
       return next;
     });
   };
@@ -856,9 +971,7 @@ function TaskEditorModal({
               </label>
               <input
                 value={draft.activitySchedule}
-                onChange={(e) =>
-                  onChange({ activitySchedule: e.target.value })
-                }
+                onChange={(e) => onChange({ activitySchedule: e.target.value })}
                 className="mt-1 h-[38px] w-full rounded-xl border border-neutral-200 bg-white px-3 text-[12px] text-neutral-900 outline-none focus:border-neutral-400"
               />
             </div>
@@ -894,6 +1007,245 @@ function TaskEditorModal({
               {saving ? "Saving..." : "Save Changes"}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SubmitForReviewModal({
+  open,
+  task,
+  note,
+  attachments,
+  onNoteChange,
+  onAttachmentsChange,
+  onRemoveAttachment,
+  onClose,
+  onSubmit,
+  submitting,
+  error,
+}: {
+  open: boolean;
+  task: Task | null;
+  note: string;
+  attachments: File[];
+  onNoteChange: (value: string) => void;
+  onAttachmentsChange: (files: File[]) => void;
+  onRemoveAttachment: (index: number) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+  submitting: boolean;
+  error: string;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  if (!open || !task) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-[560px] max-h-[85vh] flex flex-col overflow-hidden border border-neutral-200"
+        onClick={(e) => e.stopPropagation()}
+        style={{ animation: "modalIn 0.18s ease" }}
+      >
+        <style>{`@keyframes modalIn{from{opacity:0;transform:scale(0.96) translateY(6px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
+
+        <div className="px-5 py-4 border-b border-neutral-100 flex items-center justify-between">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-400 font-['Lexend:Medium',_sans-serif]">
+              Submit for Review
+            </div>
+            <div className="text-[15px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900 mt-0.5">
+              {task.title}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-neutral-400 hover:text-neutral-700 p-1.5 rounded-lg hover:bg-neutral-100 transition"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          <div>
+            <label className="text-[10px] uppercase tracking-[0.12em] text-neutral-400">
+              Completion Note (required)
+            </label>
+            <textarea
+              rows={4}
+              value={note}
+              onChange={(e) => onNoteChange(e.target.value)}
+              placeholder="Summarize what was completed, results, or evidence details..."
+              className="mt-1 w-full resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-[13px] text-neutral-900 outline-none focus:border-neutral-400"
+            />
+          </div>
+
+          <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-3 py-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.12em] text-neutral-400">
+                  Attachments (optional)
+                </div>
+                <div className="text-[11px] text-neutral-500 mt-0.5">
+                  Photos, PDF evidence, or supporting files.
+                </div>
+              </div>
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="inline-flex items-center gap-1 h-8 px-3 rounded-full border border-neutral-200 bg-white text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-700 hover:bg-neutral-100 transition"
+              >
+                <Upload size={11} />
+                Add files
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) =>
+                  onAttachmentsChange(Array.from(e.target.files || []))
+                }
+              />
+            </div>
+            {attachments.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {attachments.map((file, idx) => (
+                  <div
+                    key={`${file.name}-${idx}`}
+                    className="flex items-center justify-between text-[11px] text-neutral-600"
+                  >
+                    <span className="truncate max-w-[380px]">{file.name}</span>
+                    <button
+                      onClick={() => onRemoveAttachment(idx)}
+                      className="text-neutral-400 hover:text-neutral-700"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-4 border-t border-neutral-100 flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-600 border border-neutral-200 rounded-xl hover:bg-neutral-50 transition"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onSubmit}
+            disabled={submitting}
+            className="px-4 py-2 text-[12px] font-['Lexend:SemiBold',_sans-serif] text-white bg-violet-600 rounded-xl hover:bg-violet-700 disabled:opacity-50 transition"
+          >
+            {submitting ? "Submitting..." : "Submit for Review"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UndoCompletedModal({
+  open,
+  task,
+  reason,
+  onReasonChange,
+  onClose,
+  onSubmit,
+  saving,
+  error,
+}: {
+  open: boolean;
+  task: Task | null;
+  reason: string;
+  onReasonChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+  saving: boolean;
+  error: string;
+}) {
+  if (!open || !task) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-[520px] max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        style={{ animation: "modalIn 0.18s ease" }}
+      >
+        <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-4">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.22em] text-amber-600 font-['Lexend:Medium',_sans-serif]">
+              Reopen Completed Task
+            </div>
+            <div className="mt-0.5 text-[15px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">
+              {task.title}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="space-y-4 p-5">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-800">
+            This moves the task back to In Progress and notifies the assigned
+            team with your reason.
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-[0.12em] text-neutral-400">
+              Undo reason (required)
+            </label>
+            <textarea
+              rows={4}
+              value={reason}
+              onChange={(e) => onReasonChange(e.target.value)}
+              placeholder="Explain why this completed task needs to be reopened..."
+              className="mt-1 w-full resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-[13px] text-neutral-900 outline-none focus:border-amber-300"
+            />
+          </div>
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-neutral-100 px-5 py-4">
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-neutral-200 px-4 py-2 text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-600 transition hover:bg-neutral-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onSubmit}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-2 text-[12px] font-['Lexend:SemiBold',_sans-serif] text-white transition hover:bg-amber-700 disabled:opacity-50"
+          >
+            <RotateCcw size={13} />
+            {saving ? "Reopening..." : "Undo Completion"}
+          </button>
         </div>
       </div>
     </div>
@@ -1007,7 +1359,9 @@ function DraftTaskRow({
                   {dt.deadline}
                 </span>
               )}
-              <span className={`text-[10px] px-2 py-0.5 rounded-full ${pm.badge}`}>
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded-full ${pm.badge}`}
+              >
                 {pm.label}
               </span>
               {dt.requiredSkills.slice(0, 2).map((s) => (
@@ -1048,7 +1402,9 @@ function DraftTaskRow({
                   key={emp.id}
                   title={emp.name}
                   className={`w-5 h-5 rounded-full text-[9px] text-white flex items-center justify-center font-['Lexend:SemiBold',_sans-serif] shrink-0 ${
-                    emp.id === dt.leadMemberId ? "ring-2 ring-amber-400 ring-offset-1" : ""
+                    emp.id === dt.leadMemberId
+                      ? "ring-2 ring-amber-400 ring-offset-1"
+                      : ""
                   } ${
                     emp.currentWorkload >= 80
                       ? "bg-red-500"
@@ -1067,9 +1423,9 @@ function DraftTaskRow({
               )}
               <span className="text-[10px] text-neutral-500 ml-1 truncate">
                 Lead:{" "}
-                {assignedEmps.find((e) => e.id === dt.leadMemberId)?.name?.split(
-                  " ",
-                )[0] ||
+                {assignedEmps
+                  .find((e) => e.id === dt.leadMemberId)
+                  ?.name?.split(" ")[0] ||
                   assignedEmps[0]?.name?.split(" ")[0] ||
                   "TBD"}
               </span>
@@ -1128,11 +1484,7 @@ function DraftCockpit({
   employeeNotes?: EmployeeNotesMap;
   onUpdate: (key: string, patch: Partial<DraftTask>) => void;
   onDelete: (key: string) => void;
-  onAdd: (
-    programIdx: number,
-    projectIdx: number,
-    activityIdx: number,
-  ) => void;
+  onAdd: (programIdx: number, projectIdx: number, activityIdx: number) => void;
   onOpenModal: (key: string) => void;
   onCommit: () => void;
   committing: boolean;
@@ -1325,10 +1677,13 @@ function ListBoardView({
   onUpdateTask,
   onVerify,
   onExecute,
-  onSubmit,
+  onSubmitRequest,
   onOpenTaskEditor,
   onDeleteTaskRequest,
   departmentFilter,
+  currentUserId,
+  currentUserName,
+  onUndoRequest,
 }: {
   tasks: Task[];
   role: "depthead" | "employee";
@@ -1338,10 +1693,13 @@ function ListBoardView({
   onUpdateTask?: MondayBoardProps["onUpdateTask"];
   onVerify?: MondayBoardProps["onVerify"];
   onExecute?: MondayBoardProps["onExecute"];
-  onSubmit?: MondayBoardProps["onSubmit"];
+  onSubmitRequest?: (task: Task) => void;
   onOpenTaskEditor?: (task: Task) => void;
   onDeleteTaskRequest?: (task: Task) => void;
   departmentFilter?: string;
+  currentUserId?: string;
+  currentUserName?: string;
+  onUndoRequest?: (task: Task) => void;
 }) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     new Set(),
@@ -1354,10 +1712,9 @@ function ListBoardView({
   }>({ open: false, task: null });
   const employeeById = useMemo(
     () =>
-      Object.fromEntries(employees.map((employee) => [employee.id, employee])) as Record<
-        string,
-        Employee
-      >,
+      Object.fromEntries(
+        employees.map((employee) => [employee.id, employee]),
+      ) as Record<string, Employee>,
     [employees],
   );
 
@@ -1395,12 +1752,16 @@ function ListBoardView({
       const taskId = e.dataTransfer.getData("text/plain");
       if (!taskId) return;
       const task = tasks.find((t) => t.id === taskId);
-      if (!task || task.status === newStatus) return;
+      if (!task || task.status === newStatus || task.status === "completed")
+        return;
+      const actor = currentUserId
+        ? { id: currentUserId, name: currentUserName }
+        : undefined;
       try {
-        await updateTaskStatus(taskId, newStatus);
+        await updateTaskStatus(taskId, newStatus, actor);
       } catch {}
     },
-    [tasks],
+    [tasks, currentUserId, currentUserName],
   );
 
   return (
@@ -1495,18 +1856,25 @@ function ListBoardView({
                   const hierarchy = getHierarchyDisplay(task);
                   const memberNames = getTaskMemberNames(task, employeeById);
                   const leadName = task.assigneeName || memberNames[0] || "";
+                  const canSubmit =
+                    role === "employee" &&
+                    task.status === "in_progress" &&
+                    currentUserId &&
+                    task.assigneeId === currentUserId;
+                  const isDraggable = task.status !== "completed";
                   return (
                     <div
                       key={task.id}
-                      draggable
+                      draggable={isDraggable}
                       onDragStart={(e) => {
+                        if (!isDraggable) return;
                         e.dataTransfer.setData("text/plain", task.id);
                         (e.currentTarget as HTMLElement).style.opacity = "0.5";
                       }}
                       onDragEnd={(e) => {
                         (e.currentTarget as HTMLElement).style.opacity = "1";
                       }}
-                      className="grid grid-cols-[20px_1fr_180px_90px_150px_120px] gap-0 px-4 py-3 border-b border-neutral-100 last:border-0 items-center hover:bg-neutral-50/70 transition group cursor-grab active:cursor-grabbing"
+                      className={`grid grid-cols-[20px_1fr_180px_90px_150px_120px] gap-0 px-4 py-3 border-b border-neutral-100 last:border-0 items-center hover:bg-neutral-50/70 transition group ${isDraggable ? "cursor-grab active:cursor-grabbing" : "cursor-default"}`}
                     >
                       {/* Priority bar */}
                       <div
@@ -1551,6 +1919,27 @@ function ListBoardView({
                         <div className="mt-1 text-[10px] text-violet-600/80 line-clamp-1">
                           {hierarchy.path}
                         </div>
+                        {role === "depthead" &&
+                          task.status === "for_review" && (
+                            <SubmissionDetails
+                              submission={task.latestSubmission}
+                            />
+                          )}
+                        {role === "employee" && task.rejectionNote && (
+                          <RejectionNotice
+                            note={task.rejectionNote}
+                            rejectedAt={task.rejectedAt}
+                          />
+                        )}
+                        {role === "employee" &&
+                          task.status !== "completed" &&
+                          task.reopenReason && (
+                            <ReopenNotice
+                              reason={task.reopenReason}
+                              reopenedAt={task.reopenedAt}
+                              reopenedByName={task.reopenedByName}
+                            />
+                          )}
                       </div>
 
                       {/* Team */}
@@ -1561,6 +1950,9 @@ function ListBoardView({
                               <div className="w-5 h-5 rounded-full bg-neutral-800 text-[9px] text-white flex items-center justify-center font-['Lexend:SemiBold',_sans-serif] shrink-0">
                                 {getInitials(leadName || task.teamName || "")}
                               </div>
+                              {leadName && (
+                                <Crown size={10} className="text-amber-500" />
+                              )}
                               <span className="text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-800 truncate">
                                 {leadName || "Unassigned"}
                               </span>
@@ -1585,7 +1977,9 @@ function ListBoardView({
                         )}
                         {role === "depthead" && (
                           <button
-                            onClick={() => setListAssignModal({ open: true, task })}
+                            onClick={() =>
+                              setListAssignModal({ open: true, task })
+                            }
                             className="mt-1 text-[10px] text-violet-600 hover:underline"
                           >
                             Edit Team
@@ -1652,6 +2046,14 @@ function ListBoardView({
                               </button>
                             </div>
                           )}
+                        {role === "depthead" && task.status === "completed" && (
+                          <button
+                            onClick={() => onUndoRequest?.(task)}
+                            className="text-[10px] border border-amber-200 text-amber-700 px-2 py-0.5 rounded-md hover:bg-amber-50 transition"
+                          >
+                            Undo
+                          </button>
+                        )}
                         {role === "employee" && task.status === "todo" && (
                           <button
                             onClick={() => onExecute?.(task.id)}
@@ -1660,15 +2062,14 @@ function ListBoardView({
                             Start
                           </button>
                         )}
-                        {role === "employee" &&
-                          task.status === "in_progress" && (
-                            <button
-                              onClick={() => onSubmit?.(task.id)}
-                              className="text-[10px] bg-violet-500 text-white px-2.5 py-0.5 rounded-md hover:bg-violet-600 transition"
-                            >
-                              Submit
-                            </button>
-                          )}
+                        {canSubmit && (
+                          <button
+                            onClick={() => onSubmitRequest?.(task)}
+                            className="text-[10px] bg-violet-500 text-white px-2.5 py-0.5 rounded-md hover:bg-violet-600 transition"
+                          >
+                            Submit
+                          </button>
+                        )}
                         {role === "depthead" &&
                           (onOpenTaskEditor || onDeleteTaskRequest) && (
                             <div className="flex gap-1">
@@ -1739,9 +2140,14 @@ function ListBoardView({
               (leadId && normalizedMemberIds.includes(leadId) && leadId) ||
               normalizedMemberIds[0] ||
               "";
-            const lead = employees.find((employee) => employee.id === resolvedLeadId);
+            const lead = employees.find(
+              (employee) => employee.id === resolvedLeadId,
+            );
             const teamMemberNames = normalizedMemberIds
-              .map((id) => employees.find((employee) => employee.id === id)?.name || "")
+              .map(
+                (id) =>
+                  employees.find((employee) => employee.id === id)?.name || "",
+              )
               .filter(Boolean);
 
             if (onUpdateTask) {
@@ -1752,7 +2158,10 @@ function ListBoardView({
                 assigneeName: lead?.name || "",
                 recommendedEmployeeIds: normalizedMemberIds,
                 teamId: normalizedMemberIds.length
-                  ? lead?.department || listAssignModal.task.teamId || departmentFilter || ""
+                  ? lead?.department ||
+                    listAssignModal.task.teamId ||
+                    departmentFilter ||
+                    ""
                   : "",
                 teamName: normalizedMemberIds.length
                   ? lead?.departmentName ||
@@ -1793,26 +2202,29 @@ function KanbanBoardView({
   role,
   onVerify,
   onExecute,
-  onSubmit,
+  onSubmitRequest,
   onOpenTaskEditor,
   onDeleteTaskRequest,
+  currentUserId,
+  onUndoRequest,
 }: {
   tasks: Task[];
   employees: Employee[];
   role: "depthead" | "employee";
   onVerify?: MondayBoardProps["onVerify"];
   onExecute?: MondayBoardProps["onExecute"];
-  onSubmit?: MondayBoardProps["onSubmit"];
+  onSubmitRequest?: (task: Task) => void;
   onOpenTaskEditor?: (task: Task) => void;
   onDeleteTaskRequest?: (task: Task) => void;
+  currentUserId?: string;
+  onUndoRequest?: (task: Task) => void;
 }) {
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
   const employeeById = useMemo(
     () =>
-      Object.fromEntries(employees.map((employee) => [employee.id, employee])) as Record<
-        string,
-        Employee
-      >,
+      Object.fromEntries(
+        employees.map((employee) => [employee.id, employee]),
+      ) as Record<string, Employee>,
     [employees],
   );
 
@@ -1832,9 +2244,13 @@ function KanbanBoardView({
     const taskId = e.dataTransfer.getData("text/plain");
     if (!taskId) return;
     const task = tasks.find((t) => t.id === taskId);
-    if (!task || task.status === newStatus) return;
+    if (!task || task.status === newStatus || task.status === "completed")
+      return;
+    const actor = currentUserId
+      ? { id: currentUserId, name: currentUserName }
+      : undefined;
     try {
-      await updateTaskStatus(taskId, newStatus);
+      await updateTaskStatus(taskId, newStatus, actor);
     } catch {}
   };
 
@@ -1879,21 +2295,30 @@ function KanbanBoardView({
                 const hierarchy = getHierarchyDisplay(task);
                 const memberNames = getTaskMemberNames(task, employeeById);
                 const leadName = task.assigneeName || memberNames[0] || "";
+                const canSubmit =
+                  role === "employee" &&
+                  task.status === "in_progress" &&
+                  currentUserId &&
+                  task.assigneeId === currentUserId;
+                const isDraggable = task.status !== "completed";
                 return (
                   <div
                     key={task.id}
-                    draggable
+                    draggable={isDraggable}
                     onDragStart={(e) => {
+                      if (!isDraggable) return;
                       e.dataTransfer.setData("text/plain", task.id);
                       (e.currentTarget as HTMLElement).style.opacity = "0.5";
                     }}
                     onDragEnd={(e) =>
                       ((e.currentTarget as HTMLElement).style.opacity = "1")
                     }
-                    className="bg-white border border-neutral-200 rounded-xl p-3 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing group"
+                    className={`bg-white border border-neutral-200 rounded-xl p-3 shadow-sm hover:shadow-md transition-all group ${isDraggable ? "cursor-grab active:cursor-grabbing" : "cursor-default"}`}
                   >
                     {/* Top priority bar */}
-                    <div className={`h-0.5 rounded-full ${pm.kanbanBar} mb-2.5`} />
+                    <div
+                      className={`h-0.5 rounded-full ${pm.kanbanBar} mb-2.5`}
+                    />
 
                     {role === "depthead" && onOpenTaskEditor ? (
                       <button
@@ -1918,6 +2343,24 @@ function KanbanBoardView({
                     <div className="mt-1 text-[9px] text-violet-600/80 line-clamp-2 leading-relaxed">
                       {hierarchy.path}
                     </div>
+                    {role === "depthead" && task.status === "for_review" && (
+                      <SubmissionDetails submission={task.latestSubmission} />
+                    )}
+                    {role === "employee" && task.rejectionNote && (
+                      <RejectionNotice
+                        note={task.rejectionNote}
+                        rejectedAt={task.rejectedAt}
+                      />
+                    )}
+                    {role === "employee" &&
+                      task.status !== "completed" &&
+                      task.reopenReason && (
+                        <ReopenNotice
+                          reason={task.reopenReason}
+                          reopenedAt={task.reopenedAt}
+                          reopenedByName={task.reopenedByName}
+                        />
+                      )}
 
                     <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
                       {leadName && (
@@ -1925,6 +2368,7 @@ function KanbanBoardView({
                           <div className="w-4 h-4 rounded-full bg-neutral-800 text-[8px] text-white flex items-center justify-center font-['Lexend:SemiBold',_sans-serif]">
                             {getInitials(leadName)}
                           </div>
+                          <Crown size={9} className="text-amber-500" />
                           <span className="text-[10px] text-neutral-600 font-['Lexend:Regular',_sans-serif]">
                             {leadName.split(" ")[0]}
                           </span>
@@ -1951,30 +2395,33 @@ function KanbanBoardView({
 
                     {/* Actions */}
                     <div className="mt-2.5 flex gap-1">
-                      {role === "depthead" &&
-                        task.status === "for_review" && (
-                          <>
-                            <button
-                              onClick={() => onVerify?.(task.id, true)}
-                              className="flex-1 text-[10px] bg-emerald-500 text-white py-1 rounded-lg hover:bg-emerald-600 transition"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => {
-                                const msg = prompt("Reason:");
-                                onVerify?.(
-                                  task.id,
-                                  false,
-                                  msg || "Needs rework",
-                                );
-                              }}
-                              className="flex-1 text-[10px] bg-red-500 text-white py-1 rounded-lg hover:bg-red-600 transition"
-                            >
-                              Reject
-                            </button>
-                          </>
-                        )}
+                      {role === "depthead" && task.status === "for_review" && (
+                        <>
+                          <button
+                            onClick={() => onVerify?.(task.id, true)}
+                            className="flex-1 text-[10px] bg-emerald-500 text-white py-1 rounded-lg hover:bg-emerald-600 transition"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => {
+                              const msg = prompt("Reason:");
+                              onVerify?.(task.id, false, msg || "Needs rework");
+                            }}
+                            className="flex-1 text-[10px] bg-red-500 text-white py-1 rounded-lg hover:bg-red-600 transition"
+                          >
+                            Reject
+                          </button>
+                        </>
+                      )}
+                      {role === "depthead" && task.status === "completed" && (
+                        <button
+                          onClick={() => onUndoRequest?.(task)}
+                          className="flex-1 text-[10px] border border-amber-200 text-amber-700 py-1 rounded-lg hover:bg-amber-50 transition"
+                        >
+                          Undo
+                        </button>
+                      )}
                       {role === "employee" && task.status === "todo" && (
                         <button
                           onClick={() => onExecute?.(task.id)}
@@ -1983,9 +2430,9 @@ function KanbanBoardView({
                           Start Work
                         </button>
                       )}
-                      {role === "employee" && task.status === "in_progress" && (
+                      {canSubmit && (
                         <button
-                          onClick={() => onSubmit?.(task.id)}
+                          onClick={() => onSubmitRequest?.(task)}
                           className="flex-1 text-[10px] bg-violet-500 text-white py-1 rounded-lg hover:bg-violet-600 transition"
                         >
                           Submit for Review
@@ -2014,12 +2461,6 @@ function KanbanBoardView({
                         </button>
                       )}
                     </div>
-
-                    {task.feedback && task.status !== "completed" && (
-                      <div className="mt-2 text-[10px] italic text-red-500 line-clamp-1">
-                        Note: {task.feedback}
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -2047,18 +2488,24 @@ function HierarchyBoardView({
   role,
   onVerify,
   onExecute,
-  onSubmit,
+  onSubmitRequest,
   onOpenTaskEditor,
   onDeleteTaskRequest,
+  currentUserId,
+  currentUserName,
+  onUndoRequest,
 }: {
   tasks: Task[];
   employees: Employee[];
   role: "depthead" | "employee";
   onVerify?: MondayBoardProps["onVerify"];
   onExecute?: MondayBoardProps["onExecute"];
-  onSubmit?: MondayBoardProps["onSubmit"];
+  onSubmitRequest?: (task: Task) => void;
   onOpenTaskEditor?: (task: Task) => void;
   onDeleteTaskRequest?: (task: Task) => void;
+  currentUserId?: string;
+  currentUserName?: string;
+  onUndoRequest?: (task: Task) => void;
 }) {
   type ActivityNode = {
     key: string;
@@ -2071,10 +2518,9 @@ function HierarchyBoardView({
   type ProposalNode = { key: string; title: string; programs: ProgramNode[] };
   const employeeById = useMemo(
     () =>
-      Object.fromEntries(employees.map((employee) => [employee.id, employee])) as Record<
-        string,
-        Employee
-      >,
+      Object.fromEntries(
+        employees.map((employee) => [employee.id, employee]),
+      ) as Record<string, Employee>,
     [employees],
   );
 
@@ -2084,9 +2530,12 @@ function HierarchyBoardView({
     tasks.forEach((task) => {
       const hierarchy = getHierarchyDisplay(task);
       const proposalKey = task.proposalId || hierarchy.proposalTitle;
-      const programKey = task.programId || `${proposalKey}|${hierarchy.programTitle}`;
-      const projectKey = task.projectId || `${programKey}|${hierarchy.projectTitle}`;
-      const activityKey = task.activityId || `${projectKey}|${hierarchy.activityTitle}`;
+      const programKey =
+        task.programId || `${proposalKey}|${hierarchy.programTitle}`;
+      const projectKey =
+        task.projectId || `${programKey}|${hierarchy.projectTitle}`;
+      const activityKey =
+        task.activityId || `${projectKey}|${hierarchy.activityTitle}`;
 
       let proposal = proposals.find((item) => item.key === proposalKey);
       if (!proposal) {
@@ -2118,7 +2567,9 @@ function HierarchyBoardView({
         program.projects.push(project);
       }
 
-      let activity = project.activities.find((item) => item.key === activityKey);
+      let activity = project.activities.find(
+        (item) => item.key === activityKey,
+      );
       if (!activity) {
         activity = {
           key: activityKey,
@@ -2153,7 +2604,8 @@ function HierarchyBoardView({
               (projectSum, project) =>
                 projectSum +
                 project.activities.reduce(
-                  (activitySum, activity) => activitySum + activity.tasks.length,
+                  (activitySum, activity) =>
+                    activitySum + activity.tasks.length,
                   0,
                 ),
               0,
@@ -2200,7 +2652,10 @@ function HierarchyBoardView({
                         className="rounded-xl border border-neutral-200 bg-neutral-50/70"
                       >
                         <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-200 bg-white">
-                          <ChevronRight size={12} className="text-neutral-400" />
+                          <ChevronRight
+                            size={12}
+                            className="text-neutral-400"
+                          />
                           <div className="text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-700">
                             {project.title}
                           </div>
@@ -2240,6 +2695,11 @@ function HierarchyBoardView({
                                   );
                                   const leadName =
                                     task.assigneeName || memberNames[0] || "";
+                                  const canSubmit =
+                                    role === "employee" &&
+                                    task.status === "in_progress" &&
+                                    currentUserId &&
+                                    task.assigneeId === currentUserId;
                                   return (
                                     <div key={task.id} className="px-3 py-2.5">
                                       <div className="flex items-start justify-between gap-2">
@@ -2298,6 +2758,32 @@ function HierarchyBoardView({
                                                 </span>
                                               )}
                                           </div>
+                                          {role === "depthead" &&
+                                            task.status === "for_review" && (
+                                              <SubmissionDetails
+                                                submission={
+                                                  task.latestSubmission
+                                                }
+                                              />
+                                            )}
+                                          {role === "employee" &&
+                                            task.rejectionNote && (
+                                              <RejectionNotice
+                                                note={task.rejectionNote}
+                                                rejectedAt={task.rejectedAt}
+                                              />
+                                            )}
+                                          {role === "employee" &&
+                                            task.status !== "completed" &&
+                                            task.reopenReason && (
+                                              <ReopenNotice
+                                                reason={task.reopenReason}
+                                                reopenedAt={task.reopenedAt}
+                                                reopenedByName={
+                                                  task.reopenedByName
+                                                }
+                                              />
+                                            )}
                                         </div>
 
                                         <div className="flex items-center gap-1">
@@ -2328,6 +2814,17 @@ function HierarchyBoardView({
                                                 </button>
                                               </>
                                             )}
+                                          {role === "depthead" &&
+                                            task.status === "completed" && (
+                                              <button
+                                                onClick={() =>
+                                                  onUndoRequest?.(task)
+                                                }
+                                                className="text-[10px] border border-amber-200 text-amber-700 px-2 py-0.5 rounded-md hover:bg-amber-50 transition"
+                                              >
+                                                Undo
+                                              </button>
+                                            )}
                                           {role === "employee" &&
                                             task.status === "todo" && (
                                               <button
@@ -2339,17 +2836,16 @@ function HierarchyBoardView({
                                                 Start
                                               </button>
                                             )}
-                                          {role === "employee" &&
-                                            task.status === "in_progress" && (
-                                              <button
-                                                onClick={() =>
-                                                  onSubmit?.(task.id)
-                                                }
-                                                className="text-[10px] bg-violet-500 text-white px-2 py-0.5 rounded-md hover:bg-violet-600 transition"
-                                              >
-                                                Submit
-                                              </button>
-                                            )}
+                                          {canSubmit && (
+                                            <button
+                                              onClick={() =>
+                                                onSubmitRequest?.(task)
+                                              }
+                                              className="text-[10px] bg-violet-500 text-white px-2 py-0.5 rounded-md hover:bg-violet-600 transition"
+                                            >
+                                              Submit
+                                            </button>
+                                          )}
                                           {role === "depthead" &&
                                             onOpenTaskEditor && (
                                               <button
@@ -2429,10 +2925,14 @@ function TimelineView({
 
   const tasksWithDates = tasks
     .map((task) => {
-      const parsedDeadline = parseTaskDeadline(task.deadline || task.dueDate || "");
+      const parsedDeadline = parseTaskDeadline(
+        task.deadline || task.dueDate || "",
+      );
       return parsedDeadline ? { task, parsedDeadline } : null;
     })
-    .filter((item): item is { task: Task; parsedDeadline: Date } => item !== null);
+    .filter(
+      (item): item is { task: Task; parsedDeadline: Date } => item !== null,
+    );
 
   return (
     <div className="w-full bg-white border border-neutral-200 rounded-2xl overflow-hidden shadow-sm">
@@ -2482,7 +2982,8 @@ function TimelineView({
             ((endOff - startOff) / totalDays) * 100,
           );
 
-          const pm = priorityMeta[task.priority || "medium"] || priorityMeta.medium;
+          const pm =
+            priorityMeta[task.priority || "medium"] || priorityMeta.medium;
           const sm = statusMeta[task.status];
           const dlInfo = getDeadlineInfo(task);
           const isOverdue = dlInfo?.label.includes("overdue");
@@ -2527,9 +3028,7 @@ function TimelineView({
                       <span
                         className={`inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full border ${sm.color}`}
                       >
-                        <div
-                          className={`w-1 h-1 rounded-full ${sm.dot}`}
-                        />
+                        <div className={`w-1 h-1 rounded-full ${sm.dot}`} />
                         {sm.label}
                       </span>
                       {task.assigneeName && (
@@ -2614,6 +3113,8 @@ export function MondayBoard({
   employeeNotes,
   role,
   departmentFilter,
+  currentUserId,
+  currentUserName,
   onAssign,
   onExecute,
   onSubmit,
@@ -2648,20 +3149,31 @@ export function MondayBoard({
 
   const employeeById = useMemo(
     () =>
-      Object.fromEntries(
-        deptEmployees.map((e) => [e.id, e]),
-      ) as Record<string, Employee>,
+      Object.fromEntries(deptEmployees.map((e) => [e.id, e])) as Record<
+        string,
+        Employee
+      >,
     [deptEmployees],
   );
 
   const [taskEditorOpen, setTaskEditorOpen] = useState(false);
   const [taskEditorTaskId, setTaskEditorTaskId] = useState<string | null>(null);
-  const [taskEditorDraft, setTaskEditorDraft] = useState<TaskEditorDraft | null>(
-    null,
-  );
+  const [taskEditorDraft, setTaskEditorDraft] =
+    useState<TaskEditorDraft | null>(null);
   const [taskEditorSaving, setTaskEditorSaving] = useState(false);
   const [taskEditorError, setTaskEditorError] = useState("");
   const [taskEditorAssignOpen, setTaskEditorAssignOpen] = useState(false);
+  const [submitModalOpen, setSubmitModalOpen] = useState(false);
+  const [submitModalTask, setSubmitModalTask] = useState<Task | null>(null);
+  const [submitNote, setSubmitNote] = useState("");
+  const [submitFiles, setSubmitFiles] = useState<File[]>([]);
+  const [submitError, setSubmitError] = useState("");
+  const [submitSaving, setSubmitSaving] = useState(false);
+  const [undoModalOpen, setUndoModalOpen] = useState(false);
+  const [undoModalTask, setUndoModalTask] = useState<Task | null>(null);
+  const [undoReason, setUndoReason] = useState("");
+  const [undoError, setUndoError] = useState("");
+  const [undoSaving, setUndoSaving] = useState(false);
 
   // ── Task filter ───────────────────────────────────────────────
   const deptTasks = useMemo(() => {
@@ -2697,6 +3209,103 @@ export function MondayBoard({
     setTaskEditorAssignOpen(false);
     setTaskEditorSaving(false);
   }, []);
+
+  const openSubmitModal = useCallback((task: Task) => {
+    setSubmitModalTask(task);
+    setSubmitNote("");
+    setSubmitFiles([]);
+    setSubmitError("");
+    setSubmitSaving(false);
+    setSubmitModalOpen(true);
+  }, []);
+
+  const closeSubmitModal = useCallback(() => {
+    setSubmitModalOpen(false);
+    setSubmitModalTask(null);
+    setSubmitNote("");
+    setSubmitFiles([]);
+    setSubmitError("");
+    setSubmitSaving(false);
+  }, []);
+
+  const handleRemoveAttachment = useCallback((index: number) => {
+    setSubmitFiles((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleSubmitConfirm = useCallback(async () => {
+    if (!submitModalTask) return;
+    if (!onSubmit) {
+      closeSubmitModal();
+      return;
+    }
+    const trimmedNote = submitNote.trim();
+    if (!trimmedNote) {
+      setSubmitError("Completion note is required.");
+      return;
+    }
+
+    setSubmitSaving(true);
+    setSubmitError("");
+    try {
+      await onSubmit(submitModalTask.id, {
+        note: trimmedNote,
+        attachments: submitFiles,
+      });
+      closeSubmitModal();
+    } catch {
+      setSubmitError("Failed to submit for review. Please try again.");
+      setSubmitSaving(false);
+    }
+  }, [closeSubmitModal, onSubmit, submitFiles, submitModalTask, submitNote]);
+
+  const openUndoModal = useCallback((task: Task) => {
+    setUndoModalTask(task);
+    setUndoReason("");
+    setUndoError("");
+    setUndoSaving(false);
+    setUndoModalOpen(true);
+  }, []);
+
+  const closeUndoModal = useCallback(() => {
+    setUndoModalOpen(false);
+    setUndoModalTask(null);
+    setUndoReason("");
+    setUndoError("");
+    setUndoSaving(false);
+  }, []);
+
+  const handleUndoConfirm = useCallback(async () => {
+    if (!undoModalTask) return;
+    const trimmedReason = undoReason.trim();
+    if (!trimmedReason) {
+      setUndoError("Undo reason is required.");
+      return;
+    }
+
+    setUndoSaving(true);
+    setUndoError("");
+    try {
+      await undoCompletedTask(undoModalTask.id, {
+        reason: trimmedReason,
+        actor: currentUserId
+          ? {
+              id: currentUserId,
+              name: currentUserName || "Department Head",
+            }
+          : undefined,
+      });
+      closeUndoModal();
+    } catch {
+      setUndoError("Failed to reopen task. Please try again.");
+      setUndoSaving(false);
+    }
+  }, [
+    closeUndoModal,
+    currentUserId,
+    currentUserName,
+    undoModalTask,
+    undoReason,
+  ]);
 
   useEffect(() => {
     if (taskEditorOpen && taskEditorTaskId && !editingTask) {
@@ -2794,7 +3403,9 @@ export function MondayBoard({
         taskEditorDraft.leadMemberId) ||
       memberIds[0] ||
       "";
-    const leadMember = resolvedLeadId ? employeeById[resolvedLeadId] : undefined;
+    const leadMember = resolvedLeadId
+      ? employeeById[resolvedLeadId]
+      : undefined;
     const teamMemberNames = memberIds
       .map((id) => employeeById[id]?.name || "")
       .filter(Boolean);
@@ -3266,9 +3877,7 @@ export function MondayBoard({
                       <div className="flex items-center gap-2">
                         <button
                           onClick={handleAiSuggest}
-                          disabled={
-                            composerAiLoading || !newTitle.trim()
-                          }
+                          disabled={composerAiLoading || !newTitle.trim()}
                           className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full bg-violet-100 text-[11px] font-['Lexend:Medium',_sans-serif] text-violet-800 hover:bg-violet-200 disabled:opacity-50 transition"
                         >
                           {composerAiLoading ? (
@@ -3318,10 +3927,7 @@ export function MondayBoard({
                               {getInitials(m.name)}
                             </span>
                             {i === 0 && (
-                              <Crown
-                                size={10}
-                                className="text-amber-500"
-                              />
+                              <Crown size={10} className="text-amber-500" />
                             )}
                             {m.name.split(" ")[0]}
                             <button
@@ -3520,7 +4126,11 @@ export function MondayBoard({
           <div className="flex items-center gap-0.5 bg-neutral-100 rounded-xl p-0.5">
             {(
               [
-                { id: "list" as BoardView, icon: <List size={13} />, label: "List" },
+                {
+                  id: "list" as BoardView,
+                  icon: <List size={13} />,
+                  label: "List",
+                },
                 {
                   id: "kanban" as BoardView,
                   icon: <Columns size={13} />,
@@ -3564,12 +4174,15 @@ export function MondayBoard({
             onUpdateTask={onUpdateTask}
             onVerify={onVerify}
             onExecute={onExecute}
-            onSubmit={onSubmit}
+            onSubmitRequest={openSubmitModal}
             onOpenTaskEditor={role === "depthead" ? openTaskEditor : undefined}
             onDeleteTaskRequest={
               role === "depthead" ? handleTaskDeleteRequest : undefined
             }
             departmentFilter={departmentFilter}
+            currentUserId={currentUserId}
+            currentUserName={currentUserName}
+            onUndoRequest={role === "depthead" ? openUndoModal : undefined}
           />
         )}
         {boardView === "kanban" && (
@@ -3579,11 +4192,14 @@ export function MondayBoard({
             role={role}
             onVerify={onVerify}
             onExecute={onExecute}
-            onSubmit={onSubmit}
+            onSubmitRequest={openSubmitModal}
             onOpenTaskEditor={role === "depthead" ? openTaskEditor : undefined}
             onDeleteTaskRequest={
               role === "depthead" ? handleTaskDeleteRequest : undefined
             }
+            currentUserId={currentUserId}
+            currentUserName={currentUserName}
+            onUndoRequest={role === "depthead" ? openUndoModal : undefined}
           />
         )}
         {boardView === "timeline" && (
@@ -3600,11 +4216,13 @@ export function MondayBoard({
             role={role}
             onVerify={onVerify}
             onExecute={onExecute}
-            onSubmit={onSubmit}
+            onSubmitRequest={openSubmitModal}
             onOpenTaskEditor={role === "depthead" ? openTaskEditor : undefined}
             onDeleteTaskRequest={
               role === "depthead" ? handleTaskDeleteRequest : undefined
             }
+            currentUserId={currentUserId}
+            onUndoRequest={role === "depthead" ? openUndoModal : undefined}
           />
         )}
       </div>
@@ -3625,6 +4243,31 @@ export function MondayBoard({
         error={taskEditorError}
         employees={deptEmployees}
         employeeById={employeeById}
+      />
+
+      <SubmitForReviewModal
+        open={submitModalOpen}
+        task={submitModalTask}
+        note={submitNote}
+        attachments={submitFiles}
+        onNoteChange={setSubmitNote}
+        onAttachmentsChange={setSubmitFiles}
+        onRemoveAttachment={handleRemoveAttachment}
+        onClose={closeSubmitModal}
+        onSubmit={handleSubmitConfirm}
+        submitting={submitSaving}
+        error={submitError}
+      />
+
+      <UndoCompletedModal
+        open={undoModalOpen}
+        task={undoModalTask}
+        reason={undoReason}
+        onReasonChange={setUndoReason}
+        onClose={closeUndoModal}
+        onSubmit={handleUndoConfirm}
+        saving={undoSaving}
+        error={undoError}
       />
 
       <AssignmentModal
@@ -3681,14 +4324,10 @@ export function MondayBoard({
             ...memberIds.filter((id) => id !== leadId),
           ].filter(Boolean) as string[];
           setSelectedMembers(
-            ordered
-              .map((id) => employeeById[id])
-              .filter(Boolean) as Employee[],
+            ordered.map((id) => employeeById[id]).filter(Boolean) as Employee[],
           );
         }}
       />
     </div>
   );
 }
-
-

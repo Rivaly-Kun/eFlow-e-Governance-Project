@@ -12,6 +12,7 @@ export type NotificationType =
   | "completed"
   | "reassignment"
   | "status_change"
+  | "undo"
   | "comment";
 
 export interface Notification {
@@ -21,6 +22,11 @@ export interface Notification {
   message: string;
   taskId?: string;
   taskTitle?: string;
+  actorId?: string;
+  actorName?: string;
+  statusFrom?: string;
+  statusTo?: string;
+  reason?: string;
   read: boolean;
   createdAt: number;
 }
@@ -51,6 +57,11 @@ export function subscribeToNotifications(
         message: val.message || "",
         taskId: val.taskId,
         taskTitle: val.taskTitle,
+        actorId: val.actorId,
+        actorName: val.actorName,
+        statusFrom: val.statusFrom,
+        statusTo: val.statusTo,
+        reason: val.reason,
         read: val.read === true,
         createdAt: val.createdAt || 0,
       }))

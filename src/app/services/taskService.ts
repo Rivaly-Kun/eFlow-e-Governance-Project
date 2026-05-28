@@ -1,5 +1,6 @@
 import { ref, onValue, push, update, set, get, remove } from "firebase/database";
-import { database } from "../../firebase";
+import { getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
+import { database, storage } from "../../firebase";
 import { EMPLOYEE_SEED_BY_ID, TASK_SEED, getDepartmentLabel } from "./eflowSeedData";
 import { createNotification } from "./notificationService";
 
@@ -52,6 +53,13 @@ export interface Task extends TaskHierarchy {
   updatedAt: number;
   auditHash?: string;
   feedback?: string;
+  latestSubmission?: TaskSubmissionMetadata;
+  rejectionNote?: string;
+  rejectedAt?: number;
+  reopenReason?: string;
+  reopenedAt?: number;
+  reopenedById?: string;
+  reopenedByName?: string;
   recommendedEmployeeIds?: string[];
   recommendationReasoning?: string;
   recommendationSource?: "llm" | "fallback" | "import";
@@ -61,6 +69,31 @@ export interface Task extends TaskHierarchy {
   barangay?: string;
   estimatedHours?: number;
   budgetImpact?: number;
+}
+
+export interface TaskSubmissionMetadata {
+  note: string;
+  submitterId: string;
+  submitterName: string;
+  submittedAt: number;
+  attachments: string[];
+}
+
+export interface TaskSubmissionInput {
+  note: string;
+  attachments?: File[];
+  submitterId: string;
+  submitterName: string;
+}
+
+export interface TaskActor {
+  id?: string;
+  name?: string;
+}
+
+export interface TaskUndoInput {
+  reason: string;
+  actor?: TaskActor;
 }
 
 export interface TaskActivity {
@@ -78,16 +111,182 @@ const ACTIVITIES_PATH = "taskActivities";
 
 const TASK_STATUS_VALUES: TaskStatus[] = ["pending_assignment", "todo", "in_progress", "for_review", "completed"];
 
+const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  pending_assignment: "Pending Assignment",
+  todo: "To Do",
+  in_progress: "In Progress",
+  for_review: "For Review",
+  completed: "Completed",
+};
+
 const isTaskStatus = (value: unknown): value is TaskStatus =>
   typeof value === "string" && TASK_STATUS_VALUES.includes(value as TaskStatus);
 
 const normalizeStringArray = (value: unknown) =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 
+const uniqueStrings = (items: Array<string | undefined | null>) =>
+  Array.from(
+    new Set(
+      items
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
+        .filter((item) => item.length > 0),
+    ),
+  );
+
+const readString = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+
+const getRecordTitle = (record: Record<string, unknown>) =>
+  readString(record.title) || "Task";
+
+const getRecordStatus = (record: Record<string, unknown>): TaskStatus =>
+  isTaskStatus(record.status) ? record.status : "pending_assignment";
+
+const getTaskDepartmentId = (record: Record<string, unknown>) =>
+  readString(record.department) || readString(record.teamId);
+
+const getTaskAssigneeIds = (record: Record<string, unknown>) =>
+  uniqueStrings([
+    readString(record.assigneeId),
+    readString(record.assignedTo),
+    ...normalizeStringArray(record.teamMemberIds),
+  ]);
+
+const getDepartmentHeadId = async (
+  departmentId?: string,
+): Promise<string | undefined> => {
+  if (!departmentId) return undefined;
+
+  const directSnap = await get(ref(database, `departments/${departmentId}`));
+  if (directSnap.exists()) {
+    const record = directSnap.val() as Record<string, unknown>;
+    return readString(record.headUserId) || readString(record.headUid);
+  }
+
+  const allSnap = await get(ref(database, "departments"));
+  if (!allSnap.exists()) return undefined;
+  const data = allSnap.val();
+  const departments = Array.isArray(data)
+    ? data.filter(Boolean)
+    : Object.entries(data as Record<string, unknown>).map(([id, value]) => ({
+        id,
+        ...(value && typeof value === "object"
+          ? (value as Record<string, unknown>)
+          : {}),
+      }));
+
+  const match = departments.find((dept: Record<string, unknown>) => {
+    const id = readString(dept.id);
+    return id === departmentId;
+  });
+
+  return match
+    ? readString(match.headUserId) || readString(match.headUid)
+    : undefined;
+};
+
+const getTaskStakeholderIds = async (
+  record: Record<string, unknown>,
+  actorId?: string,
+) => {
+  const departmentHeadId = await getDepartmentHeadId(getTaskDepartmentId(record));
+  return uniqueStrings([
+    ...getTaskAssigneeIds(record),
+    departmentHeadId,
+  ]).filter((id) => !actorId || id !== actorId);
+};
+
+const notifyTaskStakeholders = async (
+  taskId: string,
+  taskRecord: Record<string, unknown>,
+  notification: Omit<
+    Parameters<typeof createNotification>[1],
+    "taskId" | "taskTitle"
+  >,
+  actorId?: string,
+) => {
+  const recipients = await getTaskStakeholderIds(taskRecord, actorId);
+  if (recipients.length === 0) return;
+
+  const taskTitle = getRecordTitle(taskRecord);
+  await Promise.allSettled(
+    recipients.map((userId) =>
+      createNotification(userId, {
+        ...notification,
+        taskId,
+        taskTitle,
+      }),
+    ),
+  );
+};
+
 const normalizeOptionalString = (value: unknown): string | undefined => {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const normalizeLatestSubmission = (
+  value: unknown,
+): TaskSubmissionMetadata | undefined => {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const note = typeof record.note === "string" ? record.note : "";
+  const submitterId =
+    typeof record.submitterId === "string" ? record.submitterId : "";
+  const submitterName =
+    typeof record.submitterName === "string" ? record.submitterName : "";
+  const submittedAt =
+    typeof record.submittedAt === "number" ? record.submittedAt : 0;
+  const attachments = normalizeStringArray(record.attachments);
+
+  if (!note && !submitterId && !submitterName && !submittedAt && attachments.length === 0) {
+    return undefined;
+  }
+
+  return {
+    note,
+    submitterId,
+    submitterName,
+    submittedAt,
+    attachments,
+  };
+};
+
+const notifyAssignment = async ({
+  taskId,
+  taskTitle,
+  leadId,
+  leadName,
+  teamMemberIds,
+}: {
+  taskId: string;
+  taskTitle: string;
+  leadId?: string;
+  leadName?: string;
+  teamMemberIds?: string[];
+}) => {
+  const recipients = uniqueStrings([leadId, ...(teamMemberIds || [])]);
+  if (recipients.length === 0) return;
+
+  const safeTitle = taskTitle || "Task";
+  const safeLead = leadName || "Unassigned";
+  const message = `New assignment: ${safeTitle} - Lead: ${safeLead}`;
+
+  await Promise.allSettled(
+    recipients.map((userId) =>
+      createNotification(userId, {
+        type: "assignment",
+        title: "New Task Assignment",
+        message,
+        taskId,
+        taskTitle: safeTitle,
+      }),
+    ),
+  );
 };
 
 const normalizeTaskRecord = (id: string, record: Record<string, unknown>): Task => {
@@ -122,6 +321,17 @@ const normalizeTaskRecord = (id: string, record: Record<string, unknown>): Task 
     typeof record.burnoutWarning === "boolean"
       ? record.burnoutWarning
       : undefined;
+  const rejectionNote =
+    normalizeOptionalString(record.rejectionNote) ||
+    normalizeOptionalString(record.feedback);
+  const rejectedAt =
+    typeof record.rejectedAt === "number" ? record.rejectedAt : undefined;
+  const reopenReason = normalizeOptionalString(record.reopenReason);
+  const reopenedAt =
+    typeof record.reopenedAt === "number" ? record.reopenedAt : undefined;
+  const reopenedById = normalizeOptionalString(record.reopenedById);
+  const reopenedByName = normalizeOptionalString(record.reopenedByName);
+  const latestSubmission = normalizeLatestSubmission(record.latestSubmission);
 
   return {
     id,
@@ -157,6 +367,13 @@ const normalizeTaskRecord = (id: string, record: Record<string, unknown>): Task 
     updatedAt,
     auditHash: typeof record.auditHash === "string" ? record.auditHash : undefined,
     feedback: typeof record.feedback === "string" ? record.feedback : undefined,
+    latestSubmission,
+    rejectionNote,
+    rejectedAt,
+    reopenReason,
+    reopenedAt,
+    reopenedById,
+    reopenedByName,
     barangay: typeof record.barangay === "string" ? record.barangay : undefined,
     estimatedHours: typeof record.estimatedHours === "number" ? record.estimatedHours : undefined,
     budgetImpact: typeof record.budgetImpact === "number" ? record.budgetImpact : undefined,
@@ -382,12 +599,42 @@ export const createTask = async (
 
   await set(newTaskRef, newTask);
 
+  const taskTitle =
+    typeof newTask.title === "string" && newTask.title.trim().length > 0
+      ? newTask.title
+      : "Task";
+  const leadId =
+    typeof newTask.assigneeId === "string" ? newTask.assigneeId : undefined;
+  const leadName =
+    typeof newTask.assigneeName === "string" ? newTask.assigneeName : undefined;
+  const teamMemberIds = Array.isArray(newTask.teamMemberIds)
+    ? newTask.teamMemberIds.filter(
+        (item): item is string => typeof item === "string",
+      )
+    : [];
+  const statusValue =
+    typeof newTask.status === "string" ? newTask.status : "pending_assignment";
+  if (statusValue !== "pending_assignment" && (leadId || teamMemberIds.length > 0)) {
+    await notifyAssignment({
+      taskId,
+      taskTitle,
+      leadId,
+      leadName,
+      teamMemberIds,
+    });
+  }
+
   // Create activity log
   await logTaskActivity(taskId, "created", `Task "${newTask.title}" created`);
 };
 
 export const assignTask = async (taskId: string, assigneeId: string, assigneeName: string, assignment?: TaskAssignmentDetails) => {
   const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
+  const existingSnap = await get(taskRef);
+  const taskTitle =
+    existingSnap.exists() && typeof existingSnap.val()?.title === "string"
+      ? existingSnap.val().title
+      : "Task";
   const updatePayload: Record<string, unknown> = {
     assigneeId,
     assigneeName,
@@ -405,17 +652,13 @@ export const assignTask = async (taskId: string, assigneeId: string, assigneeNam
   // Activity log
   await logTaskActivity(taskId, "assigned", `Assigned to ${assigneeName} (${assignment?.teamName || ""})`);
 
-  // Notify assignee
-  try {
-    await createNotification(assigneeId, {
-      type: "assignment",
-      title: "New Task Assignment",
-      message: `You have been assigned a new task`,
-      taskId,
-    });
-  } catch {
-    // Non-critical
-  }
+  await notifyAssignment({
+    taskId,
+    taskTitle,
+    leadId: assigneeId,
+    leadName: assigneeName,
+    teamMemberIds: assignment?.teamMemberIds,
+  });
 };
 
 export const updateTask = async (
@@ -423,6 +666,14 @@ export const updateTask = async (
   payload: UpdateTaskPayload,
 ) => {
   const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
+  const shouldNotifyAssignment =
+    "teamMemberIds" in payload ||
+    "assigneeId" in payload ||
+    "assigneeName" in payload;
+  const existingSnapshot = shouldNotifyAssignment ? await get(taskRef) : null;
+  const existingTask = existingSnapshot?.exists()
+    ? (existingSnapshot.val() as Record<string, unknown>)
+    : undefined;
   const updatePayload: Record<string, unknown> = { updatedAt: Date.now() };
   const changedKeys: string[] = [];
 
@@ -503,6 +754,114 @@ export const updateTask = async (
     "updated",
     `Task updated: ${Array.from(new Set(changedKeys)).join(", ")}`,
   );
+
+  if (shouldNotifyAssignment) {
+    const taskTitle =
+      (typeof payload.title === "string" && payload.title.trim()) ||
+      (typeof existingTask?.title === "string" ? existingTask.title : "Task");
+    const leadId =
+      ("assigneeId" in payload
+        ? readString(payload.assigneeId)
+        : readString(existingTask?.assigneeId)) || undefined;
+    const leadName =
+      ("assigneeName" in payload
+        ? readString(payload.assigneeName)
+        : readString(existingTask?.assigneeName)) || undefined;
+    const teamMemberIds =
+      "teamMemberIds" in payload
+        ? Array.isArray(payload.teamMemberIds)
+          ? payload.teamMemberIds
+          : []
+        : Array.isArray(existingTask?.teamMemberIds)
+          ? (existingTask?.teamMemberIds as string[])
+          : [];
+
+    if (leadId || teamMemberIds.length > 0) {
+      await notifyAssignment({
+        taskId,
+        taskTitle,
+        leadId,
+        leadName,
+        teamMemberIds,
+      });
+    }
+  }
+};
+
+export const submitTaskForReview = async (
+  taskId: string,
+  submission: TaskSubmissionInput,
+) => {
+  const trimmedNote = submission.note.trim();
+  if (!trimmedNote) {
+    throw new Error("Submission note is required.");
+  }
+  if (!submission.submitterId) {
+    throw new Error("Submitter ID is required.");
+  }
+
+  const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
+  const snapshot = await get(taskRef);
+  if (!snapshot.exists()) {
+    throw new Error("Task not found.");
+  }
+  const taskRecord = snapshot.val() as Record<string, unknown>;
+  const attachments = submission.attachments || [];
+  const uploadedUrls = await Promise.all(
+    attachments.map(async (file, idx) => {
+      const safeName =
+        typeof file.name === "string" && file.name.trim().length > 0
+          ? file.name
+          : `attachment-${idx + 1}`;
+      const evidenceRef = storageRef(
+        storage,
+        `evidence/${taskId}/${submission.submitterId}/${safeName}`,
+      );
+      await uploadBytes(evidenceRef, file);
+      return getDownloadURL(evidenceRef);
+    }),
+  );
+
+  const now = Date.now();
+  const latestSubmission: TaskSubmissionMetadata = {
+    note: trimmedNote,
+    submitterId: submission.submitterId,
+    submitterName: submission.submitterName,
+    submittedAt: now,
+    attachments: uploadedUrls,
+  };
+
+  await update(taskRef, {
+    status: "for_review",
+    latestSubmission,
+    rejectionNote: null,
+    rejectedAt: null,
+    feedback: null,
+    updatedAt: now,
+  });
+
+  await logTaskActivity(
+    taskId,
+    "submitted",
+    `Submitted for review by ${submission.submitterName}`,
+    submission.submitterId,
+    submission.submitterName,
+  );
+
+  await notifyTaskStakeholders(
+    taskId,
+    { ...taskRecord, status: "for_review" },
+    {
+      type: "approval_needed",
+      title: "Task Submitted for Review",
+      message: `${submission.submitterName || "An employee"} submitted "${getRecordTitle(taskRecord)}" for review.`,
+      actorId: submission.submitterId,
+      actorName: submission.submitterName,
+      statusFrom: getRecordStatus(taskRecord),
+      statusTo: "for_review",
+    },
+    submission.submitterId,
+  );
 };
 
 export const deleteTask = async (taskId: string) => {
@@ -528,6 +887,11 @@ export const reassignTask = async (
   oldAssigneeName?: string
 ) => {
   const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
+  const existingSnap = await get(taskRef);
+  const taskTitle =
+    existingSnap.exists() && typeof existingSnap.val()?.title === "string"
+      ? existingSnap.val().title
+      : "Task";
   const updatePayload: Record<string, unknown> = {
     assigneeId: newAssigneeId,
     assigneeName: newAssigneeName,
@@ -547,35 +911,64 @@ export const reassignTask = async (
     `Reassigned from ${oldAssigneeName || "unassigned"} to ${newAssigneeName}`
   );
 
-  // Notify new assignee
-  try {
-    await createNotification(newAssigneeId, {
-      type: "reassignment",
-      title: "Task Reassigned to You",
-      message: `A task has been reassigned to you`,
-      taskId,
-    });
-  } catch {
-    // Non-critical
-  }
+  await notifyAssignment({
+    taskId,
+    taskTitle,
+    leadId: newAssigneeId,
+    leadName: newAssigneeName,
+    teamMemberIds: newTeam?.teamMemberIds,
+  });
 };
 
-export const updateTaskStatus = async (taskId: string, status: TaskStatus) => {
+export const updateTaskStatus = async (
+  taskId: string,
+  status: TaskStatus,
+  actor?: TaskActor,
+) => {
   const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
+  const snapshot = await get(taskRef);
+  if (!snapshot.exists()) {
+    throw new Error("Task not found.");
+  }
+
+  const taskRecord = snapshot.val() as Record<string, unknown>;
+  const previousStatus = getRecordStatus(taskRecord);
+  if (previousStatus === status) return;
+  if (previousStatus === "completed" && status !== "completed") {
+    throw new Error("Completed tasks can only be reopened with undo.");
+  }
+
   await update(taskRef, {
     status,
     updatedAt: Date.now(),
   });
 
-  const statusLabels: Record<TaskStatus, string> = {
-    pending_assignment: "Pending Assignment",
-    todo: "To Do",
-    in_progress: "In Progress",
-    for_review: "For Review",
-    completed: "Completed",
-  };
+  const actorName = actor?.name || "Someone";
+  await logTaskActivity(
+    taskId,
+    "status_change",
+    `${actorName} changed status from "${TASK_STATUS_LABELS[previousStatus]}" to "${TASK_STATUS_LABELS[status]}"`,
+    actor?.id,
+    actor?.name,
+  );
 
-  await logTaskActivity(taskId, "status_change", `Status changed to "${statusLabels[status]}"`);
+  await notifyTaskStakeholders(
+    taskId,
+    { ...taskRecord, status },
+    {
+      type: status === "completed" ? "completed" : "status_change",
+      title:
+        status === "completed"
+          ? "Task Completed"
+          : `Task Moved to ${TASK_STATUS_LABELS[status]}`,
+      message: `${actorName} moved "${getRecordTitle(taskRecord)}" from ${TASK_STATUS_LABELS[previousStatus]} to ${TASK_STATUS_LABELS[status]}.`,
+      actorId: actor?.id,
+      actorName: actor?.name,
+      statusFrom: previousStatus,
+      statusTo: status,
+    },
+    actor?.id,
+  );
 };
 
 async function generateAuditHash(taskData: any): Promise<string> {
@@ -586,31 +979,147 @@ async function generateAuditHash(taskData: any): Promise<string> {
   return hashHex;
 }
 
-export const verifyTask = async (taskId: string, approve: boolean, feedback?: string) => {
+export const verifyTask = async (
+  taskId: string,
+  approve: boolean,
+  feedback?: string,
+  actor?: TaskActor,
+) => {
   const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
+  const snapshot = await get(taskRef);
+  if (!snapshot.exists()) {
+    throw new Error("Task not found.");
+  }
+  const taskData = snapshot.val() as Record<string, unknown>;
+  const actorName =
+    actor?.name || (approve ? "Department head" : "Reviewer");
 
   if (approve) {
-    const snapshot = await get(taskRef);
-    const taskData = snapshot.val();
     const hash = await generateAuditHash({ ...taskData, approvedAt: Date.now() });
 
     await update(taskRef, {
       status: "completed",
       auditHash: hash,
       updatedAt: Date.now(),
-      feedback: feedback || null
+      feedback: feedback || null,
+      rejectionNote: null,
+      rejectedAt: null,
     });
 
-    await logTaskActivity(taskId, "approved", "Task approved and completed");
+    await logTaskActivity(
+      taskId,
+      "approved",
+      `${actorName} approved and completed the task`,
+      actor?.id,
+      actor?.name,
+    );
+
+    await notifyTaskStakeholders(
+      taskId,
+      { ...taskData, status: "completed" },
+      {
+        type: "completed",
+        title: "Task Completed",
+        message: `${actorName} approved and completed "${getRecordTitle(taskData)}".`,
+        actorId: actor?.id,
+        actorName: actor?.name,
+        statusFrom: getRecordStatus(taskData),
+        statusTo: "completed",
+      },
+      actor?.id,
+    );
   } else {
+    const reason = feedback || "Needs rework";
     await update(taskRef, {
       status: "in_progress",
       feedback: feedback || null,
+      rejectionNote: reason,
+      rejectedAt: Date.now(),
       updatedAt: Date.now(),
     });
 
-    await logTaskActivity(taskId, "rejected", `Task rejected: ${feedback || "Needs rework"}`);
+    await logTaskActivity(
+      taskId,
+      "rejected",
+      `${actorName} returned task for rework: ${reason}`,
+      actor?.id,
+      actor?.name,
+    );
+
+    await notifyTaskStakeholders(
+      taskId,
+      { ...taskData, status: "in_progress" },
+      {
+        type: "status_change",
+        title: "Task Returned for Rework",
+        message: `${actorName} returned "${getRecordTitle(taskData)}" for rework.`,
+        actorId: actor?.id,
+        actorName: actor?.name,
+        statusFrom: getRecordStatus(taskData),
+        statusTo: "in_progress",
+        reason,
+      },
+      actor?.id,
+    );
   }
+};
+
+export const undoCompletedTask = async (
+  taskId: string,
+  undoInput: TaskUndoInput,
+) => {
+  const reason = undoInput.reason.trim();
+  if (!reason) {
+    throw new Error("Undo reason is required.");
+  }
+
+  const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
+  const snapshot = await get(taskRef);
+  if (!snapshot.exists()) {
+    throw new Error("Task not found.");
+  }
+
+  const taskData = snapshot.val() as Record<string, unknown>;
+  if (getRecordStatus(taskData) !== "completed") {
+    throw new Error("Only completed tasks can be reopened.");
+  }
+
+  const now = Date.now();
+  const actor = undoInput.actor;
+  const actorName = actor?.name || "Department head";
+
+  await update(taskRef, {
+    status: "in_progress",
+    reopenReason: reason,
+    reopenedAt: now,
+    reopenedById: actor?.id || "",
+    reopenedByName: actor?.name || "",
+    updatedAt: now,
+  });
+
+  await logTaskActivity(
+    taskId,
+    "undo_completed",
+    `${actorName} reopened completed task: ${reason}`,
+    actor?.id,
+    actor?.name,
+  );
+
+  await notifyTaskStakeholders(
+    taskId,
+    { ...taskData, status: "in_progress" },
+    {
+      type: "undo",
+      title: "Task Reopened",
+      message: `${actorName} reopened "${getRecordTitle(taskData)}" for additional work.`,
+      actorId: actor?.id,
+      actorName: actor?.name,
+      statusFrom: "completed",
+      statusTo: "in_progress",
+      reason,
+    },
+    actor?.id,
+  );
 };
 
 // ─── Activity Log ────────────────────────────────────────────────

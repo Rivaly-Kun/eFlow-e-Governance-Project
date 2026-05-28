@@ -1,12 +1,18 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { MondayBoard } from "../ui/MondayBoard";
+import { NotificationBell } from "../ui/NotificationBell";
 import {
   subscribeToTasks,
   seedTasksIfEmpty,
   updateTaskStatus,
+  submitTaskForReview,
   Task,
 } from "../../services/taskService";
 import { useAuth } from "../../contexts/AuthContext";
+import {
+  subscribeToNotifications,
+  type Notification,
+} from "../../services/notificationService";
 import {
   Settings,
   CheckCircle2,
@@ -2072,6 +2078,7 @@ function AICoaching() {
 
 export function EmployeeTaskBoard() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const { userProfile } = useAuth();
 
   useEffect(() => {
@@ -2081,22 +2088,97 @@ export function EmployeeTaskBoard() {
 
     const unsubscribe = subscribeToTasks((data) => {
       // Filter to only show tasks assigned to this employee
-      const myTasks = data.filter((t) => t.assigneeId === userProfile.uid);
+      const myTasks = data.filter(
+        (t) =>
+          t.assigneeId === userProfile.uid ||
+          (t.teamMemberIds || []).includes(userProfile.uid),
+      );
       setTasks(myTasks);
     });
     return () => unsubscribe();
   }, [userProfile?.uid]);
 
+  useEffect(() => {
+    if (!userProfile?.uid) return;
+    const unsub = subscribeToNotifications(userProfile.uid, (data) => {
+      setNotifications(data);
+    });
+    return () => unsub();
+  }, [userProfile?.uid]);
+
+  const assignmentBanner = useMemo(() => {
+    if (!userProfile?.uid) return null;
+    const unreadAssignment = notifications.find(
+      (n) => !n.read && n.type === "assignment",
+    );
+    const referencedTask = unreadAssignment?.taskId
+      ? tasks.find((t) => t.id === unreadAssignment.taskId)
+      : null;
+    const newestTodo = tasks
+      .filter((t) => t.status === "todo")
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
+    const bannerTask = referencedTask || newestTodo || null;
+
+    if (!bannerTask && !unreadAssignment) return null;
+
+    return {
+      title:
+        bannerTask?.title || unreadAssignment?.taskTitle || "New assignment",
+      lead: bannerTask?.assigneeName || "TBD",
+      due: bannerTask?.deadline || bannerTask?.dueDate || "",
+    };
+  }, [notifications, tasks, userProfile?.uid]);
+
   const handleExecute = (taskId: string) =>
-    updateTaskStatus(taskId, "in_progress");
-  const handleSubmit = (taskId: string) =>
-    updateTaskStatus(taskId, "for_review");
+    updateTaskStatus(taskId, "in_progress", {
+      id: userProfile?.uid,
+      name: userProfile?.fullName || userProfile?.email || "Employee",
+    });
+  const handleSubmit = async (
+    taskId: string,
+    submission: { note: string; attachments: File[] },
+  ) => {
+    if (!userProfile) return;
+    await submitTaskForReview(taskId, {
+      note: submission.note,
+      attachments: submission.attachments,
+      submitterId: userProfile.uid,
+      submitterName: userProfile.fullName || userProfile.email || "Unknown",
+    });
+  };
 
   return (
     <div className="p-8 h-full bg-neutral-50">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-[12px] text-neutral-500 font-['Lexend:Regular',_sans-serif]">
+          Employee Task Board
+        </div>
+        <NotificationBell userId={userProfile?.uid} />
+      </div>
+      {assignmentBanner && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+          <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center">
+            <Bell size={16} />
+          </div>
+          <div className="flex-1">
+            <div className="text-[11px] uppercase tracking-wider text-amber-600 font-['Lexend:Medium',_sans-serif]">
+              New Assignment
+            </div>
+            <div className="text-[13px] text-neutral-800 font-['Lexend:Medium',_sans-serif]">
+              {assignmentBanner.title}
+            </div>
+            <div className="text-[11px] text-neutral-600 mt-0.5">
+              Lead: {assignmentBanner.lead}
+              {assignmentBanner.due ? ` - Due ${assignmentBanner.due}` : ""}
+            </div>
+          </div>
+        </div>
+      )}
       <MondayBoard
         tasks={tasks}
         role="employee"
+        currentUserId={userProfile?.uid}
+        currentUserName={userProfile?.fullName || userProfile?.email || ""}
         onExecute={handleExecute}
         onSubmit={handleSubmit}
       />
@@ -2155,7 +2237,18 @@ export function EmployeeContent({
   activeSection: string;
   activePage?: string;
 }) {
-  const label = activePage || "Blank Dashboard";
+  const sectionPages = employeePages[activeSection] || {};
+  const resolvedPage =
+    activePage ||
+    employeeDefaultPages[activeSection] ||
+    Object.keys(sectionPages)[0];
+  const Page = resolvedPage ? sectionPages[resolvedPage] : undefined;
+
+  if (Page) {
+    return <Page />;
+  }
+
+  const label = resolvedPage || "Blank Dashboard";
 
   return (
     <div className="h-full flex items-center justify-center text-center text-neutral-400">

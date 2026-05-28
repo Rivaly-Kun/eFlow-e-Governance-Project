@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { MondayBoard } from "../ui/MondayBoard";
+import { NotificationBell } from "../ui/NotificationBell";
 import {
   createTask,
   assignTask,
@@ -6604,15 +6605,31 @@ export function DeptHeadTaskBoard() {
 
   return (
     <div className="p-8 h-full bg-neutral-50">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-[12px] text-neutral-500 font-['Lexend:Regular',_sans-serif]">
+          Department Task Board
+        </div>
+        <NotificationBell userId={userProfile?.uid} />
+      </div>
       <MondayBoard
         tasks={deptTasks}
         employees={deptEmployees}
         employeeNotes={notes}
         role="depthead"
         departmentFilter={userProfile?.departmentId}
+        currentUserId={userProfile?.uid}
+        currentUserName={userProfile?.fullName || userProfile?.email || ""}
         onCreateTask={createTask}
         onAssign={assignTask}
-        onVerify={verifyTask}
+        onVerify={(taskId, approve, feedback) =>
+          verifyTask(taskId, approve, feedback, {
+            id: userProfile?.uid,
+            name:
+              userProfile?.fullName ||
+              userProfile?.email ||
+              "Department Head",
+          })
+        }
         onUpdateTask={updateTask}
         onDeleteTask={deleteTask}
       />

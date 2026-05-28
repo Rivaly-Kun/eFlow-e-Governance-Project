@@ -2,10 +2,7 @@ import { useState, useEffect } from "react";
 import svgPaths from "../../imports/svg-svkvdgwod6";
 import { useAuth } from "../../contexts/AuthContext";
 import { MigrationTool } from "../SuperAdmin/MigrationTool";
-import {
-  subscribeToNotifications,
-  markAllNotificationsRead,
-} from "../../services/notificationService";
+import { NotificationBell } from "../ui/NotificationBell";
 import {
   Search,
   Dashboard,
@@ -92,37 +89,6 @@ function Avatar() {
         className="absolute border border-neutral-200 border-solid inset-0 pointer-events-none rounded-[999px]"
       />
     </div>
-  );
-}
-
-function NotificationBell({ userId }: { userId: string }) {
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  useEffect(() => {
-    if (!userId) return;
-    const unsub = subscribeToNotifications(userId, (notifications) => {
-      setUnreadCount(notifications.filter((n) => !n.read).length);
-    });
-    return () => unsub();
-  }, [userId]);
-
-  return (
-    <button
-      onClick={() => markAllNotificationsRead(userId)}
-      className="box-border content-stretch flex flex-row items-center justify-center overflow-clip p-0 relative rounded-lg shrink-0 cursor-pointer transition-all duration-500 hover:bg-neutral-50 text-neutral-500 hover:text-neutral-700 size-10 min-w-10 group"
-      title={
-        unreadCount > 0
-          ? `${unreadCount} unread notifications. Click to mark read.`
-          : "No new notifications"
-      }
-    >
-      <Notification size={16} />
-      {unreadCount > 0 && (
-        <span className="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-[3px]">
-          {unreadCount > 9 ? "9+" : unreadCount}
-        </span>
-      )}
-    </button>
   );
 }
 
@@ -1276,7 +1242,7 @@ function IconNavigation({
             </svg>
           </IconNavButton>
         )}
-        {user?.uid && <NotificationBell userId={user.uid} />}
+        {user?.uid && <NotificationBell userId={user.uid} compact />}
         <IconNavButton
           isActive={activeSection === "settings"}
           onClick={() => onSectionChange("settings")}

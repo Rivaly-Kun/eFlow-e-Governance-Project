@@ -227,6 +227,65 @@ function normalizeTask(id: string, val: any): Task {
     return trimmed.length > 0 ? trimmed : undefined;
   };
 
+  const latestSubmissionRaw =
+    val && typeof val.latestSubmission === "object" ? val.latestSubmission : null;
+  const latestSubmission = latestSubmissionRaw
+    ? {
+        note:
+          typeof latestSubmissionRaw.note === "string"
+            ? latestSubmissionRaw.note
+            : "",
+        submitterId:
+          typeof latestSubmissionRaw.submitterId === "string"
+            ? latestSubmissionRaw.submitterId
+            : "",
+        submitterName:
+          typeof latestSubmissionRaw.submitterName === "string"
+            ? latestSubmissionRaw.submitterName
+            : "",
+        submittedAt:
+          typeof latestSubmissionRaw.submittedAt === "number"
+            ? latestSubmissionRaw.submittedAt
+            : 0,
+        attachments: Array.isArray(latestSubmissionRaw.attachments)
+          ? latestSubmissionRaw.attachments.filter(
+              (item: unknown): item is string => typeof item === "string",
+            )
+          : [],
+      }
+    : undefined;
+  const hasLatestSubmission = Boolean(
+    latestSubmission &&
+      (latestSubmission.note ||
+        latestSubmission.submitterId ||
+        latestSubmission.submitterName ||
+        latestSubmission.submittedAt ||
+        latestSubmission.attachments.length > 0),
+  );
+  const rejectionNote =
+    typeof val.rejectionNote === "string"
+      ? val.rejectionNote
+      : typeof val.feedback === "string"
+        ? val.feedback
+        : undefined;
+  const rejectedAt =
+    typeof val.rejectedAt === "number" ? val.rejectedAt : undefined;
+  const reopenReason =
+    typeof val.reopenReason === "string" && val.reopenReason.trim().length > 0
+      ? val.reopenReason
+      : undefined;
+  const reopenedAt =
+    typeof val.reopenedAt === "number" ? val.reopenedAt : undefined;
+  const reopenedById =
+    typeof val.reopenedById === "string" && val.reopenedById.trim().length > 0
+      ? val.reopenedById
+      : undefined;
+  const reopenedByName =
+    typeof val.reopenedByName === "string" &&
+    val.reopenedByName.trim().length > 0
+      ? val.reopenedByName
+      : undefined;
+
   return {
     id,
     title: val.title || "Untitled",
@@ -247,6 +306,14 @@ function normalizeTask(id: string, val: any): Task {
     deadline: val.deadline || val.dueDate || undefined,
     dueDate: val.dueDate || undefined,
     tags: Array.isArray(val.tags) ? val.tags : [],
+    feedback: typeof val.feedback === "string" ? val.feedback : undefined,
+    latestSubmission: hasLatestSubmission ? latestSubmission : undefined,
+    rejectionNote,
+    rejectedAt,
+    reopenReason,
+    reopenedAt,
+    reopenedById,
+    reopenedByName,
     recommendedEmployeeIds: Array.isArray(val.recommendedEmployeeIds)
       ? val.recommendedEmployeeIds
       : [],

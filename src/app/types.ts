@@ -90,6 +90,14 @@ export interface Task {
   deadline?: string;
   dueDate?: string;
   tags?: string[];
+  feedback?: string;
+  latestSubmission?: TaskSubmission;
+  rejectionNote?: string;
+  rejectedAt?: number;
+  reopenReason?: string;
+  reopenedAt?: number;
+  reopenedById?: string;
+  reopenedByName?: string;
   recommendedEmployeeIds?: string[];
   recommendationReasoning?: string;
   recommendationSource?: "llm" | "fallback" | "import";
@@ -108,6 +116,14 @@ export interface Task {
   importBatchId?: string;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface TaskSubmission {
+  note: string;
+  submitterId: string;
+  submitterName: string;
+  submittedAt: number;
+  attachments: string[];
 }
 
 // ─── Dashboard Metrics (computed) ────────────────────────────────
