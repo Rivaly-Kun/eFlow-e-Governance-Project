@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { MondayBoard } from "../ui/MondayBoard";
-import { NotificationBell } from "../ui/NotificationBell";
 import {
   subscribeToTasks,
   seedTasksIfEmpty,
@@ -2130,10 +2129,7 @@ export function EmployeeTaskBoard() {
   }, [notifications, tasks, userProfile?.uid]);
 
   const handleExecute = (taskId: string) =>
-    updateTaskStatus(taskId, "in_progress", {
-      id: userProfile?.uid,
-      name: userProfile?.fullName || userProfile?.email || "Employee",
-    });
+    updateTaskStatus(taskId, "in_progress");
   const handleSubmit = async (
     taskId: string,
     submission: { note: string; attachments: File[] },
@@ -2149,12 +2145,6 @@ export function EmployeeTaskBoard() {
 
   return (
     <div className="p-8 h-full bg-neutral-50">
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-[12px] text-neutral-500 font-['Lexend:Regular',_sans-serif]">
-          Employee Task Board
-        </div>
-        <NotificationBell userId={userProfile?.uid} />
-      </div>
       {assignmentBanner && (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
           <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center">
@@ -2178,7 +2168,6 @@ export function EmployeeTaskBoard() {
         tasks={tasks}
         role="employee"
         currentUserId={userProfile?.uid}
-        currentUserName={userProfile?.fullName || userProfile?.email || ""}
         onExecute={handleExecute}
         onSubmit={handleSubmit}
       />

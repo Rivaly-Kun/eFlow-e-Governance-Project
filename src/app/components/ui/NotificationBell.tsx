@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import ReactDOM from "react-dom";
 import { Bell, CheckCheck, X } from "lucide-react";
 import {
   markAllNotificationsRead,
@@ -30,7 +31,9 @@ export function NotificationBell({
 }) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -38,10 +41,34 @@ export function NotificationBell({
     return () => unsubscribe();
   }, [userId]);
 
+  // Position the panel whenever it opens
+  useEffect(() => {
+    if (!open || !buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const panelHeight = 420;
+    const spaceBelow = window.innerHeight - rect.top;
+    const top =
+      spaceBelow >= panelHeight
+        ? rect.top
+        : Math.max(8, rect.bottom - panelHeight);
+    setPanelStyle({
+      position: "fixed",
+      top,
+      left: rect.right + 12,
+      zIndex: 9999,
+      width: 320,
+    });
+  }, [open]);
+
+  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handlePointerDown = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        !buttonRef.current?.contains(target) &&
+        !panelRef.current?.contains(target)
+      ) {
         setOpen(false);
       }
     };
@@ -58,27 +85,13 @@ export function NotificationBell({
 
   const buttonSize = compact ? "size-10 min-w-10" : "h-9 w-9";
 
-  return (
-    <div ref={rootRef} className={`relative ${className}`}>
-      <button
-        onClick={() => setOpen((value) => !value)}
-        className={`relative flex items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-600 transition hover:bg-neutral-50 hover:text-neutral-900 ${buttonSize}`}
-        title={
-          unreadCount > 0
-            ? `${unreadCount} unread notifications`
-            : "No new notifications"
-        }
-      >
-        <Bell size={compact ? 16 : 15} />
-        {unreadCount > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
-            {unreadCount > 9 ? "9+" : unreadCount}
-          </span>
-        )}
-      </button>
-
-      {open && (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-[320px] overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl">
+  const panel = open
+    ? ReactDOM.createPortal(
+        <div
+          ref={panelRef}
+          style={panelStyle}
+          className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl"
+        >
           <div className="flex items-center justify-between border-b border-neutral-100 px-3 py-2.5">
             <div>
               <div className="text-[11px] font-['Lexend:SemiBold',_sans-serif] uppercase tracking-[0.12em] text-neutral-400">
@@ -158,8 +171,33 @@ export function NotificationBell({
               })
             )}
           </div>
-        </div>
-      )}
-    </div>
+        </div>,
+        document.body,
+      )
+    : null;
+
+  return (
+    <>
+      <div className={`relative ${className}`}>
+        <button
+          ref={buttonRef}
+          onClick={() => setOpen((value) => !value)}
+          className={`relative flex items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-600 transition hover:bg-neutral-50 hover:text-neutral-900 ${buttonSize}`}
+          title={
+            unreadCount > 0
+              ? `${unreadCount} unread notifications`
+              : "No new notifications"
+          }
+        >
+          <Bell size={compact ? 16 : 15} />
+          {unreadCount > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </button>
+      </div>
+      {panel}
+    </>
   );
 }

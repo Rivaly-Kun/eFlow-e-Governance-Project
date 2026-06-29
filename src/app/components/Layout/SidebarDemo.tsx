@@ -377,9 +377,9 @@ const roleNavConfigs: Record<
         label: "User Management",
       },
       {
-        id: "departments",
+        id: "org_tree",
         icon: <Folder size={16} />,
-        label: "Departments",
+        label: "Org Structure",
       },
       { id: "migration", icon: <Renew size={16} />, label: "Migration Tool" },
       { id: "settings", icon: <Settings size={16} />, label: "Settings" },
@@ -542,15 +542,15 @@ function getSidebarContent(role: string, section: string): SidebarContent {
           },
         ],
       },
-      departments: {
-        title: "Departments",
+      org_tree: {
+        title: "Org Structure",
         sections: [
           {
             title: "Management",
             items: [
               {
                 icon: <Folder size={16} className="text-neutral-900" />,
-                label: "All Departments",
+                label: "Org Structure",
                 isActive: true,
               },
             ],
@@ -1242,7 +1242,7 @@ function IconNavigation({
             </svg>
           </IconNavButton>
         )}
-        {user?.uid && <NotificationBell userId={user.uid} compact />}
+        {user?.id && <NotificationBell userId={user.id} compact />}
         <IconNavButton
           isActive={activeSection === "settings"}
           onClick={() => onSectionChange("settings")}

@@ -54,7 +54,7 @@ function computeSkillMatch(
   employeeNotes?: EmployeeNotesMap,
 ): number {
   // Include requiredSkills in task text
-  const taskText = `${task.title} ${task.description || ""} ${(task.tags || []).join(" ")} ${((task as Record<string, unknown>).requiredSkills as string[] || []).join(" ")}`;
+  const taskText = `${task.title} ${task.description || ""} ${(task.tags || []).join(" ")} ${((task as unknown as Record<string, unknown>).requiredSkills as string[] || []).join(" ")}`;
 
   const notes = employeeNotes?.[employee.id];
   const noteText = notes

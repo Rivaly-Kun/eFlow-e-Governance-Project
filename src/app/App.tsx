@@ -5,13 +5,16 @@ import { ToastProvider } from "./components/ui/Toast";
 import { seedRolesIfEmpty } from "./services/seedRoles";
 import { useEffect } from "react";
 
-// ─── Role mapping: Firebase user role → SidebarDemo role key ────
-function mapFirebaseRoleToSidebar(role: string): string {
+// ─── Role mapping: user role → SidebarDemo role key ──────────────
+function mapRoleToSidebar(role: string): string {
   switch (role) {
     case "super_admin":
       return "superadmin";
     case "department_head":
+    case "dept_head":
     case "depthead":
+      return "depthead";
+    case "team_leader":
       return "depthead";
     case "employee":
       return "employee";
@@ -85,7 +88,7 @@ function AppContent() {
   if (!user || !userProfile) return <LoginPage />;
 
   // Map role and render dashboard
-  const sidebarRole = mapFirebaseRoleToSidebar(userProfile.role);
+  const sidebarRole = mapRoleToSidebar(userProfile.role);
 
   return <Frame760 role={sidebarRole} />;
 }

@@ -4,26 +4,11 @@ import React, {
   useState,
   useEffect,
   useCallback,
-} from "react";
-import {
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut,
-  sendPasswordResetEmail,
-  User,
-} from "firebase/auth";
-import { ref, onValue, set, get, update } from "firebase/database";
-import { auth, database } from "../../firebase";
-import type { UserProfile, UserRole } from "../types";
-
-type ManagedUserEmployeeNotes = {
-  strengths: string;
-  weaknesses: string;
-  notes: string;
-  tags: string[];
-  updatedBy?: string;
-};
+} from 'react';
+import { User } from '@supabase/supabase-js';
+import { supabase } from '../../lib/supabase';
+import { fetchProfileById } from '../../lib/supabaseService';
+import type { UserProfile, SupabaseUserProfile, UserRole } from '../types';
 
 // ─── Context Value ───────────────────────────────────────────────
 interface AuthContextValue {
@@ -37,16 +22,14 @@ interface AuthContextValue {
     password: string,
     fullName: string,
     role: UserRole,
-    departmentId?: string,
+    orgId?: string,
   ) => Promise<void>;
-  /** Create a user on behalf of admin — re-authenticates admin after */
   createManagedUser: (
     adminEmail: string,
     adminPassword: string,
     newEmail: string,
     newPassword: string,
-    profile: Omit<UserProfile, "uid" | "createdAt" | "lastLogin">,
-    employeeNotes?: ManagedUserEmployeeNotes,
+    profile: Omit<UserProfile, 'uid' | 'createdAt' | 'lastLogin'>,
   ) => Promise<string>;
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -55,6 +38,24 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+// ─── Convert Supabase profile to legacy UserProfile format ───────
+function toUserProfile(sp: SupabaseUserProfile): UserProfile {
+  return {
+    uid: sp.id,
+    employeeId: sp.employee_id,
+    fullName: sp.full_name,
+    email: sp.email,
+    role: sp.role,
+    departmentId: sp.org_id || '',
+    skills: sp.skills,
+    workload: sp.workload,
+    burnoutLevel: sp.burnout_level,
+    status: sp.is_active ? 'active' : 'inactive',
+    createdAt: new Date(sp.created_at).getTime(),
+    lastLogin: new Date(sp.updated_at).getTime(),
+  };
+}
+
 // ─── Provider ────────────────────────────────────────────────────
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -62,132 +63,97 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Listen to Firebase Auth state
+  // Listen to Supabase Auth state
   useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser((prevUser) => {
-        if (prevUser?.uid === "SuperAdmin") return prevUser;
-        return firebaseUser;
-      });
-      if (!firebaseUser) {
-        setUserProfile((prevProfile) => {
-          if (prevProfile?.uid === "SuperAdmin") return prevProfile;
-          return null;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        const currentUser = session?.user || null;
+        setUser((prevUser) => {
+          if (prevUser?.id === 'SuperAdmin' && !currentUser) return prevUser;
+          return currentUser;
         });
+
+        if (currentUser) {
+          try {
+            const sp = await fetchProfileById(currentUser.id);
+            if (sp) {
+              setUserProfile(toUserProfile(sp));
+            } else {
+              setUserProfile(null);
+            }
+          } catch {
+            setUserProfile(null);
+          }
+        } else {
+          setUserProfile((prevProfile) => {
+            if (prevProfile?.uid === 'SuperAdmin') return prevProfile;
+            return null;
+          });
+        }
+
         setLoading(false);
       }
-    });
-    return () => unsubAuth();
-  }, []);
-
-  // When user changes, subscribe to their /users/{uid} profile
-  useEffect(() => {
-    if (!user) return;
-
-    if (user.uid === "SuperAdmin") {
-      setLoading(false);
-      return;
-    }
-
-    const profileRef = ref(database, `users/${user.uid}`);
-    const unsub = onValue(
-      profileRef,
-      (snapshot) => {
-        if (snapshot.exists()) {
-          const val = snapshot.val();
-          setUserProfile({
-            uid: user.uid,
-            employeeId: val.employeeId || "",
-            fullName: val.fullName || val.name || "",
-            email: val.email || "",
-            role: val.role || "employee",
-            departmentId: val.departmentId || val.department || "",
-            skills: val.skills || {},
-            workload: typeof val.workload === "number" ? val.workload : 0,
-            burnoutLevel: val.burnoutLevel || "low",
-            status: val.status || "active",
-            createdAt: val.createdAt || 0,
-            lastLogin: val.lastLogin || 0,
-          });
-        } else {
-          setUserProfile(null);
-        }
-        setLoading(false);
-      },
-      (err) => {
-        console.error("Failed to read user profile:", err);
-        setError("Failed to load user profile. Please try again.");
-        setLoading(false);
-      },
     );
 
-    return () => unsub();
-  }, [user]);
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     setError(null);
     try {
       // ─── HARDCODED BYPASS FOR TESTING ───
       if (
-        (email === "admin" ||
-          email === "admin@gmail.com" ||
-          email === "admin@eflow.gov.ph") &&
-        password === "admin123"
+        (email === 'admin' ||
+          email === 'admin@gmail.com' ||
+          email === 'admin@eflow.gov.ph') &&
+        password === 'admin123'
       ) {
         const mockProfile: UserProfile = {
-          uid: "SuperAdmin",
-          employeeId: "ADMIN-000",
-          fullName: "Super Admin",
-          email: "admin@gmail.com",
-          role: "super_admin",
-          departmentId: "",
+          uid: 'SuperAdmin',
+          employeeId: 'ADMIN-000',
+          fullName: 'Super Admin',
+          email: 'admin@gmail.com',
+          role: 'super_admin',
+          departmentId: '',
           skills: {},
           workload: 0,
-          burnoutLevel: "low",
-          status: "active",
+          burnoutLevel: 'low',
+          status: 'active',
           createdAt: Date.now(),
           lastLogin: Date.now(),
         };
-        setUser({ uid: "SuperAdmin", email: "admin@gmail.com" } as User);
+        setUser({ id: 'SuperAdmin', email: 'admin@gmail.com' } as User);
         setUserProfile(mockProfile);
         setLoading(false);
         return;
       }
       // ─────────────────────────────────────
 
-      const cred = await signInWithEmailAndPassword(auth, email, password);
-
-      // Verify the user has a profile
-      const profileSnap = await get(ref(database, `users/${cred.user.uid}`));
-      if (!profileSnap.exists()) {
-        await signOut(auth);
-        throw new Error(
-          "No eFlow profile found for this account. Contact your IT administrator.",
-        );
-      }
-
-      const profile = profileSnap.val();
-      if (profile.status === "inactive") {
-        await signOut(auth);
-        throw new Error(
-          "Your account has been deactivated. Contact your IT administrator.",
-        );
-      }
-
-      // Update lastLogin
-      await update(ref(database, `users/${cred.user.uid}`), {
-        lastLogin: Date.now(),
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       });
+
+      if (authError) throw authError;
+
+      if (data.user) {
+        const sp = await fetchProfileById(data.user.id);
+        if (!sp) {
+          await supabase.auth.signOut();
+          throw new Error('No eFlow profile found for this account. Contact your IT administrator.');
+        }
+        if (!sp.is_active) {
+          await supabase.auth.signOut();
+          throw new Error('Your account has been deactivated. Contact your IT administrator.');
+        }
+      }
     } catch (err: any) {
       const msg =
-        err?.code === "auth/user-not-found" ||
-        err?.code === "auth/wrong-password"
-          ? "Invalid email or password."
-          : err?.code === "auth/invalid-credential"
-            ? "Invalid email or password."
-            : err?.code === "auth/too-many-requests"
-              ? "Too many attempts. Please try again later."
-              : err?.message || "Login failed.";
+        err?.message === 'Invalid login credentials'
+          ? 'Invalid email or password.'
+          : err?.message || 'Login failed.';
       setError(msg);
       throw err;
     }
@@ -199,38 +165,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       password: string,
       fullName: string,
       role: UserRole,
-      departmentId = "",
+      orgId = '',
     ) => {
       setError(null);
       try {
-        const cred = await createUserWithEmailAndPassword(
-          auth,
+        const { data, error: authError } = await supabase.auth.signUp({
           email,
           password,
-        );
+        });
 
-        const profileData: Omit<UserProfile, "uid"> = {
-          employeeId: "",
-          fullName,
-          email,
-          role,
-          departmentId,
-          skills: {},
-          workload: 0,
-          burnoutLevel: "low",
-          status: "active",
-          createdAt: Date.now(),
-          lastLogin: Date.now(),
-        };
+        if (authError) throw authError;
 
-        await set(ref(database, `users/${cred.user.uid}`), profileData);
+        if (data.user) {
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert({
+              id: data.user.id,
+              full_name: fullName,
+              email,
+              employee_id: '',
+              org_id: orgId || null,
+              role,
+              skills: {},
+              workload: 0,
+              burnout_level: 'low',
+              is_active: true,
+            });
+
+          if (profileError) throw profileError;
+        }
       } catch (err: any) {
         const msg =
-          err?.code === "auth/email-already-in-use"
-            ? "An account with this email already exists."
-            : err?.code === "auth/weak-password"
-              ? "Password must be at least 6 characters."
-              : err?.message || "Registration failed.";
+          err?.code === 'user_already_exists' || err?.message?.includes('already')
+            ? 'An account with this email already exists.'
+            : err?.message || 'Registration failed.';
         setError(msg);
         throw err;
       }
@@ -244,78 +212,75 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       adminPassword: string,
       newEmail: string,
       newPassword: string,
-      profile: Omit<UserProfile, "uid" | "createdAt" | "lastLogin">,
-      employeeNotes?: ManagedUserEmployeeNotes,
+      profile: Omit<UserProfile, 'uid' | 'createdAt' | 'lastLogin'>,
     ): Promise<string> => {
       setError(null);
       try {
-        // Create the new user (this signs us in as that user)
-        const cred = await createUserWithEmailAndPassword(
-          auth,
-          newEmail,
-          newPassword,
-        );
-        const newUid = cred.user.uid;
+        const { data, error: authError } = await supabase.auth.signUp({
+          email: newEmail,
+          password: newPassword,
+        });
 
-        // Write their profile
-        const now = Date.now();
-        const profileData = {
-          ...profile,
-          createdAt: now,
-          lastLogin: 0,
-        };
-        const updates: Record<string, unknown> = {
-          [`users/${newUid}`]: profileData,
-        };
+        if (authError) throw authError;
+        if (!data.user) throw new Error('Failed to create user');
 
-        if (employeeNotes) {
-          updates[`employeeNotes/${newUid}`] = {
-            strengths: employeeNotes.strengths,
-            weaknesses: employeeNotes.weaknesses,
-            notes: employeeNotes.notes,
-            tags: employeeNotes.tags,
-            updatedAt: now,
-            updatedBy: employeeNotes.updatedBy,
-          };
-        }
+        const newUid = data.user.id;
 
-        await update(ref(database), updates);
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: newUid,
+            full_name: profile.fullName,
+            email: profile.email,
+            employee_id: profile.employeeId || '',
+            org_id: profile.departmentId || null,
+            role: profile.role,
+            skills: profile.skills || {},
+            workload: profile.workload || 0,
+            burnout_level: profile.burnoutLevel || 'low',
+            is_active: profile.status !== 'inactive',
+          });
+
+        if (profileError) throw profileError;
 
         // Re-authenticate as admin
         if (
-          (adminEmail === "admin" ||
-            adminEmail === "admin@gmail.com" ||
-            adminEmail === "admin@eflow.gov.ph") &&
-          adminPassword === "admin123"
+          (adminEmail === 'admin' ||
+            adminEmail === 'admin@gmail.com' ||
+            adminEmail === 'admin@eflow.gov.ph') &&
+          adminPassword === 'admin123'
         ) {
-          await signOut(auth);
+          await supabase.auth.signOut();
         } else {
-          await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
+          await supabase.auth.signInWithPassword({
+            email: adminEmail,
+            password: adminPassword,
+          });
         }
 
         return newUid;
       } catch (err: any) {
-        // Try to re-authenticate admin even on error
         try {
           if (
-            (adminEmail === "admin" ||
-              adminEmail === "admin@gmail.com" ||
-              adminEmail === "admin@eflow.gov.ph") &&
-            adminPassword === "admin123"
+            (adminEmail === 'admin' ||
+              adminEmail === 'admin@gmail.com' ||
+              adminEmail === 'admin@eflow.gov.ph') &&
+            adminPassword === 'admin123'
           ) {
-            await signOut(auth);
+            await supabase.auth.signOut();
           } else {
-            await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
+            await supabase.auth.signInWithPassword({
+              email: adminEmail,
+              password: adminPassword,
+            });
           }
         } catch {
           // Best effort
         }
         const msg =
-          err?.code === "auth/email-already-in-use"
-            ? "An account with this email already exists."
-            : err?.code === "auth/weak-password"
-              ? "Password must be at least 6 characters."
-              : err?.message || "Failed to create user.";
+          err?.code === 'user_already_exists' || err?.message?.includes('already')
+            ? 'An account with this email already exists.'
+            : err?.message || 'Failed to create user.';
         setError(msg);
         throw err;
       }
@@ -325,9 +290,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const resetPassword = useCallback(async (email: string) => {
     try {
-      await sendPasswordResetEmail(auth, email);
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      if (error) throw error;
     } catch (err: any) {
-      setError(err?.message || "Failed to send password reset email.");
+      setError(err?.message || 'Failed to send password reset email.');
       throw err;
     }
   }, []);
@@ -335,16 +301,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     try {
       setUser((prevUser) => {
-        if (prevUser?.uid === "SuperAdmin") return null;
+        if (prevUser?.id === 'SuperAdmin') return null;
         return prevUser;
       });
       setUserProfile((prevProfile) => {
-        if (prevProfile?.uid === "SuperAdmin") return null;
+        if (prevProfile?.uid === 'SuperAdmin') return null;
         return prevProfile;
       });
-      await signOut(auth);
+      await supabase.auth.signOut();
     } catch (err: any) {
-      setError("Failed to sign out. Please try again.");
+      setError('Failed to sign out. Please try again.');
     }
   }, []);
 
@@ -373,7 +339,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 // ─── Hook ────────────────────────────────────────────────────────
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
+  if (!ctx) throw new Error('useAuth must be used within an AuthProvider');
   return ctx;
 }
 

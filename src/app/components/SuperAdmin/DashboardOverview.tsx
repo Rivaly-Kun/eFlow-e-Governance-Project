@@ -1,8 +1,10 @@
-// ─── Super Admin Dashboard — Realtime Firebase Metrics ───────────
-import React, { useMemo } from "react";
-import { useDashboardMetrics } from "../../hooks/useFirebaseData";
+// ─── Super Admin Dashboard — Supabase Metrics ────────────────────
+import { useMemo } from "react";
+import { useDashboardMetrics } from "../../hooks/useSupabaseData";
+import { useOrgs } from "../../hooks/useSupabaseData";
+import { useProfiles } from "../../hooks/useSupabaseData";
 import { MetricCard, MetricCardWide } from "../ui/MetricCard";
-import type { UserProfile, Department } from "../../types";
+import type { SupabaseUserProfile } from "../../types";
 
 // ─── Pure CSS Gauge ──────────────────────────────────────────────
 function CSSGauge({ value, label, color }: { value: number; label: string; color: string }) {
@@ -20,7 +22,6 @@ function CSSGauge({ value, label, color }: { value: number; label: string; color
             transform: `rotate(${angle - 180}deg)`,
             transformOrigin: "center bottom",
             transition: "transform 1s ease-out",
-            clipPath: "inset(0 0 0 0)",
           }}
         />
       </div>
@@ -102,8 +103,8 @@ function RecentList({
 }
 
 // ─── Workload Heatmap ────────────────────────────────────────────
-function WorkloadHeatmap({ users }: { users: UserProfile[] }) {
-  const activeUsers = users.filter((u) => u.status === "active").slice(0, 20);
+function WorkloadHeatmap({ users }: { users: SupabaseUserProfile[] }) {
+  const activeUsers = users.filter((u) => u.is_active).slice(0, 20);
   return (
     <div className="bg-white rounded-xl border border-neutral-200 p-4">
       <div className="text-[12px] font-['Lexend:SemiBold',_sans-serif] font-semibold text-neutral-700 mb-3">
@@ -122,7 +123,7 @@ function WorkloadHeatmap({ users }: { users: UserProfile[] }) {
                   : u.workload >= 30
                     ? "bg-emerald-400"
                     : "bg-emerald-200";
-            const initials = u.fullName
+            const initials = u.full_name
               .split(" ")
               .map((w) => w[0])
               .join("")
@@ -130,9 +131,9 @@ function WorkloadHeatmap({ users }: { users: UserProfile[] }) {
               .toUpperCase();
             return (
               <div
-                key={u.uid}
+                key={u.id}
                 className={`${color} rounded-lg p-2 flex flex-col items-center justify-center text-white aspect-square`}
-                title={`${u.fullName}: ${u.workload}%`}
+                title={`${u.full_name}: ${u.workload}%`}
               >
                 <span className="text-[11px] font-['Lexend:SemiBold',_sans-serif] font-semibold">{initials}</span>
                 <span className="text-[9px] opacity-80">{u.workload}%</span>
@@ -159,72 +160,39 @@ function WorkloadHeatmap({ users }: { users: UserProfile[] }) {
 
 // ─── Main Dashboard Component ────────────────────────────────────
 export function DashboardOverview() {
-  const { metrics, users, departments, projects, tasks, loading } = useDashboardMetrics();
+  const { metrics, loading } = useDashboardMetrics();
+  const { profiles } = useProfiles();
+  const { orgs } = useOrgs();
 
   // Compute derived data
   const deptDistribution = useMemo(() => {
     const countMap: Record<string, number> = {};
-    users
-      .filter((u) => u.status === "active")
+    profiles
+      .filter((u) => u.is_active)
       .forEach((u) => {
-        if (u.departmentId) {
-          countMap[u.departmentId] = (countMap[u.departmentId] || 0) + 1;
+        if (u.org_id) {
+          countMap[u.org_id] = (countMap[u.org_id] || 0) + 1;
         }
       });
-    return departments
-      .filter((d) => d.status === "active")
-      .map((d) => ({ label: d.name || d.id, value: countMap[d.id] || 0 }))
+    return orgs
+      .filter((o) => o.is_active)
+      .map((o) => ({ label: o.name, value: countMap[o.id] || 0 }))
       .sort((a, b) => b.value - a.value);
-  }, [users, departments]);
-
-  const deptProjectCount = useMemo(() => {
-    const countMap: Record<string, number> = {};
-    projects.forEach((p) => {
-      if (p.department) {
-        countMap[p.department] = (countMap[p.department] || 0) + 1;
-      }
-    });
-    return departments
-      .filter((d) => d.status === "active")
-      .map((d) => ({ label: d.name || d.id, value: countMap[d.id] || 0 }))
-      .sort((a, b) => b.value - a.value);
-  }, [projects, departments]);
+  }, [profiles, orgs]);
 
   const latestUsers = useMemo(
     () =>
-      [...users]
-        .sort((a, b) => b.createdAt - a.createdAt)
+      [...profiles]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         .slice(0, 5)
         .map((u) => ({
-          id: u.uid,
-          primary: u.fullName,
+          id: u.id,
+          primary: u.full_name,
           secondary: u.email,
           badge: u.role.replace("_", " "),
-          badgeColor: u.role === "super_admin" ? "#ef4444" : u.role === "department_head" ? "#6366f1" : "#10b981",
+          badgeColor: u.role === "super_admin" ? "#ef4444" : u.role === "dept_head" ? "#6366f1" : "#10b981",
         })),
-    [users]
-  );
-
-  const recentTasks = useMemo(
-    () =>
-      [...tasks]
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .slice(0, 5)
-        .map((t) => ({
-          id: t.id,
-          primary: t.title,
-          secondary: t.assigneeName || t.department || "Unassigned",
-          badge: t.status.replace("_", " "),
-          badgeColor:
-            t.status === "completed"
-              ? "#10b981"
-              : t.status === "in_progress"
-                ? "#3b82f6"
-                : t.status === "for_review"
-                  ? "#f59e0b"
-                  : "#94a3b8",
-        })),
-    [tasks]
+    [profiles]
   );
 
   return (
@@ -255,7 +223,7 @@ export function DashboardOverview() {
           color="#6366f1"
         />
         <MetricCard
-          label="Departments"
+          label="Org Units"
           value={metrics.totalDepartments}
           loading={loading}
           icon={<svg viewBox="0 0 16 16" className="w-4 h-4" fill="currentColor"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zM2.5 2a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zm6.5.5A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zM1 10.5A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zm6.5.5A1.5 1.5 0 0 1 10.5 9h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 9 13.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3z"/></svg>}
@@ -290,31 +258,32 @@ export function DashboardOverview() {
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div className="bg-white rounded-xl border border-neutral-200 p-4">
           <div className="text-[12px] font-['Lexend:SemiBold',_sans-serif] font-semibold text-neutral-700 mb-3">
-            Users per Department
+            Users per Org Unit
           </div>
           {deptDistribution.length > 0 ? (
             <HorizontalBarChart data={deptDistribution} color="#6366f1" />
           ) : (
-            <div className="text-[12px] text-neutral-400 py-4 text-center">No departments yet</div>
+            <div className="text-[12px] text-neutral-400 py-4 text-center">No org units yet</div>
           )}
         </div>
         <div className="bg-white rounded-xl border border-neutral-200 p-4">
           <div className="text-[12px] font-['Lexend:SemiBold',_sans-serif] font-semibold text-neutral-700 mb-3">
-            Projects per Department
+            Average Workload Gauge
           </div>
-          {deptProjectCount.length > 0 ? (
-            <HorizontalBarChart data={deptProjectCount} color="#10b981" />
-          ) : (
-            <div className="text-[12px] text-neutral-400 py-4 text-center">No projects yet</div>
-          )}
+          <div className="flex justify-center">
+            <CSSGauge
+              value={metrics.averageWorkload}
+              label="Org-wide Average"
+              color={metrics.averageWorkload >= 80 ? "#ef4444" : metrics.averageWorkload >= 60 ? "#f59e0b" : "#10b981"}
+            />
+          </div>
         </div>
       </div>
 
       {/* Bottom Row */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <RecentList title="Latest Users" items={latestUsers} emptyText="No users yet" />
-        <RecentList title="Recent Task Activity" items={recentTasks} emptyText="No task activity yet" />
-        <WorkloadHeatmap users={users} />
+        <WorkloadHeatmap users={profiles} />
       </div>
     </div>
   );

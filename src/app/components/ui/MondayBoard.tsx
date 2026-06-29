@@ -2206,6 +2206,7 @@ function KanbanBoardView({
   onOpenTaskEditor,
   onDeleteTaskRequest,
   currentUserId,
+  currentUserName,
   onUndoRequest,
 }: {
   tasks: Task[];
@@ -2217,6 +2218,7 @@ function KanbanBoardView({
   onOpenTaskEditor?: (task: Task) => void;
   onDeleteTaskRequest?: (task: Task) => void;
   currentUserId?: string;
+  currentUserName?: string;
   onUndoRequest?: (task: Task) => void;
 }) {
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
@@ -2492,7 +2494,6 @@ function HierarchyBoardView({
   onOpenTaskEditor,
   onDeleteTaskRequest,
   currentUserId,
-  currentUserName,
   onUndoRequest,
 }: {
   tasks: Task[];

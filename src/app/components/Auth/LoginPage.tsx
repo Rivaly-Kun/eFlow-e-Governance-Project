@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import type { UserRole } from "../../types";
-import { ref, get } from "firebase/database";
-import { database } from "../../../firebase";
+import { supabase } from "../../../lib/supabase";
 
 // ─── Ormoc City seal SVG (simplified shield) ─────────────────────
 function OrmocSeal() {
@@ -121,16 +120,19 @@ export function LoginPage() {
   useEffect(() => {
     (async () => {
       try {
-        const snap = await get(ref(database, "users"));
-        if (!snap.exists()) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('role', 'super_admin')
+          .eq('is_active', true)
+          .limit(1);
+
+        if (error) {
           setCanSetupAdmin(true);
           return;
         }
-        const users = snap.val();
-        const hasSuperAdmin = Object.values(users).some(
-          (u: any) => u.role === "super_admin" && u.isActive
-        );
-        setCanSetupAdmin(!hasSuperAdmin);
+
+        setCanSetupAdmin(!data || data.length === 0);
       } catch {
         setCanSetupAdmin(false);
       }
