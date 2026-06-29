@@ -3,13 +3,13 @@
 // Components never import supabase directly.
 
 import { supabase } from './supabase';
-import type { Organization, SupabaseUserProfile, SystemConfig, OrgType } from '../app/types';
+import type { Organization, UserProfile, SystemConfig, OrgType } from '../app/types';
 
 // ─── Local State Listener System ─────────────────────────────────
 // Ensures the client UI updates immediately on local modifications
 // even if Postgres Realtime replication is disabled or lagging.
 const orgListeners = new Set<(orgs: Organization[]) => void>();
-const profileListeners = new Set<(profiles: SupabaseUserProfile[]) => void>();
+const profileListeners = new Set<(profiles: UserProfile[]) => void>();
 
 async function notifyOrgListeners(forcedOrgs?: Organization[]) {
   try {
@@ -22,7 +22,7 @@ async function notifyOrgListeners(forcedOrgs?: Organization[]) {
   }
 }
 
-async function notifyProfileListeners(forcedProfiles?: SupabaseUserProfile[]) {
+async function notifyProfileListeners(forcedProfiles?: UserProfile[]) {
   try {
     const profiles = forcedProfiles || await fetchAllProfiles();
     profileListeners.forEach(cb => {
@@ -205,17 +205,17 @@ export function subscribeToOrgs(callback: (orgs: Organization[]) => void): () =>
 
 // ─── PROFILE OPERATIONS ──────────────────────────────────────────
 
-export async function fetchAllProfiles(): Promise<SupabaseUserProfile[]> {
+export async function fetchAllProfiles(): Promise<UserProfile[]> {
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
     .order('full_name');
 
   if (error) throw error;
-  return data as SupabaseUserProfile[];
+  return data as UserProfile[];
 }
 
-export async function fetchProfileById(id: string): Promise<SupabaseUserProfile | null> {
+export async function fetchProfileById(id: string): Promise<UserProfile | null> {
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
@@ -223,7 +223,7 @@ export async function fetchProfileById(id: string): Promise<SupabaseUserProfile 
     .maybeSingle();
 
   if (error) throw error;
-  return data as SupabaseUserProfile | null;
+  return data as UserProfile | null;
 }
 
 export async function createProfile(data: {
@@ -233,7 +233,7 @@ export async function createProfile(data: {
   role: string;
   org_id?: string;
   employee_id?: string;
-}): Promise<SupabaseUserProfile> {
+}): Promise<UserProfile> {
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email: data.email,
     password: data.password,
@@ -261,10 +261,10 @@ export async function createProfile(data: {
 
   if (profileError) throw profileError;
   notifyProfileListeners();
-  return profile as SupabaseUserProfile;
+  return profile as UserProfile;
 }
 
-export async function updateProfile(id: string, partial: Partial<SupabaseUserProfile>): Promise<void> {
+export async function updateProfile(id: string, partial: Partial<UserProfile>): Promise<void> {
   const { error } = await supabase
     .from('profiles')
     .update({ ...partial, updated_at: new Date().toISOString() })
@@ -294,7 +294,7 @@ export async function toggleUserActive(id: string, is_active: boolean): Promise<
   notifyProfileListeners();
 }
 
-export function subscribeToProfiles(callback: (profiles: SupabaseUserProfile[]) => void): () => void {
+export function subscribeToProfiles(callback: (profiles: UserProfile[]) => void): () => void {
   profileListeners.add(callback);
   
   const channelId = `profiles_realtime_${Math.random().toString(36).slice(2)}`;

@@ -7,5 +7,16 @@
 
   Run `npm i` to install the dependencies.
 
-  Run `npm run dev` to start the development server.
-  
+  pip install supabase
+
+  To run the full setup, you keep two terminal windows open:
+
+    Terminal 1 (Backend): Runs the FastAPI server on port 8321:
+    bash
+
+    python server/main.py
+
+    Terminal 2 (Frontend): Runs the Vite development server on port 5174:
+    bash
+
+    npm run dev

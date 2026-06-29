@@ -26,14 +26,24 @@ export function subscribeToUsers(callback: (users: UserProfile[]) => void) {
     }
     const data = snapshot.val();
     const list = Object.entries(data).map(([uid, val]: [string, any]) => ({
+      // Supabase properties
+      id: uid,
+      full_name: val.fullName || val.name || "",
+      email: val.email || "",
+      employee_id: val.employeeId || "",
+      org_id: val.departmentId || val.department || null,
+      role: val.role || "employee",
+      skills: val.skills || {},
+      workload: typeof val.workload === "number" ? val.workload : 0,
+      burnout_level: val.burnoutLevel || "low",
+      is_active: val.status !== "inactive",
+      created_at: new Date(val.createdAt || 0).toISOString(),
+      updated_at: new Date(val.lastLogin || 0).toISOString(),
+      // Legacy aliases
       uid,
       employeeId: val.employeeId || "",
       fullName: val.fullName || val.name || "",
-      email: val.email || "",
-      role: val.role || "employee",
       departmentId: val.departmentId || val.department || "",
-      skills: val.skills || {},
-      workload: typeof val.workload === "number" ? val.workload : 0,
       burnoutLevel: val.burnoutLevel || "low",
       status: val.status || "active",
       createdAt: val.createdAt || 0,
@@ -49,14 +59,24 @@ export async function getUserById(uid: string): Promise<UserProfile | null> {
   if (!snap.exists()) return null;
   const val = snap.val();
   return {
+    // Supabase properties
+    id: uid,
+    full_name: val.fullName || val.name || "",
+    email: val.email || "",
+    employee_id: val.employeeId || "",
+    org_id: val.departmentId || val.department || null,
+    role: val.role || "employee",
+    skills: val.skills || {},
+    workload: typeof val.workload === "number" ? val.workload : 0,
+    burnout_level: val.burnoutLevel || "low",
+    is_active: val.status !== "inactive",
+    created_at: new Date(val.createdAt || 0).toISOString(),
+    updated_at: new Date(val.lastLogin || 0).toISOString(),
+    // Legacy aliases
     uid,
     employeeId: val.employeeId || "",
     fullName: val.fullName || val.name || "",
-    email: val.email || "",
-    role: val.role || "employee",
     departmentId: val.departmentId || val.department || "",
-    skills: val.skills || {},
-    workload: typeof val.workload === "number" ? val.workload : 0,
     burnoutLevel: val.burnoutLevel || "low",
     status: val.status || "active",
     createdAt: val.createdAt || 0,

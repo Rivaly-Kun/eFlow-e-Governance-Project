@@ -8,7 +8,7 @@ import { DataTable, Column } from "../ui/DataTable";
 import { Modal, ModalButton } from "../ui/Modal";
 import { FormField, TextInput, SelectInput } from "../ui/FormField";
 import { useToast } from "../ui/Toast";
-import type { SupabaseUserProfile, UserRole } from "../../types";
+import type { UserProfile, UserRole } from "../../types";
 
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "employee", label: "Employee" },
@@ -73,7 +73,7 @@ function CreateUserModal({
   onClose: () => void;
   orgOptions: { value: string; label: string }[];
 }) {
-  const { createManagedUser, user } = useAuth();
+  const { createManagedUser } = useAuth();
   const { toast } = useToast();
   const [form, setForm] = useState({
     fullName: "",
@@ -83,13 +83,11 @@ function CreateUserModal({
     orgId: "",
     workload: 0,
   });
-  const [adminPassword, setAdminPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const resetForm = () => {
     setForm({ fullName: "", email: "", password: "", role: "employee", orgId: "", workload: 0 });
-    setAdminPassword("");
     setErrors({});
   };
 
@@ -99,7 +97,6 @@ function CreateUserModal({
     if (!form.email.trim()) errs.email = "Required";
     if (!form.password || form.password.length < 6) errs.password = "Min 6 characters";
     if (!form.orgId) errs.orgId = "Required";
-    if (!adminPassword) errs.adminPassword = "Required to re-authenticate";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -109,20 +106,13 @@ function CreateUserModal({
     setSaving(true);
     try {
       await createManagedUser(
-        user?.email || "",
-        adminPassword,
         form.email.trim(),
         form.password,
         {
-          fullName: form.fullName.trim(),
-          email: form.email.trim(),
+          full_name: form.fullName.trim(),
           role: form.role,
-          departmentId: form.orgId,
-          skills: {},
-          workload: form.workload,
-          burnoutLevel: form.workload >= 80 ? "high" : form.workload >= 50 ? "medium" : "low",
-          employeeId: "",
-          status: "active",
+          org_id: form.orgId,
+          employee_id: "",
         },
       );
 
@@ -210,27 +200,6 @@ function CreateUserModal({
             onChange={(e) => setForm({ ...form, workload: Math.min(100, Math.max(0, Number(e.target.value))) })}
           />
         </FormField>
-
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
-          <svg viewBox="0 0 16 16" className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" fill="currentColor">
-            <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 2a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM6.5 7h3l-.5 5h-2L6.5 7z" />
-          </svg>
-          <div>
-            <p className="text-[11px] font-['Lexend:Regular',_sans-serif] text-amber-800">
-              <strong>Your password</strong> is required to re-authenticate after creating the user account.
-            </p>
-          </div>
-        </div>
-
-        <FormField label="Your Admin Password" error={errors.adminPassword} required>
-          <TextInput
-            type="password"
-            value={adminPassword}
-            onChange={(e) => setAdminPassword(e.target.value)}
-            placeholder="Enter your current password"
-            hasError={!!errors.adminPassword}
-          />
-        </FormField>
       </div>
     </Modal>
   );
@@ -245,7 +214,7 @@ function EditUserModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  user: SupabaseUserProfile | null;
+  user: UserProfile | null;
   orgOptions: { value: string; label: string }[];
 }) {
   const { toast } = useToast();
@@ -351,7 +320,7 @@ export function UserManagement() {
   const { orgs } = useOrgs();
   const { toast } = useToast();
   const [showCreate, setShowCreate] = useState(false);
-  const [editUser, setEditUser] = useState<SupabaseUserProfile | null>(null);
+  const [editUser, setEditUser] = useState<UserProfile | null>(null);
 
   const orgOptions = useMemo(
     () => orgs.filter((o) => o.is_active).map((o) => ({ value: o.id, label: o.name })),
@@ -363,7 +332,7 @@ export function UserManagement() {
     [orgs]
   );
 
-  const handleToggleStatus = async (user: SupabaseUserProfile) => {
+  const handleToggleStatus = async (user: UserProfile) => {
     try {
       if (user.is_active) {
         await toggleUserActive(user.id, false);
@@ -377,7 +346,7 @@ export function UserManagement() {
     }
   };
 
-  const columns: Column<SupabaseUserProfile>[] = [
+  const columns: Column<UserProfile>[] = [
     {
       key: "name",
       header: "Name",

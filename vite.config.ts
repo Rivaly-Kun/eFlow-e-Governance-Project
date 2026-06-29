@@ -35,6 +35,25 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
+        '/api/admin': {
+          target: 'http://localhost:8322',
+          changeOrigin: true,
+          rewrite: (p) => `/controlpanelEflow${p}`,
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              const key = process.env.VITE_BACKEND_API_KEY ?? ''
+              const existingAuth = proxyReq.getHeader('authorization')
+              if (!existingAuth && key) {
+                proxyReq.setHeader('Authorization', `Bearer ${key}`)
+              }
+            })
+          },
+        },
+        '/api/authkey': {
+          target: 'http://localhost:8322',
+          changeOrigin: true,
+          rewrite: (p) => `/controlpanelEflow${p}`,
+        },
         '/api': {
           target: 'http://localhost:8321',
           changeOrigin: true,

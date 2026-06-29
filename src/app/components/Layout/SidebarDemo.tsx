@@ -1489,6 +1489,14 @@ function TwoLevelSidebar({ role }: { role: string }) {
               />
             </div>
           )}
+          {role === "teamleader" && (
+            <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
+              <DeptHeadContent
+                activeSection={activeSection}
+                activePage={activePage}
+              />
+            </div>
+          )}
           {role === "employee" && (
             <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
               <EmployeeContent
@@ -1511,6 +1519,7 @@ function TwoLevelSidebar({ role }: { role: string }) {
             role !== "hrmo" &&
             role !== "finance" &&
             role !== "depthead" &&
+            role !== "teamleader" &&
             role !== "employee" &&
             role !== "councilor_pad" && (
               <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl flex items-center justify-center">

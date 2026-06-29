@@ -2,34 +2,21 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { LoginPage } from "./components/Auth/LoginPage";
 import { Frame760 } from "./components/Layout/SidebarDemo";
 import { ToastProvider } from "./components/ui/Toast";
-import { seedRolesIfEmpty } from "./services/seedRoles";
-import { useEffect } from "react";
 
 // ─── Role mapping: user role → SidebarDemo role key ──────────────
-function mapRoleToSidebar(role: string): string {
+function mapRoleToPanel(role: string): string {
   switch (role) {
-    case "super_admin":
-      return "superadmin";
-    case "department_head":
-    case "dept_head":
-    case "depthead":
-      return "depthead";
-    case "team_leader":
-      return "depthead";
-    case "employee":
-      return "employee";
-    case "executive":
-      return "executive";
-    case "legislative":
-      return "legislative";
-    case "hrmo":
-      return "hrmo";
-    case "finance":
-      return "finance";
-    case "councilor_pad":
-      return "councilor_pad";
+    case 'super_admin':
+      return 'superadmin';
+    case 'dept_head':
+    case 'department_head':
+      return 'depthead';
+    case 'team_leader':
+      return 'teamleader';
+    case 'employee':
+      return 'employee';
     default:
-      return "employee";
+      return 'employee';
   }
 }
 
@@ -38,7 +25,6 @@ function LoadingSkeleton() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[#F5F6F8]">
       <div className="flex flex-col items-center gap-4">
-        {/* Animated logo placeholder */}
         <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#0085FF] to-[#0066CC] flex items-center justify-center shadow-lg shadow-blue-500/20 animate-pulse">
           <svg viewBox="0 0 40 40" className="w-9 h-9" fill="none">
             <path
@@ -76,11 +62,6 @@ function LoadingSkeleton() {
 function AppContent() {
   const { user, userProfile, loading } = useAuth();
 
-  // Seed default roles on mount
-  useEffect(() => {
-    seedRolesIfEmpty().catch(console.error);
-  }, []);
-
   // Still resolving auth state
   if (loading) return <LoadingSkeleton />;
 
@@ -88,9 +69,9 @@ function AppContent() {
   if (!user || !userProfile) return <LoginPage />;
 
   // Map role and render dashboard
-  const sidebarRole = mapRoleToSidebar(userProfile.role);
+  const panel = mapRoleToPanel(userProfile.role);
 
-  return <Frame760 role={sidebarRole} />;
+  return <Frame760 role={panel} />;
 }
 
 // ─── App wrapper with AuthProvider + ToastProvider ────────────────

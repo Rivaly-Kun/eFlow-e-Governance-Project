@@ -32,7 +32,7 @@ import {
 import { Modal, ModalButton } from '../ui/Modal';
 import { FormField, TextInput, SelectInput } from '../ui/FormField';
 import { useToast } from '../ui/Toast';
-import type { Organization, SupabaseUserProfile, OrgType } from '../../types';
+import type { Organization, UserProfile, OrgType } from '../../types';
 
 // ─── Constants ───────────────────────────────────────────────────
 const ORG_TYPE_ICONS: Record<OrgType, string> = {
@@ -269,7 +269,7 @@ function OrgModal({
   org?: Organization;
   parentId?: string;
   orgs: Organization[];
-  profiles: SupabaseUserProfile[];
+  profiles: UserProfile[];
 }) {
   const { toast } = useToast();
   const isEdit = !!org;
@@ -413,7 +413,7 @@ function AssignHeadModal({
   isOpen: boolean;
   onClose: () => void;
   org: Organization | null;
-  profiles: SupabaseUserProfile[];
+  profiles: UserProfile[];
 }) {
   const { toast } = useToast();
   const [selected, setSelected] = useState('');
@@ -478,7 +478,7 @@ function UsersPanel({
   setSearch,
   onCreateUser,
 }: {
-  profiles: SupabaseUserProfile[];
+  profiles: UserProfile[];
   orgs: Organization[];
   search: string;
   setSearch: (v: string) => void;
@@ -914,7 +914,7 @@ function OrgTreeBuilderInner() {
 
       {/* Users panel */}
       <UsersPanel
-        profiles={profiles}
+        profiles={profiles.filter((p) => p.role !== 'super_admin')}
         orgs={orgs}
         search={search}
         setSearch={setSearch}

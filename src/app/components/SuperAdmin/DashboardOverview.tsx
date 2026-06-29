@@ -4,7 +4,7 @@ import { useDashboardMetrics } from "../../hooks/useSupabaseData";
 import { useOrgs } from "../../hooks/useSupabaseData";
 import { useProfiles } from "../../hooks/useSupabaseData";
 import { MetricCard, MetricCardWide } from "../ui/MetricCard";
-import type { SupabaseUserProfile } from "../../types";
+import type { UserProfile } from "../../types";
 
 // ─── Pure CSS Gauge ──────────────────────────────────────────────
 function CSSGauge({ value, label, color }: { value: number; label: string; color: string }) {
@@ -103,7 +103,7 @@ function RecentList({
 }
 
 // ─── Workload Heatmap ────────────────────────────────────────────
-function WorkloadHeatmap({ users }: { users: SupabaseUserProfile[] }) {
+function WorkloadHeatmap({ users }: { users: UserProfile[] }) {
   const activeUsers = users.filter((u) => u.is_active).slice(0, 20);
   return (
     <div className="bg-white rounded-xl border border-neutral-200 p-4">

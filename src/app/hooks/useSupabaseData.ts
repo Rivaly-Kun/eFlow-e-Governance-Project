@@ -8,7 +8,7 @@ import {
   subscribeToOrgs,
   subscribeToProfiles,
 } from '../../lib/supabaseService';
-import type { Organization, SupabaseUserProfile, DashboardMetrics } from '../types';
+import type { Organization, UserProfile, DashboardMetrics } from '../types';
 
 // ─── useOrgs ─────────────────────────────────────────────────────
 export function useOrgs() {
@@ -44,7 +44,7 @@ export function useOrgs() {
 
 // ─── useProfiles ─────────────────────────────────────────────────
 export function useProfiles() {
-  const [profiles, setProfiles] = useState<SupabaseUserProfile[]>([]);
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -82,7 +82,7 @@ export function useDashboardMetrics(): { metrics: DashboardMetrics; loading: boo
   const loading = profilesLoading || orgsLoading;
 
   const metrics: DashboardMetrics = useMemo(() => {
-    const activeProfiles = profiles.filter((p) => p.is_active);
+    const activeProfiles = profiles.filter((p) => p.is_active && p.role !== 'super_admin');
     const activeOrgs = orgs.filter((o) => o.is_active);
     const overloaded = activeProfiles.filter((p) => p.workload >= 80);
     const totalWorkload = activeProfiles.reduce((sum, p) => sum + p.workload, 0);

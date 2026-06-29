@@ -7,8 +7,17 @@ import React, {
 } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
-import { fetchProfileById } from '../../lib/supabaseService';
-import type { UserProfile, SupabaseUserProfile, UserRole } from '../types';
+import type { UserProfile, UserRole } from '../types';
+
+// ─── Error message mapper ────────────────────────────────────────
+function mapSupabaseAuthError(msg: string): string {
+  if (msg.includes('Invalid login credentials')) return 'Invalid email or password.';
+  if (msg.includes('Email not confirmed')) return 'Email not confirmed. Contact your administrator.';
+  if (msg.includes('Too many requests')) return 'Too many attempts. Please try again later.';
+  if (msg.includes('User already registered')) return 'An account with this email already exists.';
+  if (msg.includes('Password should be')) return 'Password must be at least 6 characters.';
+  return msg;
+}
 
 // ─── Context Value ───────────────────────────────────────────────
 interface AuthContextValue {
@@ -25,11 +34,9 @@ interface AuthContextValue {
     orgId?: string,
   ) => Promise<void>;
   createManagedUser: (
-    adminEmail: string,
-    adminPassword: string,
     newEmail: string,
     newPassword: string,
-    profile: Omit<UserProfile, 'uid' | 'createdAt' | 'lastLogin'>,
+    profile: { full_name: string; role: UserRole; org_id?: string; employee_id?: string },
   ) => Promise<string>;
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -38,22 +45,33 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-// ─── Convert Supabase profile to legacy UserProfile format ───────
-function toUserProfile(sp: SupabaseUserProfile): UserProfile {
+// ─── Fetch auth key from LLM server ─────────────────────────────
+const API_BASE = (import.meta.env.VITE_LLM_BASE_URL || '/api').replace(/\/$/, '');
+
+async function fetchAuthKey(): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/authkey`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return typeof data.api_key === 'string' ? data.api_key.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Spread legacy compatibility aliases ─────────────────────────
+function addCompatAliases(data: Record<string, unknown>): UserProfile {
   return {
-    uid: sp.id,
-    employeeId: sp.employee_id,
-    fullName: sp.full_name,
-    email: sp.email,
-    role: sp.role,
-    departmentId: sp.org_id || '',
-    skills: sp.skills,
-    workload: sp.workload,
-    burnoutLevel: sp.burnout_level,
-    status: sp.is_active ? 'active' : 'inactive',
-    createdAt: new Date(sp.created_at).getTime(),
-    lastLogin: new Date(sp.updated_at).getTime(),
-  };
+    ...data,
+    uid: data.id,
+    fullName: data.full_name,
+    employeeId: data.employee_id,
+    departmentId: data.org_id,
+    burnoutLevel: data.burnout_level,
+    status: data.is_active ? 'active' : 'inactive',
+    createdAt: typeof data.created_at === 'string' ? new Date(data.created_at).getTime() : 0,
+    lastLogin: typeof data.updated_at === 'string' ? new Date(data.updated_at).getTime() : 0,
+  } as unknown as UserProfile;
 }
 
 // ─── Provider ────────────────────────────────────────────────────
@@ -67,30 +85,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        const currentUser = session?.user || null;
-        setUser((prevUser) => {
-          if (prevUser?.id === 'SuperAdmin' && !currentUser) return prevUser;
-          return currentUser;
-        });
-
-        if (currentUser) {
-          try {
-            const sp = await fetchProfileById(currentUser.id);
-            if (sp) {
-              setUserProfile(toUserProfile(sp));
-            } else {
-              setUserProfile(null);
-            }
-          } catch {
+        if (session?.user) {
+          setUser(session.user);
+          const { data } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          if (data) {
+            setUserProfile(addCompatAliases(data));
+          } else {
             setUserProfile(null);
           }
         } else {
-          setUserProfile((prevProfile) => {
-            if (prevProfile?.uid === 'SuperAdmin') return prevProfile;
-            return null;
-          });
+          setUser(null);
+          setUserProfile(null);
         }
-
         setLoading(false);
       }
     );
@@ -100,65 +110,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // ─── login ─────────────────────────────────────────────────────
   const login = useCallback(async (email: string, password: string) => {
     setError(null);
     try {
-      // ─── HARDCODED BYPASS FOR TESTING ───
-      if (
-        (email === 'admin' ||
-          email === 'admin@gmail.com' ||
-          email === 'admin@eflow.gov.ph') &&
-        password === 'admin123'
-      ) {
-        const mockProfile: UserProfile = {
-          uid: 'SuperAdmin',
-          employeeId: 'ADMIN-000',
-          fullName: 'Super Admin',
-          email: 'admin@gmail.com',
-          role: 'super_admin',
-          departmentId: '',
-          skills: {},
-          workload: 0,
-          burnoutLevel: 'low',
-          status: 'active',
-          createdAt: Date.now(),
-          lastLogin: Date.now(),
-        };
-        setUser({ id: 'SuperAdmin', email: 'admin@gmail.com' } as User);
-        setUserProfile(mockProfile);
-        setLoading(false);
-        return;
-      }
-      // ─────────────────────────────────────
 
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
+
+      const { error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (authError) throw authError;
+      if (authError) throw new Error(mapSupabaseAuthError(authError.message));
 
-      if (data.user) {
-        const sp = await fetchProfileById(data.user.id);
-        if (!sp) {
-          await supabase.auth.signOut();
-          throw new Error('No eFlow profile found for this account. Contact your IT administrator.');
-        }
-        if (!sp.is_active) {
-          await supabase.auth.signOut();
-          throw new Error('Your account has been deactivated. Contact your IT administrator.');
-        }
+      // Verify profile exists and is active
+      const { data: sessionData } = await supabase.auth.getUser();
+      const userId = sessionData.user?.id;
+      if (!userId) throw new Error('Login failed. Please try again.');
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_active')
+        .eq('id', userId)
+        .single();
+
+      if (!profile) {
+        await supabase.auth.signOut();
+        throw new Error('No eFlow profile found. Contact your IT administrator.');
+      }
+      if (!profile.is_active) {
+        await supabase.auth.signOut();
+        throw new Error('Your account has been deactivated. Contact your IT administrator.');
       }
     } catch (err: any) {
-      const msg =
-        err?.message === 'Invalid login credentials'
-          ? 'Invalid email or password.'
-          : err?.message || 'Login failed.';
+      const msg = err?.message || 'Login failed.';
       setError(msg);
       throw err;
     }
   }, []);
 
+  // ─── register (first-time setup only) ──────────────────────────
   const register = useCallback(
     async (
       email: string,
@@ -174,113 +165,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           password,
         });
 
-        if (authError) throw authError;
-
-        if (data.user) {
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert({
-              id: data.user.id,
-              full_name: fullName,
-              email,
-              employee_id: '',
-              org_id: orgId || null,
-              role,
-              skills: {},
-              workload: 0,
-              burnout_level: 'low',
-              is_active: true,
-            });
-
-          if (profileError) throw profileError;
-        }
-      } catch (err: any) {
-        const msg =
-          err?.code === 'user_already_exists' || err?.message?.includes('already')
-            ? 'An account with this email already exists.'
-            : err?.message || 'Registration failed.';
-        setError(msg);
-        throw err;
-      }
-    },
-    [],
-  );
-
-  const createManagedUser = useCallback(
-    async (
-      adminEmail: string,
-      adminPassword: string,
-      newEmail: string,
-      newPassword: string,
-      profile: Omit<UserProfile, 'uid' | 'createdAt' | 'lastLogin'>,
-    ): Promise<string> => {
-      setError(null);
-      try {
-        const { data, error: authError } = await supabase.auth.signUp({
-          email: newEmail,
-          password: newPassword,
-        });
-
-        if (authError) throw authError;
-        if (!data.user) throw new Error('Failed to create user');
-
-        const newUid = data.user.id;
+        if (authError) throw new Error(mapSupabaseAuthError(authError.message));
+        if (!data.user) throw new Error('Registration failed.');
 
         const { error: profileError } = await supabase
           .from('profiles')
           .insert({
-            id: newUid,
-            full_name: profile.fullName,
-            email: profile.email,
-            employee_id: profile.employeeId || '',
-            org_id: profile.departmentId || null,
-            role: profile.role,
-            skills: profile.skills || {},
-            workload: profile.workload || 0,
-            burnout_level: profile.burnoutLevel || 'low',
-            is_active: profile.status !== 'inactive',
+            id: data.user.id,
+            full_name: fullName,
+            email,
+            role,
+            org_id: orgId || null,
+            employee_id: '',
+            skills: {},
+            workload: 0,
+            burnout_level: 'low',
+            is_active: true,
           });
 
         if (profileError) throw profileError;
-
-        // Re-authenticate as admin
-        if (
-          (adminEmail === 'admin' ||
-            adminEmail === 'admin@gmail.com' ||
-            adminEmail === 'admin@eflow.gov.ph') &&
-          adminPassword === 'admin123'
-        ) {
-          await supabase.auth.signOut();
-        } else {
-          await supabase.auth.signInWithPassword({
-            email: adminEmail,
-            password: adminPassword,
-          });
-        }
-
-        return newUid;
       } catch (err: any) {
-        try {
-          if (
-            (adminEmail === 'admin' ||
-              adminEmail === 'admin@gmail.com' ||
-              adminEmail === 'admin@eflow.gov.ph') &&
-            adminPassword === 'admin123'
-          ) {
-            await supabase.auth.signOut();
-          } else {
-            await supabase.auth.signInWithPassword({
-              email: adminEmail,
-              password: adminPassword,
-            });
-          }
-        } catch {
-          // Best effort
+        setError(err?.message || 'Registration failed.');
+        throw err;
+      }
+    },
+    [],
+  );
+
+  // ─── createManagedUser (calls FastAPI server) ──────────────────
+  const createManagedUser = useCallback(
+    async (
+      newEmail: string,
+      newPassword: string,
+      profileData: { full_name: string; role: UserRole; org_id?: string; employee_id?: string },
+    ): Promise<string> => {
+      setError(null);
+      try {
+        const apiKey = await fetchAuthKey();
+
+        const res = await fetch(`${API_BASE}/admin/users/create`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+          },
+          body: JSON.stringify({
+            email: newEmail,
+            password: newPassword,
+            full_name: profileData.full_name,
+            role: profileData.role,
+            org_id: profileData.org_id || null,
+            employee_id: profileData.employee_id || '',
+          }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'Failed to create user.');
         }
-        const msg =
-          err?.code === 'user_already_exists' || err?.message?.includes('already')
-            ? 'An account with this email already exists.'
-            : err?.message || 'Failed to create user.';
+
+        const { uid } = await res.json();
+        return uid;
+      } catch (err: any) {
+        const msg = err?.message || 'Failed to create user.';
         setError(msg);
         throw err;
       }
@@ -288,9 +235,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  // ─── resetPassword ─────────────────────────────────────────────
   const resetPassword = useCallback(async (email: string) => {
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
       if (error) throw error;
     } catch (err: any) {
       setError(err?.message || 'Failed to send password reset email.');
@@ -298,21 +248,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // ─── logout ────────────────────────────────────────────────────
   const logout = useCallback(async () => {
     try {
-      setUser((prevUser) => {
-        if (prevUser?.id === 'SuperAdmin') return null;
-        return prevUser;
-      });
-      setUserProfile((prevProfile) => {
-        if (prevProfile?.uid === 'SuperAdmin') return null;
-        return prevProfile;
-      });
+      if (userProfile?.id === 'SuperAdmin') {
+        setUser(null);
+        setUserProfile(null);
+        return;
+      }
       await supabase.auth.signOut();
     } catch (err: any) {
       setError('Failed to sign out. Please try again.');
     }
-  }, []);
+  }, [userProfile]);
 
   const clearError = useCallback(() => setError(null), []);
 

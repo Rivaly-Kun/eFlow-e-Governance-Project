@@ -1,18 +1,19 @@
 // ─── eFlow Central Type Definitions ──────────────────────────────
-// Both legacy (Firebase) and new (Supabase) types live here.
+// Supabase-backed types. Firebase RTDB types removed.
 
 // ─── Roles ───────────────────────────────────────────────────────
 export type UserRole =
-  | "super_admin"
-  | "department_head"
-  | "dept_head"
-  | "team_leader"
-  | "employee"
-  | "executive"
-  | "legislative"
-  | "hrmo"
-  | "finance"
-  | "councilor_pad";
+  | 'super_admin'
+  | 'dept_head'
+  | 'team_leader'
+  | 'employee'
+  // ── legacy (still referenced by non-migrated components) ──
+  | 'department_head'
+  | 'executive'
+  | 'legislative'
+  | 'hrmo'
+  | 'finance'
+  | 'councilor_pad';
 
 export interface RolePermissions {
   manage_users: boolean;
@@ -46,25 +47,9 @@ export interface Organization {
   member_count?: number;
 }
 
-// ─── User Profile — LEGACY FIREBASE FORMAT ───────────────────────
-// Used by old Firebase hooks (useFirebaseData) and non-SuperAdmin components.
+// ─── User Profile (matches Supabase profiles table) ──────────────
 export interface UserProfile {
-  uid: string;
-  employeeId: string;
-  fullName: string;
-  email: string;
-  role: UserRole;
-  departmentId: string;
-  skills: Record<string, boolean>;
-  workload: number;
-  burnoutLevel: "low" | "medium" | "high";
-  status: "active" | "inactive";
-  createdAt: number;
-  lastLogin: number;
-}
-
-// ─── Supabase User Profile (for SuperAdmin components) ───────────
-export interface SupabaseUserProfile {
+  // Supabase columns
   id: string;
   full_name: string;
   email: string;
@@ -77,7 +62,23 @@ export interface SupabaseUserProfile {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  // Computed client-side
   org_name?: string;
+  // Legacy aliases (set at runtime by AuthContext for Phase 2 compat)
+  uid: string;
+  employeeId: string;
+  fullName: string;
+  departmentId: string;
+  burnoutLevel: 'low' | 'medium' | 'high';
+  status: 'active' | 'inactive';
+  createdAt: number;
+  lastLogin: number;
+}
+
+// ─── System Config ───────────────────────────────────────────────
+export interface SystemConfig {
+  key: string;
+  value: string;
 }
 
 // ─── Department (legacy, for non-SuperAdmin components) ──────────
@@ -87,14 +88,8 @@ export interface Department {
   description: string;
   headUserId: string;
   employeeCount: number;
-  status: "active" | "archived";
+  status: 'active' | 'archived';
   createdAt: number;
-}
-
-// ─── System Config ───────────────────────────────────────────────
-export interface SystemConfig {
-  key: string;
-  value: string;
 }
 
 // ─── Project (/projects/{id}) ────────────────────────────────────
@@ -183,4 +178,3 @@ export interface DashboardMetrics {
   overloadedEmployees: number;
   averageWorkload: number;
 }
-

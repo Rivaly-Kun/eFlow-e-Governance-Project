@@ -120,19 +120,18 @@ export function LoginPage() {
   useEffect(() => {
     (async () => {
       try {
-        const { data, error } = await supabase
+        const { count, error } = await supabase
           .from('profiles')
-          .select('id')
+          .select('*', { count: 'exact', head: true })
           .eq('role', 'super_admin')
-          .eq('is_active', true)
-          .limit(1);
+          .eq('is_active', true);
 
         if (error) {
           setCanSetupAdmin(true);
           return;
         }
 
-        setCanSetupAdmin(!data || data.length === 0);
+        setCanSetupAdmin(count === 0);
       } catch {
         setCanSetupAdmin(false);
       }
