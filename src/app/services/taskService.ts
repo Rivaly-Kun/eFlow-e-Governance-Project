@@ -1,15 +1,16 @@
-import { ref, onValue, push, update, set, get, remove } from "firebase/database";
-import { getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
-import { database, storage } from "../../firebase";
-import { EMPLOYEE_SEED_BY_ID, TASK_SEED, getDepartmentLabel } from "./eflowSeedData";
-import { createNotification } from "./notificationService";
+// ─── eFlow Task Service (Supabase) ────────────────────────────────
+// Full rewrite from Firebase RTDB → Supabase PostgreSQL.
+// All exported function signatures kept identical.
+
+import { supabase } from '../../lib/supabase';
+import { createNotification } from './notificationService';
 
 export type TaskStatus =
-  | "pending_assignment"
-  | "todo"
-  | "in_progress"
-  | "for_review"
-  | "completed";
+  | 'pending_assignment'
+  | 'todo'
+  | 'in_progress'
+  | 'for_review'
+  | 'completed';
 
 export interface TaskAssignmentDetails {
   teamId?: string;
@@ -45,7 +46,7 @@ export interface Task extends TaskHierarchy {
   teamMemberIds?: string[];
   teamMemberNames?: string[];
   department?: string;
-  priority?: "low" | "medium" | "high";
+  priority?: 'low' | 'medium' | 'high';
   deadline?: string;
   dueDate?: string;
   tags?: string[];
@@ -62,10 +63,9 @@ export interface Task extends TaskHierarchy {
   reopenedByName?: string;
   recommendedEmployeeIds?: string[];
   recommendationReasoning?: string;
-  recommendationSource?: "llm" | "fallback" | "import";
+  recommendationSource?: 'llm' | 'fallback' | 'import';
   recommendationLeadId?: string;
   burnoutWarning?: boolean;
-  // ─── Enhanced fields ───
   barangay?: string;
   estimatedHours?: number;
   budgetImpact?: number;
@@ -106,357 +106,11 @@ export interface TaskActivity {
   timestamp: number;
 }
 
-const TASKS_PATH = "tasks";
-const ACTIVITIES_PATH = "taskActivities";
-
-const TASK_STATUS_VALUES: TaskStatus[] = ["pending_assignment", "todo", "in_progress", "for_review", "completed"];
-
-const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  pending_assignment: "Pending Assignment",
-  todo: "To Do",
-  in_progress: "In Progress",
-  for_review: "For Review",
-  completed: "Completed",
-};
-
-const isTaskStatus = (value: unknown): value is TaskStatus =>
-  typeof value === "string" && TASK_STATUS_VALUES.includes(value as TaskStatus);
-
-const normalizeStringArray = (value: unknown) =>
-  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-
-const uniqueStrings = (items: Array<string | undefined | null>) =>
-  Array.from(
-    new Set(
-      items
-        .map((item) => (typeof item === "string" ? item.trim() : ""))
-        .filter((item) => item.length > 0),
-    ),
-  );
-
-const readString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
-
-const getRecordTitle = (record: Record<string, unknown>) =>
-  readString(record.title) || "Task";
-
-const getRecordStatus = (record: Record<string, unknown>): TaskStatus =>
-  isTaskStatus(record.status) ? record.status : "pending_assignment";
-
-const getTaskDepartmentId = (record: Record<string, unknown>) =>
-  readString(record.department) || readString(record.teamId);
-
-const getTaskAssigneeIds = (record: Record<string, unknown>) =>
-  uniqueStrings([
-    readString(record.assigneeId),
-    readString(record.assignedTo),
-    ...normalizeStringArray(record.teamMemberIds),
-  ]);
-
-const getDepartmentHeadId = async (
-  departmentId?: string,
-): Promise<string | undefined> => {
-  if (!departmentId) return undefined;
-
-  const directSnap = await get(ref(database, `departments/${departmentId}`));
-  if (directSnap.exists()) {
-    const record = directSnap.val() as Record<string, unknown>;
-    return readString(record.headUserId) || readString(record.headUid);
-  }
-
-  const allSnap = await get(ref(database, "departments"));
-  if (!allSnap.exists()) return undefined;
-  const data = allSnap.val();
-  const departments = Array.isArray(data)
-    ? data.filter(Boolean)
-    : Object.entries(data as Record<string, unknown>).map(([id, value]) => ({
-        id,
-        ...(value && typeof value === "object"
-          ? (value as Record<string, unknown>)
-          : {}),
-      }));
-
-  const match = departments.find((dept: Record<string, unknown>) => {
-    const id = readString(dept.id);
-    return id === departmentId;
-  });
-
-  return match
-    ? readString(match.headUserId) || readString(match.headUid)
-    : undefined;
-};
-
-const getTaskStakeholderIds = async (
-  record: Record<string, unknown>,
-  actorId?: string,
-) => {
-  const departmentHeadId = await getDepartmentHeadId(getTaskDepartmentId(record));
-  return uniqueStrings([
-    ...getTaskAssigneeIds(record),
-    departmentHeadId,
-  ]).filter((id) => !actorId || id !== actorId);
-};
-
-const notifyTaskStakeholders = async (
-  taskId: string,
-  taskRecord: Record<string, unknown>,
-  notification: Omit<
-    Parameters<typeof createNotification>[1],
-    "taskId" | "taskTitle"
-  >,
-  actorId?: string,
-) => {
-  const recipients = await getTaskStakeholderIds(taskRecord, actorId);
-  if (recipients.length === 0) return;
-
-  const taskTitle = getRecordTitle(taskRecord);
-  await Promise.allSettled(
-    recipients.map((userId) =>
-      createNotification(userId, {
-        ...notification,
-        taskId,
-        taskTitle,
-      }),
-    ),
-  );
-};
-
-const normalizeOptionalString = (value: unknown): string | undefined => {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-};
-
-const normalizeLatestSubmission = (
-  value: unknown,
-): TaskSubmissionMetadata | undefined => {
-  if (!value || typeof value !== "object") return undefined;
-  const record = value as Record<string, unknown>;
-  const note = typeof record.note === "string" ? record.note : "";
-  const submitterId =
-    typeof record.submitterId === "string" ? record.submitterId : "";
-  const submitterName =
-    typeof record.submitterName === "string" ? record.submitterName : "";
-  const submittedAt =
-    typeof record.submittedAt === "number" ? record.submittedAt : 0;
-  const attachments = normalizeStringArray(record.attachments);
-
-  if (!note && !submitterId && !submitterName && !submittedAt && attachments.length === 0) {
-    return undefined;
-  }
-
-  return {
-    note,
-    submitterId,
-    submitterName,
-    submittedAt,
-    attachments,
-  };
-};
-
-const notifyAssignment = async ({
-  taskId,
-  taskTitle,
-  leadId,
-  leadName,
-  teamMemberIds,
-}: {
-  taskId: string;
-  taskTitle: string;
-  leadId?: string;
-  leadName?: string;
-  teamMemberIds?: string[];
-}) => {
-  const recipients = uniqueStrings([leadId, ...(teamMemberIds || [])]);
-  if (recipients.length === 0) return;
-
-  const safeTitle = taskTitle || "Task";
-  const safeLead = leadName || "Unassigned";
-  const message = `New assignment: ${safeTitle} - Lead: ${safeLead}`;
-
-  await Promise.allSettled(
-    recipients.map((userId) =>
-      createNotification(userId, {
-        type: "assignment",
-        title: "New Task Assignment",
-        message,
-        taskId,
-        taskTitle: safeTitle,
-      }),
-    ),
-  );
-};
-
-const normalizeTaskRecord = (id: string, record: Record<string, unknown>): Task => {
-  const assigneeId = typeof record.assigneeId === "string" ? record.assigneeId : typeof record.assignedTo === "string" ? record.assignedTo : undefined;
-  const teamId = normalizeOptionalString(record.teamId) || normalizeOptionalString(record.department);
-  const teamName = normalizeOptionalString(record.teamName) || getDepartmentLabel(teamId);
-  const assigneeName =
-    typeof record.assigneeName === "string"
-      ? record.assigneeName
-      : assigneeId
-        ? EMPLOYEE_SEED_BY_ID[assigneeId]?.name
-        : undefined;
-  const teamMemberIds = normalizeStringArray(record.teamMemberIds);
-  const teamMemberNames = normalizeStringArray(record.teamMemberNames);
-  const recommendedEmployeeIds = normalizeStringArray(record.recommendedEmployeeIds);
-  const status = isTaskStatus(record.status) ? record.status : "pending_assignment";
-  const createdAt = typeof record.createdAt === "number" ? record.createdAt : Date.now();
-  const updatedAt = typeof record.updatedAt === "number" ? record.updatedAt : createdAt;
-  const recommendationReasoning =
-    typeof record.recommendationReasoning === "string"
-      ? record.recommendationReasoning
-      : undefined;
-  const recommendationSource =
-    typeof record.recommendationSource === "string"
-      ? (record.recommendationSource as Task["recommendationSource"])
-      : undefined;
-  const recommendationLeadId =
-    typeof record.recommendationLeadId === "string"
-      ? record.recommendationLeadId
-      : undefined;
-  const burnoutWarning =
-    typeof record.burnoutWarning === "boolean"
-      ? record.burnoutWarning
-      : undefined;
-  const rejectionNote =
-    normalizeOptionalString(record.rejectionNote) ||
-    normalizeOptionalString(record.feedback);
-  const rejectedAt =
-    typeof record.rejectedAt === "number" ? record.rejectedAt : undefined;
-  const reopenReason = normalizeOptionalString(record.reopenReason);
-  const reopenedAt =
-    typeof record.reopenedAt === "number" ? record.reopenedAt : undefined;
-  const reopenedById = normalizeOptionalString(record.reopenedById);
-  const reopenedByName = normalizeOptionalString(record.reopenedByName);
-  const latestSubmission = normalizeLatestSubmission(record.latestSubmission);
-
-  return {
-    id,
-    title: typeof record.title === "string" ? record.title : "Untitled task",
-    description: typeof record.description === "string" ? record.description : undefined,
-    status,
-    assigneeId,
-    assigneeName,
-    assignedTo: assigneeId,
-    teamId,
-    teamName,
-    teamMemberIds: teamMemberIds.length > 0 ? teamMemberIds : assigneeId ? [assigneeId] : [],
-    teamMemberNames: teamMemberNames.length > 0 ? teamMemberNames : assigneeName ? [assigneeName] : [],
-    department: teamId,
-    priority:
-      record.priority === "low" || record.priority === "medium" || record.priority === "high"
-        ? record.priority
-        : undefined,
-    deadline:
-      typeof record.deadline === "string"
-        ? record.deadline
-        : typeof record.dueDate === "string"
-          ? record.dueDate
-          : undefined,
-    dueDate: typeof record.dueDate === "string" ? record.dueDate : undefined,
-    tags: normalizeStringArray(record.tags),
-    recommendedEmployeeIds: recommendedEmployeeIds.length > 0 ? recommendedEmployeeIds : undefined,
-    recommendationReasoning,
-    recommendationSource,
-    recommendationLeadId,
-    burnoutWarning,
-    createdAt,
-    updatedAt,
-    auditHash: typeof record.auditHash === "string" ? record.auditHash : undefined,
-    feedback: typeof record.feedback === "string" ? record.feedback : undefined,
-    latestSubmission,
-    rejectionNote,
-    rejectedAt,
-    reopenReason,
-    reopenedAt,
-    reopenedById,
-    reopenedByName,
-    barangay: typeof record.barangay === "string" ? record.barangay : undefined,
-    estimatedHours: typeof record.estimatedHours === "number" ? record.estimatedHours : undefined,
-    budgetImpact: typeof record.budgetImpact === "number" ? record.budgetImpact : undefined,
-    proposalId: normalizeOptionalString(record.proposalId),
-    proposalTitle: normalizeOptionalString(record.proposalTitle),
-    programId: normalizeOptionalString(record.programId),
-    programTitle: normalizeOptionalString(record.programTitle),
-    projectId: normalizeOptionalString(record.projectId),
-    projectTitle: normalizeOptionalString(record.projectTitle),
-    activityId: normalizeOptionalString(record.activityId),
-    activityTitle: normalizeOptionalString(record.activityTitle),
-    activitySchedule: normalizeOptionalString(record.activitySchedule),
-    hierarchyPath: normalizeOptionalString(record.hierarchyPath),
-    importBatchId: normalizeOptionalString(record.importBatchId),
-  };
-};
-
-let seedPromise: Promise<void> | null = null;
-
-export const subscribeToTasks = (callback: (tasks: Task[]) => void) => {
-  const tasksRef = ref(database, TASKS_PATH);
-  return onValue(tasksRef, (snapshot) => {
-    const data = snapshot.val();
-    if (data) {
-      const taskList = Object.entries(data).map(([key, value]) => normalizeTaskRecord(key, value as Record<string, unknown>));
-      callback(taskList);
-    } else {
-      callback([]);
-    }
-  });
-};
-
-export const seedTasksIfEmpty = async () => {
-  if (seedPromise) return seedPromise;
-
-  seedPromise = (async () => {
-    const tasksRef = ref(database, TASKS_PATH);
-    const snapshot = await get(tasksRef);
-
-    if (!snapshot.exists()) {
-      const taskData = Object.fromEntries(
-        TASK_SEED.map((task) => {
-          const assignee = EMPLOYEE_SEED_BY_ID[task.assignedTo];
-          const teamName = getDepartmentLabel(task.department);
-
-          return [task.id, {
-            title: task.title,
-            description: task.description,
-            department: task.department,
-            teamId: task.department,
-            teamName,
-            assigneeId: task.assignedTo,
-            assigneeName: assignee?.name,
-            assignedTo: task.assignedTo,
-            teamMemberIds: [task.assignedTo],
-            teamMemberNames: assignee ? [assignee.name] : [],
-            status: task.status,
-            priority: task.priority,
-            dueDate: task.dueDate,
-            deadline: task.dueDate,
-            tags: task.tags,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-          }];
-        })
-      );
-
-      await set(tasksRef, taskData);
-      console.log("Seeded live task directory to Firebase.");
-    }
-  })().finally(() => {
-    seedPromise = null;
-  });
-
-  return seedPromise;
-};
-
-// ─── Enhanced createTask with full field support ─────────────────
 export interface CreateTaskPayload {
   title: string;
   description: string;
   deadline: string;
-  priority?: "low" | "medium" | "high";
+  priority?: 'low' | 'medium' | 'high';
   tags?: string[];
   status?: TaskStatus;
   department?: string;
@@ -468,7 +122,7 @@ export interface CreateTaskPayload {
   assigneeName?: string;
   recommendedEmployeeIds?: string[];
   recommendationReasoning?: string;
-  recommendationSource?: "llm" | "fallback" | "import";
+  recommendationSource?: 'llm' | 'fallback' | 'import';
   recommendationLeadId?: string;
   burnoutWarning?: boolean;
   barangay?: string;
@@ -491,7 +145,7 @@ export interface UpdateTaskPayload {
   title?: string;
   description?: string;
   deadline?: string;
-  priority?: "low" | "medium" | "high";
+  priority?: 'low' | 'medium' | 'high';
   tags?: string[];
   status?: TaskStatus;
   department?: string;
@@ -503,7 +157,7 @@ export interface UpdateTaskPayload {
   assigneeName?: string;
   recommendedEmployeeIds?: string[];
   recommendationReasoning?: string;
-  recommendationSource?: "llm" | "fallback" | "import";
+  recommendationSource?: 'llm' | 'fallback' | 'import';
   recommendationLeadId?: string;
   burnoutWarning?: boolean;
   proposalId?: string;
@@ -519,465 +173,424 @@ export interface UpdateTaskPayload {
   importBatchId?: string;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────
+
+const readString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+
+function rowToTask(row: Record<string, unknown>): Task {
+  return {
+    id: row.id as string,
+    title: (row.title as string) || 'Untitled task',
+    description: readString(row.description),
+    status: (row.status as TaskStatus) || 'pending_assignment',
+    priority: (row.priority as 'low' | 'medium' | 'high') || 'medium',
+    assigneeId: readString(row.assigned_to),
+    assigneeName: readString(row.assignee_name),
+    assignedTo: readString(row.assigned_to),
+    teamId: readString(row.team_id),
+    teamName: readString(row.team_name),
+    teamMemberIds: (row.team_member_ids as string[]) || [],
+    teamMemberNames: (row.team_member_names as string[]) || [],
+    department: readString(row.department),
+    deadline: readString(row.deadline),
+    dueDate: readString(row.due_date),
+    tags: (row.tags as string[]) || [],
+    createdAt: new Date((row.created_at as string) || Date.now()).getTime(),
+    updatedAt: new Date((row.updated_at as string) || Date.now()).getTime(),
+    auditHash: readString(row.audit_hash),
+    feedback: readString(row.feedback),
+    latestSubmission: undefined,
+    rejectionNote: readString(row.rejection_note),
+    rejectedAt: row.rejected_at ? new Date(row.rejected_at as string).getTime() : undefined,
+    reopenReason: readString(row.reopen_reason),
+    reopenedAt: row.reopened_at ? new Date(row.reopened_at as string).getTime() : undefined,
+    reopenedById: readString(row.reopened_by_id),
+    reopenedByName: readString(row.reopened_by_name),
+    recommendedEmployeeIds: (row.recommended_employee_ids as string[]) || [],
+    recommendationReasoning: readString(row.recommendation_reasoning),
+    recommendationSource: readString(row.recommendation_source) as Task['recommendationSource'],
+    recommendationLeadId: readString(row.recommendation_lead_id),
+    burnoutWarning: (row.burnout_warning as boolean) || false,
+    proposalId: readString(row.proposal_id),
+    proposalTitle: readString(row.proposal_title),
+    programId: readString(row.program_id),
+    programTitle: readString(row.program_title),
+    projectId: readString(row.project_id),
+    projectTitle: readString(row.project_title),
+    activityId: readString(row.activity_id),
+    activityTitle: readString(row.activity_title),
+    activitySchedule: readString(row.activity_schedule),
+    hierarchyPath: readString(row.hierarchy_path),
+    importBatchId: readString(row.import_batch_id),
+    barangay: readString(row.barangay),
+    estimatedHours: (row.estimated_hours as number) || undefined,
+    budgetImpact: (row.budget_impact as number) || undefined,
+  };
+}
+
+function taskToRow(task: Partial<Task>): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  if (task.title !== undefined) row.title = task.title;
+  if (task.description !== undefined) row.description = task.description;
+  if (task.status !== undefined) row.status = task.status;
+  if (task.priority !== undefined) row.priority = task.priority;
+  if (task.assigneeId !== undefined) row.assigned_to = task.assigneeId || null;
+  if (task.assignedTo !== undefined) row.assigned_to = task.assignedTo || null;
+  if (task.assigneeName !== undefined) row.assignee_name = task.assigneeName || '';
+  if (task.department !== undefined) row.department = task.department || '';
+  if (task.teamId !== undefined) row.team_id = task.teamId || '';
+  if (task.teamName !== undefined) row.team_name = task.teamName || '';
+  if (task.teamMemberIds !== undefined) row.team_member_ids = task.teamMemberIds;
+  if (task.teamMemberNames !== undefined) row.team_member_names = task.teamMemberNames;
+  if (task.deadline !== undefined) { row.deadline = task.deadline; row.due_date = task.deadline; }
+  if (task.dueDate !== undefined) row.due_date = task.dueDate;
+  if (task.tags !== undefined) row.tags = task.tags;
+  if (task.feedback !== undefined) row.feedback = task.feedback;
+  if (task.rejectionNote !== undefined) row.rejection_note = task.rejectionNote;
+  if (task.rejectedAt !== undefined) row.rejected_at = task.rejectedAt ? new Date(task.rejectedAt).toISOString() : null;
+  if (task.reopenReason !== undefined) row.reopen_reason = task.reopenReason;
+  if (task.reopenedAt !== undefined) row.reopened_at = task.reopenedAt ? new Date(task.reopenedAt).toISOString() : null;
+  if (task.reopenedById !== undefined) row.reopened_by_id = task.reopenedById || null;
+  if (task.reopenedByName !== undefined) row.reopened_by_name = task.reopenedByName || '';
+  if (task.recommendedEmployeeIds !== undefined) row.recommended_employee_ids = task.recommendedEmployeeIds;
+  if (task.recommendationReasoning !== undefined) row.recommendation_reasoning = task.recommendationReasoning;
+  if (task.recommendationSource !== undefined) row.recommendation_source = task.recommendationSource;
+  if (task.recommendationLeadId !== undefined) row.recommendation_lead_id = task.recommendationLeadId || null;
+  if (task.burnoutWarning !== undefined) row.burnout_warning = task.burnoutWarning;
+  if (task.proposalId !== undefined) row.proposal_id = task.proposalId;
+  if (task.proposalTitle !== undefined) row.proposal_title = task.proposalTitle;
+  if (task.programId !== undefined) row.program_id = task.programId;
+  if (task.programTitle !== undefined) row.program_title = task.programTitle;
+  if (task.projectId !== undefined) row.project_id = task.projectId;
+  if (task.projectTitle !== undefined) row.project_title = task.projectTitle;
+  if (task.activityId !== undefined) row.activity_id = task.activityId;
+  if (task.activityTitle !== undefined) row.activity_title = task.activityTitle;
+  if (task.activitySchedule !== undefined) row.activity_schedule = task.activitySchedule;
+  if (task.hierarchyPath !== undefined) row.hierarchy_path = task.hierarchyPath;
+  if (task.importBatchId !== undefined) row.import_batch_id = task.importBatchId;
+  if (task.auditHash !== undefined) row.audit_hash = task.auditHash;
+  if (task.barangay !== undefined) row.barangay = task.barangay;
+  if (task.estimatedHours !== undefined) row.estimated_hours = task.estimatedHours;
+  if (task.budgetImpact !== undefined) row.budget_impact = task.budgetImpact;
+  return row;
+}
+
+const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  pending_assignment: 'Pending Assignment',
+  todo: 'To Do',
+  in_progress: 'In Progress',
+  for_review: 'For Review',
+  completed: 'Completed',
+};
+
+// ─── Local listener system ────────────────────────────────────────
+
+const taskListeners = new Set<(tasks: Task[]) => void>();
+
+async function notifyTaskListeners() {
+  try {
+    const { data } = await supabase
+      .from('tasks')
+      .select('*')
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+    if (data) {
+      const tasks = data.map(rowToTask);
+      taskListeners.forEach(cb => { try { cb(tasks); } catch (e) { console.error(e); } });
+    }
+  } catch (err) {
+    console.error('Error loading tasks:', err);
+  }
+}
+
+async function fetchTaskById(taskId: string): Promise<Record<string, unknown> | null> {
+  const { data } = await supabase.from('tasks').select('*').eq('id', taskId).single();
+  return data || null;
+}
+
+// ─── subscribeToTasks ─────────────────────────────────────────────
+
+let seedPromise: Promise<void> | null = null;
+
+export const seedTasksIfEmpty = async () => {
+  if (seedPromise) return seedPromise;
+  seedPromise = (async () => {
+    const { count } = await supabase
+      .from('tasks')
+      .select('*', { count: 'exact', head: true })
+      .is('deleted_at', null);
+    if ((count ?? 0) > 0) return;
+    const { TASK_SEED } = await import('./eflowSeedData');
+    const { EMPLOYEE_SEED_BY_ID, getDepartmentLabel } = await import('./eflowSeedData');
+    const rows = TASK_SEED.map((t: any) => {
+      const assignee = EMPLOYEE_SEED_BY_ID[t.assignedTo];
+      const teamName = getDepartmentLabel(t.department);
+      return {
+        title: t.title,
+        description: t.description || '',
+        status: t.status || 'pending_assignment',
+        priority: t.priority || 'medium',
+        department: t.department || '',
+        team_id: t.department || '',
+        team_name: teamName || '',
+        assigned_to: t.assignedTo || null,
+        assignee_name: assignee?.name || '',
+        team_member_ids: t.assignedTo ? [t.assignedTo] : [],
+        team_member_names: assignee ? [assignee.name] : [],
+        deadline: t.dueDate || '',
+        due_date: t.dueDate || '',
+        tags: t.tags || [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    });
+    await supabase.from('tasks').insert(rows);
+    await notifyTaskListeners();
+    console.log('Seeded tasks to Supabase.');
+  })().finally(() => { seedPromise = null; });
+  return seedPromise;
+};
+
+export const subscribeToTasks = (callback: (tasks: Task[]) => void) => {
+  taskListeners.add(callback);
+
+  supabase
+    .from('tasks')
+    .select('*')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .then(({ data }) => {
+      if (data) callback(data.map(rowToTask));
+    });
+
+  const channelId = `tasks-changes-${Math.random().toString(36).slice(2)}`;
+  const channel = supabase
+    .channel(channelId)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
+      notifyTaskListeners();
+    })
+    .subscribe();
+
+  return () => {
+    taskListeners.delete(callback);
+    supabase.removeChannel(channel);
+  };
+};
+
+// ─── createTask ───────────────────────────────────────────────────
+
 export const createTask = async (
   titleOrPayload: string | CreateTaskPayload,
   description?: string,
-  deadline?: string
+  deadline?: string,
 ) => {
-  const tasksRef = ref(database, TASKS_PATH);
-  const newTaskRef = push(tasksRef);
-  const taskId = newTaskRef.key!;
-
   let newTask: Record<string, unknown>;
 
-  if (typeof titleOrPayload === "object") {
+  if (typeof titleOrPayload === 'object') {
     const p = titleOrPayload;
-    newTask = {
+    const row = taskToRow({
       title: p.title,
       description: p.description,
       deadline: p.deadline,
-      dueDate: p.deadline,
-      status: p.status || "pending_assignment",
-      priority: p.priority || "medium",
+      status: p.status || 'pending_assignment',
+      priority: p.priority || 'medium',
       tags: p.tags || [],
-      department: p.department || p.teamId || "",
-      teamId: p.teamId || p.department || "",
-      teamName: p.teamName || "",
+      department: p.department || p.teamId || '',
+      teamId: p.teamId || p.department || '',
+      teamName: p.teamName || '',
       teamMemberIds: p.teamMemberIds || [],
       teamMemberNames: p.teamMemberNames || [],
-      assigneeId: p.assigneeId || "",
-      assigneeName: p.assigneeName || "",
-      barangay: p.barangay || "",
+      assigneeId: p.assigneeId || '',
+      assigneeName: p.assigneeName || '',
+      barangay: p.barangay || '',
       estimatedHours: p.estimatedHours || 0,
       budgetImpact: p.budgetImpact || 0,
-      projectId: p.projectId || "",
-      proposalId: p.proposalId || "",
-      proposalTitle: p.proposalTitle || "",
-      programId: p.programId || "",
-      programTitle: p.programTitle || "",
-      projectTitle: p.projectTitle || "",
-      activityId: p.activityId || "",
-      activityTitle: p.activityTitle || "",
-      activitySchedule: p.activitySchedule || "",
-      hierarchyPath: p.hierarchyPath || "",
-      importBatchId: p.importBatchId || "",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    if (p.recommendedEmployeeIds && p.recommendedEmployeeIds.length > 0) {
-      newTask.recommendedEmployeeIds = p.recommendedEmployeeIds;
-    }
-    if (p.recommendationReasoning) {
-      newTask.recommendationReasoning = p.recommendationReasoning;
-    }
-    if (p.recommendationSource) {
-      newTask.recommendationSource = p.recommendationSource;
-    }
-    if (p.recommendationLeadId) {
-      newTask.recommendationLeadId = p.recommendationLeadId;
-    }
-    if (typeof p.burnoutWarning === "boolean") {
-      newTask.burnoutWarning = p.burnoutWarning;
-    }
+      proposalId: p.proposalId || '',
+      proposalTitle: p.proposalTitle || '',
+      programId: p.programId || '',
+      programTitle: p.programTitle || '',
+      projectId: p.projectId || '',
+      projectTitle: p.projectTitle || '',
+      activityId: p.activityId || '',
+      activityTitle: p.activityTitle || '',
+      activitySchedule: p.activitySchedule || '',
+      hierarchyPath: p.hierarchyPath || '',
+      importBatchId: p.importBatchId || '',
+      recommendedEmployeeIds: p.recommendedEmployeeIds,
+      recommendationReasoning: p.recommendationReasoning,
+      recommendationSource: p.recommendationSource,
+      recommendationLeadId: p.recommendationLeadId,
+      burnoutWarning: p.burnoutWarning,
+    });
+    newTask = row;
   } else {
-    // Legacy 3-arg call
     newTask = {
       title: titleOrPayload,
-      description: description || "",
-      deadline: deadline || "",
-      dueDate: deadline || "",
-      status: "pending_assignment",
-      teamId: "",
-      teamName: "",
-      teamMemberIds: [],
-      teamMemberNames: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      description: description || '',
+      deadline: deadline || '',
+      due_date: deadline || '',
+      status: 'pending_assignment',
+      team_id: '',
+      team_name: '',
+      team_member_ids: [],
+      team_member_names: [],
     };
   }
 
-  await set(newTaskRef, newTask);
+  const { data, error } = await supabase
+    .from('tasks')
+    .insert(newTask)
+    .select()
+    .single();
 
-  const taskTitle =
-    typeof newTask.title === "string" && newTask.title.trim().length > 0
-      ? newTask.title
-      : "Task";
-  const leadId =
-    typeof newTask.assigneeId === "string" ? newTask.assigneeId : undefined;
-  const leadName =
-    typeof newTask.assigneeName === "string" ? newTask.assigneeName : undefined;
-  const teamMemberIds = Array.isArray(newTask.teamMemberIds)
-    ? newTask.teamMemberIds.filter(
-        (item): item is string => typeof item === "string",
-      )
-    : [];
-  const statusValue =
-    typeof newTask.status === "string" ? newTask.status : "pending_assignment";
-  if (statusValue !== "pending_assignment" && (leadId || teamMemberIds.length > 0)) {
-    await notifyAssignment({
-      taskId,
+  if (error) throw error;
+  const task = rowToTask(data);
+
+  const taskTitle = (newTask.title as string) || 'Task';
+  await supabase.from('task_status_history').insert({
+    task_id: task.id,
+    from_status: null,
+    to_status: task.status,
+    note: 'Task created',
+  });
+
+  // Notify assignee if assigned at creation
+  const assigneeId = readString(newTask.assigned_to);
+  if (assigneeId) {
+    await createNotification(assigneeId, {
+      type: 'assignment',
+      title: 'New Task Assignment',
+      message: `New assignment: ${taskTitle}`,
+      taskId: task.id,
       taskTitle,
-      leadId,
-      leadName,
-      teamMemberIds,
     });
   }
 
-  // Create activity log
-  await logTaskActivity(taskId, "created", `Task "${newTask.title}" created`);
+  await notifyTaskListeners();
 };
 
-export const assignTask = async (taskId: string, assigneeId: string, assigneeName: string, assignment?: TaskAssignmentDetails) => {
-  const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
-  const existingSnap = await get(taskRef);
-  const taskTitle =
-    existingSnap.exists() && typeof existingSnap.val()?.title === "string"
-      ? existingSnap.val().title
-      : "Task";
-  const updatePayload: Record<string, unknown> = {
-    assigneeId,
-    assigneeName,
-    status: "todo",
-    updatedAt: Date.now(),
+// ─── assignTask ───────────────────────────────────────────────────
+
+export const assignTask = async (
+  taskId: string,
+  assigneeId: string,
+  assigneeName: string,
+  assignment?: TaskAssignmentDetails,
+) => {
+  const update: Record<string, unknown> = {
+    assigned_to: assigneeId || null,
+    assignee_name: assigneeName,
+    status: 'todo',
   };
+  if (assignment?.teamId) update.team_id = assignment.teamId;
+  if (assignment?.teamName) update.team_name = assignment.teamName;
+  if (assignment?.teamMemberIds) update.team_member_ids = assignment.teamMemberIds;
+  if (assignment?.teamMemberNames) update.team_member_names = assignment.teamMemberNames;
 
-  if (assignment?.teamId) updatePayload.teamId = assignment.teamId;
-  if (assignment?.teamName) updatePayload.teamName = assignment.teamName;
-  if (assignment?.teamMemberIds) updatePayload.teamMemberIds = assignment.teamMemberIds;
-  if (assignment?.teamMemberNames) updatePayload.teamMemberNames = assignment.teamMemberNames;
+  await supabase.from('tasks').update(update).eq('id', taskId);
 
-  await update(taskRef, updatePayload);
+  const { data: task } = await supabase.from('tasks').select('title').eq('id', taskId).single();
+  const taskTitle = (task?.title as string) || 'Task';
 
-  // Activity log
-  await logTaskActivity(taskId, "assigned", `Assigned to ${assigneeName} (${assignment?.teamName || ""})`);
+  if (assigneeId) {
+    await createNotification(assigneeId, {
+      type: 'assignment',
+      title: 'New Task Assigned',
+      message: `You have been assigned to "${taskTitle}".`,
+      taskId,
+      taskTitle,
+      actorName: assigneeName,
+      statusTo: 'todo',
+    });
+  }
 
-  await notifyAssignment({
-    taskId,
-    taskTitle,
-    leadId: assigneeId,
-    leadName: assigneeName,
-    teamMemberIds: assignment?.teamMemberIds,
-  });
+  await notifyTaskListeners();
 };
+
+// ─── updateTask ───────────────────────────────────────────────────
 
 export const updateTask = async (
   taskId: string,
   payload: UpdateTaskPayload,
 ) => {
-  const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
-  const shouldNotifyAssignment =
-    "teamMemberIds" in payload ||
-    "assigneeId" in payload ||
-    "assigneeName" in payload;
-  const existingSnapshot = shouldNotifyAssignment ? await get(taskRef) : null;
-  const existingTask = existingSnapshot?.exists()
-    ? (existingSnapshot.val() as Record<string, unknown>)
-    : undefined;
-  const updatePayload: Record<string, unknown> = { updatedAt: Date.now() };
-  const changedKeys: string[] = [];
-
-  const applyStringField = (key: keyof UpdateTaskPayload, targetKey = key) => {
-    if (!(key in payload)) return;
-    updatePayload[targetKey as string] = payload[key] ?? "";
-    changedKeys.push(targetKey as string);
-  };
-
-  applyStringField("title");
-  applyStringField("description");
-  applyStringField("department");
-  applyStringField("teamId");
-  applyStringField("teamName");
-  applyStringField("assigneeId");
-  applyStringField("assigneeName");
-  applyStringField("recommendationReasoning");
-  applyStringField("recommendationLeadId");
-  applyStringField("proposalId");
-  applyStringField("proposalTitle");
-  applyStringField("programId");
-  applyStringField("programTitle");
-  applyStringField("projectId");
-  applyStringField("projectTitle");
-  applyStringField("activityId");
-  applyStringField("activityTitle");
-  applyStringField("activitySchedule");
-  applyStringField("hierarchyPath");
-  applyStringField("importBatchId");
-
-  if ("deadline" in payload) {
-    const value = payload.deadline ?? "";
-    updatePayload.deadline = value;
-    updatePayload.dueDate = value;
-    changedKeys.push("deadline", "dueDate");
-  }
-  if ("priority" in payload && payload.priority) {
-    updatePayload.priority = payload.priority;
-    changedKeys.push("priority");
-  }
-  if ("status" in payload && payload.status) {
-    updatePayload.status = payload.status;
-    changedKeys.push("status");
-  }
-  if ("recommendationSource" in payload && payload.recommendationSource) {
-    updatePayload.recommendationSource = payload.recommendationSource;
-    changedKeys.push("recommendationSource");
-  }
-  if ("burnoutWarning" in payload && typeof payload.burnoutWarning === "boolean") {
-    updatePayload.burnoutWarning = payload.burnoutWarning;
-    changedKeys.push("burnoutWarning");
-  }
-  if ("tags" in payload && Array.isArray(payload.tags)) {
-    updatePayload.tags = payload.tags;
-    changedKeys.push("tags");
-  }
-  if ("teamMemberIds" in payload && Array.isArray(payload.teamMemberIds)) {
-    updatePayload.teamMemberIds = payload.teamMemberIds;
-    changedKeys.push("teamMemberIds");
-  }
-  if ("teamMemberNames" in payload && Array.isArray(payload.teamMemberNames)) {
-    updatePayload.teamMemberNames = payload.teamMemberNames;
-    changedKeys.push("teamMemberNames");
-  }
-  if (
-    "recommendedEmployeeIds" in payload &&
-    Array.isArray(payload.recommendedEmployeeIds)
-  ) {
-    updatePayload.recommendedEmployeeIds = payload.recommendedEmployeeIds;
-    changedKeys.push("recommendedEmployeeIds");
-  }
-
-  if (changedKeys.length === 0) return;
-
-  await update(taskRef, updatePayload);
-  await logTaskActivity(
-    taskId,
-    "updated",
-    `Task updated: ${Array.from(new Set(changedKeys)).join(", ")}`,
-  );
-
-  if (shouldNotifyAssignment) {
-    const taskTitle =
-      (typeof payload.title === "string" && payload.title.trim()) ||
-      (typeof existingTask?.title === "string" ? existingTask.title : "Task");
-    const leadId =
-      ("assigneeId" in payload
-        ? readString(payload.assigneeId)
-        : readString(existingTask?.assigneeId)) || undefined;
-    const leadName =
-      ("assigneeName" in payload
-        ? readString(payload.assigneeName)
-        : readString(existingTask?.assigneeName)) || undefined;
-    const teamMemberIds =
-      "teamMemberIds" in payload
-        ? Array.isArray(payload.teamMemberIds)
-          ? payload.teamMemberIds
-          : []
-        : Array.isArray(existingTask?.teamMemberIds)
-          ? (existingTask?.teamMemberIds as string[])
-          : [];
-
-    if (leadId || teamMemberIds.length > 0) {
-      await notifyAssignment({
-        taskId,
-        taskTitle,
-        leadId,
-        leadName,
-        teamMemberIds,
-      });
-    }
-  }
+  const row = taskToRow(payload as Partial<Task>);
+  await supabase.from('tasks').update(row).eq('id', taskId);
+  await notifyTaskListeners();
 };
 
-export const submitTaskForReview = async (
-  taskId: string,
-  submission: TaskSubmissionInput,
-) => {
-  const trimmedNote = submission.note.trim();
-  if (!trimmedNote) {
-    throw new Error("Submission note is required.");
-  }
-  if (!submission.submitterId) {
-    throw new Error("Submitter ID is required.");
-  }
-
-  const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
-  const snapshot = await get(taskRef);
-  if (!snapshot.exists()) {
-    throw new Error("Task not found.");
-  }
-  const taskRecord = snapshot.val() as Record<string, unknown>;
-  const attachments = submission.attachments || [];
-  const uploadedUrls = await Promise.all(
-    attachments.map(async (file, idx) => {
-      const safeName =
-        typeof file.name === "string" && file.name.trim().length > 0
-          ? file.name
-          : `attachment-${idx + 1}`;
-      const evidenceRef = storageRef(
-        storage,
-        `evidence/${taskId}/${submission.submitterId}/${safeName}`,
-      );
-      await uploadBytes(evidenceRef, file);
-      return getDownloadURL(evidenceRef);
-    }),
-  );
-
-  const now = Date.now();
-  const latestSubmission: TaskSubmissionMetadata = {
-    note: trimmedNote,
-    submitterId: submission.submitterId,
-    submitterName: submission.submitterName,
-    submittedAt: now,
-    attachments: uploadedUrls,
-  };
-
-  await update(taskRef, {
-    status: "for_review",
-    latestSubmission,
-    rejectionNote: null,
-    rejectedAt: null,
-    feedback: null,
-    updatedAt: now,
-  });
-
-  await logTaskActivity(
-    taskId,
-    "submitted",
-    `Submitted for review by ${submission.submitterName}`,
-    submission.submitterId,
-    submission.submitterName,
-  );
-
-  await notifyTaskStakeholders(
-    taskId,
-    { ...taskRecord, status: "for_review" },
-    {
-      type: "approval_needed",
-      title: "Task Submitted for Review",
-      message: `${submission.submitterName || "An employee"} submitted "${getRecordTitle(taskRecord)}" for review.`,
-      actorId: submission.submitterId,
-      actorName: submission.submitterName,
-      statusFrom: getRecordStatus(taskRecord),
-      statusTo: "for_review",
-    },
-    submission.submitterId,
-  );
-};
-
-export const deleteTask = async (taskId: string) => {
-  const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
-  const snapshot = await get(taskRef);
-  const taskTitle =
-    snapshot.exists() && typeof snapshot.val()?.title === "string"
-      ? snapshot.val().title
-      : taskId;
-
-  await remove(taskRef);
-  await remove(ref(database, `${ACTIVITIES_PATH}/${taskId}`));
-
-  console.info(`Task deleted: ${taskTitle}`);
-};
-
-// ─── Reassign with activity logging ──────────────────────────────
-export const reassignTask = async (
-  taskId: string,
-  newAssigneeId: string,
-  newAssigneeName: string,
-  newTeam?: TaskAssignmentDetails,
-  oldAssigneeName?: string
-) => {
-  const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
-  const existingSnap = await get(taskRef);
-  const taskTitle =
-    existingSnap.exists() && typeof existingSnap.val()?.title === "string"
-      ? existingSnap.val().title
-      : "Task";
-  const updatePayload: Record<string, unknown> = {
-    assigneeId: newAssigneeId,
-    assigneeName: newAssigneeName,
-    updatedAt: Date.now(),
-  };
-
-  if (newTeam?.teamId) updatePayload.teamId = newTeam.teamId;
-  if (newTeam?.teamName) updatePayload.teamName = newTeam.teamName;
-  if (newTeam?.teamMemberIds) updatePayload.teamMemberIds = newTeam.teamMemberIds;
-  if (newTeam?.teamMemberNames) updatePayload.teamMemberNames = newTeam.teamMemberNames;
-
-  await update(taskRef, updatePayload);
-
-  await logTaskActivity(
-    taskId,
-    "reassigned",
-    `Reassigned from ${oldAssigneeName || "unassigned"} to ${newAssigneeName}`
-  );
-
-  await notifyAssignment({
-    taskId,
-    taskTitle,
-    leadId: newAssigneeId,
-    leadName: newAssigneeName,
-    teamMemberIds: newTeam?.teamMemberIds,
-  });
-};
+// ─── updateTaskStatus ─────────────────────────────────────────────
 
 export const updateTaskStatus = async (
   taskId: string,
   status: TaskStatus,
   actor?: TaskActor,
 ) => {
-  const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
-  const snapshot = await get(taskRef);
-  if (!snapshot.exists()) {
-    throw new Error("Task not found.");
-  }
+  const current = await fetchTaskById(taskId);
+  if (!current) throw new Error('Task not found.');
 
-  const taskRecord = snapshot.val() as Record<string, unknown>;
-  const previousStatus = getRecordStatus(taskRecord);
+  const previousStatus = current.status as TaskStatus;
   if (previousStatus === status) return;
-  if (previousStatus === "completed" && status !== "completed") {
-    throw new Error("Completed tasks can only be reopened with undo.");
+  if (previousStatus === 'completed' && status !== 'completed') {
+    throw new Error('Completed tasks can only be reopened with undo.');
   }
 
-  await update(taskRef, {
-    status,
-    updatedAt: Date.now(),
+  await supabase.from('tasks').update({ status }).eq('id', taskId);
+
+  const actorName = actor?.name || 'Someone';
+  await supabase.from('task_status_history').insert({
+    task_id: taskId,
+    from_status: previousStatus,
+    to_status: status,
+    actor_id: actor?.id || null,
+    actor_name: actorName,
   });
 
-  const actorName = actor?.name || "Someone";
-  await logTaskActivity(
+  await createNotification(actor?.id || '', {
+    type: status === 'completed' ? 'completed' : 'status_change',
+    title: status === 'completed' ? 'Task Completed' : `Task Moved to ${TASK_STATUS_LABELS[status]}`,
+    message: `${actorName} moved "${current.title || 'task'}" to ${TASK_STATUS_LABELS[status]}.`,
     taskId,
-    "status_change",
-    `${actorName} changed status from "${TASK_STATUS_LABELS[previousStatus]}" to "${TASK_STATUS_LABELS[status]}"`,
-    actor?.id,
-    actor?.name,
-  );
+    taskTitle: (current.title as string) || '',
+    actorName,
+    statusFrom: previousStatus,
+    statusTo: status,
+  });
 
-  await notifyTaskStakeholders(
-    taskId,
-    { ...taskRecord, status },
-    {
-      type: status === "completed" ? "completed" : "status_change",
-      title:
-        status === "completed"
-          ? "Task Completed"
-          : `Task Moved to ${TASK_STATUS_LABELS[status]}`,
-      message: `${actorName} moved "${getRecordTitle(taskRecord)}" from ${TASK_STATUS_LABELS[previousStatus]} to ${TASK_STATUS_LABELS[status]}.`,
-      actorId: actor?.id,
-      actorName: actor?.name,
-      statusFrom: previousStatus,
-      statusTo: status,
-    },
-    actor?.id,
-  );
+  await notifyTaskListeners();
 };
 
-async function generateAuditHash(taskData: any): Promise<string> {
-  const msgUint8 = new TextEncoder().encode(JSON.stringify(taskData));
-  const hashBuffer = await crypto.subtle.digest("SHA-256", msgUint8);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-  return hashHex;
-}
+// ─── submitTaskForReview ──────────────────────────────────────────
+
+export const submitTaskForReview = async (
+  taskId: string,
+  submission: TaskSubmissionInput,
+): Promise<void> => {
+  const trimmedNote = submission.note.trim();
+  if (!trimmedNote) throw new Error('Submission note is required.');
+  if (!submission.submitterId) throw new Error('Submitter ID is required.');
+
+  const current = await fetchTaskById(taskId);
+  if (!current) throw new Error('Task not found.');
+
+  await supabase.from('tasks').update({
+    status: 'for_review',
+    feedback: trimmedNote,
+  }).eq('id', taskId);
+
+  await supabase.from('task_status_history').insert({
+    task_id: taskId,
+    from_status: 'in_progress',
+    to_status: 'for_review',
+    actor_id: submission.submitterId,
+    actor_name: submission.submitterName,
+    note: trimmedNote || 'Submitted for review',
+  });
+
+  await notifyTaskListeners();
+};
+
+// ─── verifyTask ───────────────────────────────────────────────────
 
 export const verifyTask = async (
   taskId: string,
@@ -985,184 +598,228 @@ export const verifyTask = async (
   feedback?: string,
   actor?: TaskActor,
 ) => {
-  const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
-  const snapshot = await get(taskRef);
-  if (!snapshot.exists()) {
-    throw new Error("Task not found.");
-  }
-  const taskData = snapshot.val() as Record<string, unknown>;
-  const actorName =
-    actor?.name || (approve ? "Department head" : "Reviewer");
+  const current = await fetchTaskById(taskId);
+  if (!current) throw new Error('Task not found.');
+
+  const actorName = actor?.name || (approve ? 'Department head' : 'Reviewer');
 
   if (approve) {
-    const hash = await generateAuditHash({ ...taskData, approvedAt: Date.now() });
-
-    await update(taskRef, {
-      status: "completed",
-      auditHash: hash,
-      updatedAt: Date.now(),
+    const hash = await generateAuditHash({ ...current, approvedAt: Date.now() });
+    await supabase.from('tasks').update({
+      status: 'completed',
+      audit_hash: hash,
       feedback: feedback || null,
-      rejectionNote: null,
-      rejectedAt: null,
+      rejection_note: null,
+      rejected_at: null,
+    }).eq('id', taskId);
+
+    await supabase.from('task_status_history').insert({
+      task_id: taskId,
+      from_status: current.status,
+      to_status: 'completed',
+      actor_id: actor?.id || null,
+      actor_name: actorName,
+      note: 'Task verified and completed',
     });
 
-    await logTaskActivity(
+    await createNotification(actor?.id || '', {
+      type: 'completed',
+      title: 'Task Completed',
+      message: `${actorName} approved and completed "${current.title || 'task'}".`,
       taskId,
-      "approved",
-      `${actorName} approved and completed the task`,
-      actor?.id,
-      actor?.name,
-    );
-
-    await notifyTaskStakeholders(
-      taskId,
-      { ...taskData, status: "completed" },
-      {
-        type: "completed",
-        title: "Task Completed",
-        message: `${actorName} approved and completed "${getRecordTitle(taskData)}".`,
-        actorId: actor?.id,
-        actorName: actor?.name,
-        statusFrom: getRecordStatus(taskData),
-        statusTo: "completed",
-      },
-      actor?.id,
-    );
+      taskTitle: (current.title as string) || '',
+      actorName,
+      statusFrom: current.status as string,
+      statusTo: 'completed',
+    });
   } else {
-    const reason = feedback || "Needs rework";
-    await update(taskRef, {
-      status: "in_progress",
+    const reason = feedback || 'Needs rework';
+    await supabase.from('tasks').update({
+      status: 'in_progress',
       feedback: feedback || null,
-      rejectionNote: reason,
-      rejectedAt: Date.now(),
-      updatedAt: Date.now(),
+      rejection_note: reason,
+      rejected_at: new Date().toISOString(),
+    }).eq('id', taskId);
+
+    await supabase.from('task_status_history').insert({
+      task_id: taskId,
+      from_status: current.status,
+      to_status: 'in_progress',
+      actor_id: actor?.id || null,
+      actor_name: actorName,
+      note: reason,
     });
 
-    await logTaskActivity(
+    await createNotification(actor?.id || '', {
+      type: 'status_change',
+      title: 'Task Returned for Rework',
+      message: `${actorName} returned "${current.title || 'task'}" for rework.`,
       taskId,
-      "rejected",
-      `${actorName} returned task for rework: ${reason}`,
-      actor?.id,
-      actor?.name,
-    );
-
-    await notifyTaskStakeholders(
-      taskId,
-      { ...taskData, status: "in_progress" },
-      {
-        type: "status_change",
-        title: "Task Returned for Rework",
-        message: `${actorName} returned "${getRecordTitle(taskData)}" for rework.`,
-        actorId: actor?.id,
-        actorName: actor?.name,
-        statusFrom: getRecordStatus(taskData),
-        statusTo: "in_progress",
-        reason,
-      },
-      actor?.id,
-    );
+      taskTitle: (current.title as string) || '',
+      actorName,
+      statusFrom: current.status as string,
+      statusTo: 'in_progress',
+      reason,
+    });
   }
+
+  await notifyTaskListeners();
 };
+
+async function generateAuditHash(taskData: any): Promise<string> {
+  const msgUint8 = new TextEncoder().encode(JSON.stringify(taskData));
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ─── deleteTask ───────────────────────────────────────────────────
+
+export const deleteTask = async (taskId: string): Promise<void> => {
+  await supabase.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('id', taskId);
+  await notifyTaskListeners();
+};
+
+// ─── reassignTask ─────────────────────────────────────────────────
+
+export const reassignTask = async (
+  taskId: string,
+  newAssigneeId: string,
+  newAssigneeName: string,
+  newTeam?: TaskAssignmentDetails,
+  _oldAssigneeName?: string,
+) => {
+  const update: Record<string, unknown> = {
+    assigned_to: newAssigneeId || null,
+    assignee_name: newAssigneeName,
+  };
+  if (newTeam?.teamId) update.team_id = newTeam.teamId;
+  if (newTeam?.teamName) update.team_name = newTeam.teamName;
+  if (newTeam?.teamMemberIds) update.team_member_ids = newTeam.teamMemberIds;
+  if (newTeam?.teamMemberNames) update.team_member_names = newTeam.teamMemberNames;
+
+  await supabase.from('tasks').update(update).eq('id', taskId);
+
+  const { data: task } = await supabase.from('tasks').select('title').eq('id', taskId).single();
+  const taskTitle = (task?.title as string) || 'Task';
+
+  if (newAssigneeId) {
+    await createNotification(newAssigneeId, {
+      type: 'reassignment',
+      title: 'Task Reassigned to You',
+      message: `A task has been reassigned to you.`,
+      taskId,
+      taskTitle,
+      actorName: newAssigneeName,
+    });
+  }
+
+  await notifyTaskListeners();
+};
+
+// ─── undoCompletedTask ────────────────────────────────────────────
 
 export const undoCompletedTask = async (
   taskId: string,
   undoInput: TaskUndoInput,
-) => {
+): Promise<void> => {
   const reason = undoInput.reason.trim();
-  if (!reason) {
-    throw new Error("Undo reason is required.");
-  }
+  if (!reason) throw new Error('Undo reason is required.');
 
-  const taskRef = ref(database, `${TASKS_PATH}/${taskId}`);
-  const snapshot = await get(taskRef);
-  if (!snapshot.exists()) {
-    throw new Error("Task not found.");
-  }
+  const current = await fetchTaskById(taskId);
+  if (!current) throw new Error('Task not found.');
+  if (current.status !== 'completed') throw new Error('Only completed tasks can be reopened.');
 
-  const taskData = snapshot.val() as Record<string, unknown>;
-  if (getRecordStatus(taskData) !== "completed") {
-    throw new Error("Only completed tasks can be reopened.");
-  }
-
-  const now = Date.now();
   const actor = undoInput.actor;
-  const actorName = actor?.name || "Department head";
+  const actorName = actor?.name || 'Department head';
 
-  await update(taskRef, {
-    status: "in_progress",
-    reopenReason: reason,
-    reopenedAt: now,
-    reopenedById: actor?.id || "",
-    reopenedByName: actor?.name || "",
-    updatedAt: now,
+  await supabase.from('tasks').update({
+    status: 'in_progress',
+    reopen_reason: reason,
+    reopened_at: new Date().toISOString(),
+    reopened_by_id: actor?.id || null,
+    reopened_by_name: actor?.name || '',
+  }).eq('id', taskId);
+
+  await supabase.from('task_status_history').insert({
+    task_id: taskId,
+    from_status: 'completed',
+    to_status: 'in_progress',
+    actor_id: actor?.id || null,
+    actor_name: actorName,
+    note: reason,
   });
 
-  await logTaskActivity(
+  await createNotification(actor?.id || '', {
+    type: 'undo',
+    title: 'Task Reopened',
+    message: `${actorName} reopened "${current.title || 'task'}" for additional work.`,
     taskId,
-    "undo_completed",
-    `${actorName} reopened completed task: ${reason}`,
-    actor?.id,
-    actor?.name,
-  );
+    taskTitle: (current.title as string) || '',
+    actorName,
+    statusFrom: 'completed',
+    statusTo: 'in_progress',
+    reason,
+  });
 
-  await notifyTaskStakeholders(
-    taskId,
-    { ...taskData, status: "in_progress" },
-    {
-      type: "undo",
-      title: "Task Reopened",
-      message: `${actorName} reopened "${getRecordTitle(taskData)}" for additional work.`,
-      actorId: actor?.id,
-      actorName: actor?.name,
-      statusFrom: "completed",
-      statusTo: "in_progress",
-      reason,
-    },
-    actor?.id,
-  );
+  await notifyTaskListeners();
 };
 
-// ─── Activity Log ────────────────────────────────────────────────
+// ─── Activity Log ─────────────────────────────────────────────────
+
 export async function logTaskActivity(
   taskId: string,
   action: string,
   details: string,
   userId?: string,
-  userName?: string
+  userName?: string,
 ): Promise<void> {
-  const actRef = ref(database, `${ACTIVITIES_PATH}/${taskId}`);
-  await push(actRef, {
-    taskId,
-    action,
-    details,
-    userId: userId || "",
-    userName: userName || "System",
-    timestamp: Date.now(),
+  await supabase.from('task_activities').insert({
+    task_id: taskId,
+    type: action,
+    content: details,
+    actor_id: userId || null,
+    actor_name: userName || 'System',
   });
 }
 
 export function subscribeToTaskActivities(
   taskId: string,
-  callback: (activities: TaskActivity[]) => void
+  callback: (activities: TaskActivity[]) => void,
 ) {
-  const actRef = ref(database, `${ACTIVITIES_PATH}/${taskId}`);
-  return onValue(actRef, (snapshot) => {
-    if (!snapshot.exists()) {
+  const load = async () => {
+    const { data } = await supabase
+      .from('task_activities')
+      .select('*')
+      .eq('task_id', taskId)
+      .order('created_at', { ascending: false });
+
+    if (data) {
+      callback(data.map(row => ({
+        id: row.id,
+        taskId: row.task_id,
+        action: row.type || '',
+        details: row.content || '',
+        userId: row.actor_id || undefined,
+        userName: row.actor_name || undefined,
+        timestamp: new Date(row.created_at).getTime(),
+      })));
+    } else {
       callback([]);
-      return;
     }
-    const data = snapshot.val();
-    const list: TaskActivity[] = Object.entries(data)
-      .map(([id, val]: [string, any]) => ({
-        id,
-        taskId: val.taskId || taskId,
-        action: val.action || "",
-        details: val.details || "",
-        userId: val.userId,
-        userName: val.userName,
-        timestamp: val.timestamp || 0,
-      }))
-      .sort((a, b) => b.timestamp - a.timestamp);
-    callback(list);
-  });
+  };
+  load();
+
+  const channelId = `task-activities-${taskId}-${Math.random().toString(36).slice(2)}`;
+  const channel = supabase
+    .channel(channelId)
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'task_activities',
+      filter: `task_id=eq.${taskId}`,
+    }, () => load())
+    .subscribe();
+
+  return () => supabase.removeChannel(channel);
 }

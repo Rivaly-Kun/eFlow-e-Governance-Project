@@ -38,7 +38,9 @@ export function NotificationBell({
   useEffect(() => {
     if (!userId) return;
     const unsubscribe = subscribeToNotifications(userId, setNotifications);
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+    };
   }, [userId]);
 
   // Position the panel whenever it opens

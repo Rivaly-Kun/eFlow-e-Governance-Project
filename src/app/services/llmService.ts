@@ -12,25 +12,24 @@ const LLM_MAX_ATTEMPTS = 2;
 let cachedAuthKey: string | null = null;
 let authKeyPromise: Promise<string | null> | null = null;
 
-const fetchAuthKey = async () => {
+const fetchAuthKey = async (): Promise<string> => {
   if (cachedAuthKey) return cachedAuthKey;
-  if (authKeyPromise) return authKeyPromise;
+  if (authKeyPromise) return authKeyPromise as Promise<string>;
 
-  authKeyPromise = fetch(`${API_BASE}/authkey`)
+  authKeyPromise = fetch(`/api/authkey`)
     .then(async (res) => {
-      if (!res.ok) return null;
+      if (!res.ok) throw new Error(`[LLM] authkey endpoint returned ${res.status}`);
       const data = await res.json();
       const key = typeof data.api_key === "string" ? data.api_key.trim() : null;
-      if (key) cachedAuthKey = key;
+      if (!key) throw new Error("[LLM] authkey endpoint returned an empty key");
+      cachedAuthKey = key;
       return key;
     })
     .catch((error) => {
-      console.error("Failed to fetch auth key from backend:", error);
-      return null;
-    })
-    .finally(() => {
-      authKeyPromise = null;
-    });
+      authKeyPromise = null; // allow retry next time
+      console.error("[LLM] Failed to fetch auth key — is the eFlow server running?", error);
+      throw error;
+    }) as Promise<string>;
 
   return authKeyPromise;
 };
@@ -259,6 +258,12 @@ export const recommendTeam = async (
   employeeNotes?: EmployeeNotesMap,
   hierarchyContext?: HierarchyContext,
 ): Promise<LLMTeamRecommendation | null> => {
+  // No employees in the department — skip LLM entirely and return null
+  if (!employees || employees.length === 0) {
+    console.info("[LLM] No employees available in this department — skipping AI recommendation.");
+    return null;
+  }
+
   const employeesContext = buildEmployeesContext(employees, employeeNotes);
   const taskBlock = buildTaskDetailsBlock(task, hierarchyContext);
 

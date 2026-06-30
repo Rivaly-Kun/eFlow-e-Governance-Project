@@ -1,5 +1,7 @@
-import { ref, onValue, update } from "firebase/database";
-import { database } from "../../firebase";
+// ─── eFlow Employee Notes Service (Supabase) ─────────────────────
+// Stores team intelligence notes per employee in Supabase.
+
+import { supabase } from '../../lib/supabase';
 
 export interface EmployeeNote {
   employeeId: string;
@@ -13,59 +15,43 @@ export interface EmployeeNote {
 
 export type EmployeeNotesMap = Record<string, EmployeeNote>;
 
-const EMPLOYEE_NOTES_PATH = "employeeNotes";
-
-const normalizeNote = (
-  employeeId: string,
-  record: Record<string, unknown>,
-): EmployeeNote => ({
-  employeeId,
-  strengths: typeof record.strengths === "string" ? record.strengths : "",
-  weaknesses: typeof record.weaknesses === "string" ? record.weaknesses : "",
-  notes: typeof record.notes === "string" ? record.notes : "",
-  tags: Array.isArray(record.tags)
-    ? record.tags.filter((tag): tag is string => typeof tag === "string")
-    : [],
-  updatedAt: typeof record.updatedAt === "number" ? record.updatedAt : 0,
-  updatedBy: typeof record.updatedBy === "string" ? record.updatedBy : undefined,
-});
-
 export const subscribeToEmployeeNotes = (
   callback: (notes: EmployeeNotesMap) => void,
 ) => {
-  const notesRef = ref(database, EMPLOYEE_NOTES_PATH);
-  return onValue(notesRef, (snapshot) => {
-    if (!snapshot.exists()) {
-      callback({});
-      return;
-    }
+  const load = async () => {
+    const { data } = await supabase.from('employee_notes').select('*');
+    if (!data) { callback({}); return; }
 
-    const data = snapshot.val();
-    const entries = Object.entries(data as Record<string, unknown>);
     const map: EmployeeNotesMap = {};
-
-    entries.forEach(([employeeId, value]) => {
-      if (value && typeof value === "object") {
-        map[employeeId] = normalizeNote(
-          employeeId,
-          value as Record<string, unknown>,
-        );
-      }
+    data.forEach(row => {
+      map[row.profile_id] = {
+        employeeId: row.profile_id as string,
+        strengths: (row.strengths as string) || '',
+        weaknesses: (row.weaknesses as string) || '',
+        notes: (row.notes as string) || '',
+        tags: (row.tags as string[]) || [],
+        updatedAt: new Date((row.updated_at as string) || Date.now()).getTime(),
+        updatedBy: (row.updated_by as string) || undefined,
+      };
     });
-
     callback(map);
-  });
+  };
+  load();
+  return () => {};
 };
 
 export const updateEmployeeNotes = async (
   employeeId: string,
   partial: Partial<EmployeeNote>,
-) => {
-  const noteRef = ref(database, `${EMPLOYEE_NOTES_PATH}/${employeeId}`);
-  const payload: Record<string, unknown> = {
-    ...partial,
-    updatedAt: Date.now(),
-  };
-
-  await update(noteRef, payload);
+  updatedBy?: string,
+): Promise<void> => {
+  await supabase.from('employee_notes').upsert({
+    profile_id: employeeId,
+    strengths: partial.strengths || '',
+    weaknesses: partial.weaknesses || '',
+    notes: partial.notes || '',
+    tags: partial.tags || [],
+    updated_by: updatedBy || null,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'profile_id' });
 };

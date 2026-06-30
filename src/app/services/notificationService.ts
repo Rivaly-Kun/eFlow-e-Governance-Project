@@ -1,19 +1,18 @@
-// ─── Notification Service ────────────────────────────────────────
-// Realtime notifications pushed to /notifications/{userId}/{pushId}
+// ─── eFlow Notification Service (Supabase) ───────────────────────
+// Real-time notifications from Supabase notifications table.
 
-import { ref, onValue, push, update, off, query, orderByChild, limitToLast } from "firebase/database";
-import { database } from "../../firebase";
+import { supabase } from '../../lib/supabase';
 
 export type NotificationType =
-  | "assignment"
-  | "overdue"
-  | "burnout_warning"
-  | "approval_needed"
-  | "completed"
-  | "reassignment"
-  | "status_change"
-  | "undo"
-  | "comment";
+  | 'assignment'
+  | 'overdue'
+  | 'burnout_warning'
+  | 'approval_needed'
+  | 'completed'
+  | 'reassignment'
+  | 'status_change'
+  | 'undo'
+  | 'comment';
 
 export interface Notification {
   id: string;
@@ -31,70 +30,91 @@ export interface Notification {
   createdAt: number;
 }
 
-const NOTIFICATIONS_PATH = "notifications";
+function rowToNotif(row: Record<string, unknown>): Notification {
+  return {
+    id: row.id as string,
+    type: (row.type as NotificationType) || 'assignment',
+    title: (row.title as string) || '',
+    message: (row.message as string) || '',
+    taskId: (row.task_id as string) || undefined,
+    taskTitle: (row.task_title as string) || undefined,
+    actorId: (row.actor_id as string) || undefined,
+    actorName: (row.actor_name as string) || undefined,
+    statusFrom: (row.status_from as string) || undefined,
+    statusTo: (row.status_to as string) || undefined,
+    reason: (row.reason as string) || undefined,
+    read: (row.read as boolean) || false,
+    createdAt: new Date((row.created_at as string) || Date.now()).getTime(),
+  };
+}
 
 export function subscribeToNotifications(
   userId: string,
   callback: (notifications: Notification[]) => void,
-  limit = 50
+  limit = 50,
 ) {
-  const notifsRef = query(
-    ref(database, `${NOTIFICATIONS_PATH}/${userId}`),
-    orderByChild("createdAt"),
-    limitToLast(limit)
-  );
-  const handler = onValue(notifsRef, (snapshot) => {
-    if (!snapshot.exists()) {
-      callback([]);
-      return;
-    }
-    const data = snapshot.val();
-    const list: Notification[] = Object.entries(data)
-      .map(([id, val]: [string, any]) => ({
-        id,
-        type: val.type || "assignment",
-        title: val.title || "",
-        message: val.message || "",
-        taskId: val.taskId,
-        taskTitle: val.taskTitle,
-        actorId: val.actorId,
-        actorName: val.actorName,
-        statusFrom: val.statusFrom,
-        statusTo: val.statusTo,
-        reason: val.reason,
-        read: val.read === true,
-        createdAt: val.createdAt || 0,
-      }))
-      .sort((a, b) => b.createdAt - a.createdAt);
-    callback(list);
-  });
-  return () => off(notifsRef, "value", handler);
+  const load = async () => {
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (data) callback(data.map(rowToNotif));
+    else callback([]);
+  };
+  load();
+
+  const channelId = `notifs-${userId}-${Math.random().toString(36).slice(2)}`;
+  const channel = supabase
+    .channel(channelId)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'notifications',
+      filter: `user_id=eq.${userId}`,
+    }, () => load())
+    .subscribe();
+
+  return () => supabase.removeChannel(channel);
 }
 
 export async function createNotification(
   userId: string,
-  notification: Omit<Notification, "id" | "read" | "createdAt">
+  notification: Omit<Notification, 'id' | 'read' | 'createdAt'>,
 ): Promise<void> {
-  const notifsRef = ref(database, `${NOTIFICATIONS_PATH}/${userId}`);
-  await push(notifsRef, {
-    ...notification,
+  if (!userId) return;
+
+  await supabase.from('notifications').insert({
+    user_id: userId,
+    type: notification.type,
+    title: notification.title,
+    message: notification.message,
+    task_id: notification.taskId || null,
+    task_title: notification.taskTitle || '',
+    actor_id: notification.actorId || null,
+    actor_name: notification.actorName || '',
+    status_from: notification.statusFrom || '',
+    status_to: notification.statusTo || '',
+    reason: notification.reason || '',
     read: false,
-    createdAt: Date.now(),
   });
 }
 
 export async function markNotificationRead(userId: string, notificationId: string): Promise<void> {
-  await update(ref(database, `${NOTIFICATIONS_PATH}/${userId}/${notificationId}`), { read: true });
+  await supabase.from('notifications').update({ read: true }).eq('id', notificationId).eq('user_id', userId);
 }
 
 export async function markAllNotificationsRead(userId: string): Promise<void> {
-  const notifsRef = ref(database, `${NOTIFICATIONS_PATH}/${userId}`);
-  const { get: fbGet } = await import("firebase/database");
-  const snap = await fbGet(notifsRef);
-  if (!snap.exists()) return;
-  const updates: Record<string, any> = {};
-  Object.keys(snap.val()).forEach((id) => {
-    updates[`${id}/read`] = true;
-  });
-  await update(notifsRef, updates);
+  await supabase.from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false);
+}
+
+export async function getUnreadCount(userId: string): Promise<number> {
+  const { count } = await supabase
+    .from('notifications')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('read', false);
+  return count || 0;
 }
