@@ -23,6 +23,7 @@ export interface ProposalDecompositionTask {
   recommendedEmployeeIds?: string[];
   recommendationReasoning?: string;
   burnoutWarning?: boolean;
+  subtasks?: string[];
 }
 
 export interface ProposalDecompositionActivity {
@@ -277,6 +278,40 @@ const inferSkillsFromText = (text: string): string[] => {
   return Array.from(skills);
 };
 
+// ─── Keyword → Subtask Template Fallback ──────────────────────────
+const SUBTASK_TEMPLATES: Record<string, string[]> = {
+  meeting: ["Prepare agenda", "Send invitations", "Book venue", "Prepare minutes", "Post-meeting report"],
+  kickoff: ["Prepare agenda", "Send invitations", "Book venue", "Prepare minutes", "Post-meeting report"],
+  workshop: ["Prepare materials", "Confirm facilitators", "Register participants", "Document outputs"],
+  procurement: ["Prepare BAC documents", "Canvass suppliers", "Submit purchase request", "Receive items"],
+  seminar: ["Prepare materials", "Confirm speakers", "Register participants", "Document outputs"],
+  benchmarking: ["Identify benchmark sites", "Coordinate site visit", "Document findings", "Prepare report"],
+  validation: ["Prepare validation materials", "Schedule presentation", "Collect feedback", "Incorporate revisions"],
+  consultation: ["Identify stakeholders", "Schedule sessions", "Facilitate discussion", "Document inputs"],
+  draft: ["Outline structure", "Write first draft", "Internal review", "Revise based on feedback"],
+  presentation: ["Prepare slides", "Rehearse presentation", "Deliver presentation", "Collect feedback"],
+};
+
+function generateTemplateSubtasks(title: string, description: string): string[] {
+  const haystack = `${title} ${description}`.toLowerCase();
+  for (const [keyword, templates] of Object.entries(SUBTASK_TEMPLATES)) {
+    if (haystack.includes(keyword)) return templates;
+  }
+  // Generic fallback — always give the task SOME checklist
+  return ["Plan and prepare", "Execute", "Review and finalize"];
+}
+
+function extractExplicitSubtasks(methodology?: string[], _description?: string): string[] {
+  const items: string[] = [];
+  if (methodology && methodology.length > 0) {
+    methodology.forEach((m) => {
+      const cleaned = m.replace(/^[Ø•\-\d.\s]+/, "").trim();
+      if (cleaned.length > 3 && cleaned.length < 100) items.push(cleaned);
+    });
+  }
+  return Array.from(new Set(items)).slice(0, 6);
+}
+
 type PartSection = {
   title: string;
   description: string;
@@ -358,6 +393,9 @@ const extractPartSections = (proposalText: string): PartSection[] | null => {
           estimatedDuration: "TBD",
           requiredSkills: inferSkillsFromText(normalizedLine),
           priority: "medium" as const,
+          subtasks: extractExplicitSubtasks(undefined, normalizedLine).length > 0
+            ? extractExplicitSubtasks(undefined, normalizedLine)
+            : generateTemplateSubtasks(normalizedLine, normalizedLine),
         };
       });
 
@@ -583,6 +621,7 @@ const buildFallbackDecomposition = (
           estimatedDuration: "TBD",
           requiredSkills: [],
           priority: "medium" as const,
+          subtasks: generateTemplateSubtasks(sentence, sentence),
         }));
 
       // Ensure at least 1 task per activity
@@ -593,6 +632,7 @@ const buildFallbackDecomposition = (
           estimatedDuration: "TBD",
           requiredSkills: [],
           priority: "medium",
+          subtasks: generateTemplateSubtasks(`Execute ${actTitle}`, `Complete the activity: ${actTitle}`),
         });
       }
 
@@ -647,13 +687,15 @@ export const decomposeProposal = async (
 
   const recommendationInstruction =
     employees && employees.length > 0
-      ? `\n9. For each task, include "recommendedEmployeeIds" as an array of employee IDs best suited for the task based on their strengths, and "recommendationReasoning" explaining why.`
+      ? `\n10. For each task, include "recommendedEmployeeIds" as an array of employee IDs best suited for the task based on their strengths, and "recommendationReasoning" explaining why.`
       : "";
 
   const recommendationSchema =
     employees && employees.length > 0
       ? `,\n          "recommendedEmployeeIds": ["employee_id_1"],\n          "recommendationReasoning": "Why this employee fits"`
       : "";
+
+  const subtaskSchema = `,\n          "subtasks": ["Checklist step 1", "Checklist step 2", "Checklist step 3"]`;
 
   const tableText = extractActionTable(proposalText);
   const mustCoverInstruction = `IMPORTANT: This proposal has 8 Parts (Part 1 through Part 8) spanning 6 months.
@@ -680,6 +722,7 @@ Instructions:
 4. Under each Activity, generate 2-5 assignable Tasks. Tasks go INSIDE activities[n].tasks — NOT at top level.
 5. For tasks, infer requiredSkills from job functions and methods mentioned in the proposal.
 6. Populate schedule from any timeline column (e.g. "Month 1-2").
+6b. For each task, include a "subtasks" array of 3-6 short, actionable checklist items. Pull these from the activity's methodology/details text where available (e.g. "Technical Presentations", "Document Review and Gap Analysis"). Only invent generic steps if the source text gives no usable detail.
 7. If multiple phases/parts/sections are present, split them into separate programs/projects/activities. Avoid collapsing everything into a single program unless there is only one distinct theme.
 8. Output ONLY strict JSON. No markdown fences. No preamble. No explanation.
 
@@ -708,7 +751,7 @@ Required JSON shape:
           "title": "...", "description": "...",
           "estimatedDuration": "2 days",
           "requiredSkills": ["facilitation", "data gathering"],
-          "priority": "high"${recommendationSchema}
+          "priority": "high"${recommendationSchema}${subtaskSchema}
         }]
       }]
     }]
@@ -821,6 +864,22 @@ Required JSON shape:
         });
       });
     }
+
+    // Ensure every task has subtasks — prefer activity methodology, then templates
+    parsed.programs.forEach((program) => {
+      program.projects.forEach((project) => {
+        project.activities.forEach((activity) => {
+          activity.tasks.forEach((task) => {
+            if (!task.subtasks || task.subtasks.length === 0) {
+              const explicit = extractExplicitSubtasks(activity.methodology, task.description);
+              task.subtasks = explicit.length > 0
+                ? explicit
+                : generateTemplateSubtasks(task.title, task.description);
+            }
+          });
+        });
+      });
+    });
 
     return parsed;
   } catch (error) {

@@ -16,6 +16,13 @@ import {
 } from "../../services/taskService";
 import { Employee } from "../../services/employeeService";
 import {
+  Subtask,
+  subscribeToSubtasks,
+  createSubtask,
+  toggleSubtask,
+  deleteSubtask,
+} from "../../services/subtaskService";
+import {
   recommendTeam,
   LLMTeamRecommendation,
 } from "../../services/llmService";
@@ -46,6 +53,7 @@ import {
   Users,
   Layers,
   RotateCcw,
+  ListChecks,
 } from "lucide-react";
 
 // ─── PDF Extraction ───────────────────────────────────────────────
@@ -250,6 +258,18 @@ const slugifyFragment = (value: string, fallback: string) => {
     .slice(0, 40);
   return slug || fallback;
 };
+
+function SubtaskProgressChip({ task }: { task: Task }) {
+  const total = task.subtaskCount ?? 0;
+  const done = task.subtaskCompletedCount ?? 0;
+  if (total === 0) return null;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[9px] text-neutral-600">
+      <ListChecks size={10} className={done === total ? "text-emerald-600" : "text-neutral-400"} />
+      {done}/{total}
+    </span>
+  );
+}
 
 const buildHierarchyIds = (
   proposalTitle: string,
@@ -768,6 +788,102 @@ function AssignmentModal({
   );
 }
 
+// ─── Task Subtasks Section ────────────────────────────────────────
+
+function TaskSubtasksSection({ taskId }: { taskId: string }) {
+  const [subtasks, setSubtasks] = useState<Subtask[]>([]);
+  const [newTitle, setNewTitle] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  useEffect(() => {
+    const unsub = subscribeToSubtasks(taskId, setSubtasks);
+    return unsub;
+  }, [taskId]);
+
+  const handleAdd = async () => {
+    if (!newTitle.trim()) return;
+    setAdding(true);
+    try {
+      await createSubtask(taskId, newTitle.trim(), {
+        source: "manual",
+        position: subtasks.length,
+      });
+      setNewTitle("");
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const completedCount = subtasks.filter((s) => s.isCompleted).length;
+
+  return (
+    <div className="pt-2">
+      <div className="flex items-center justify-between mb-2">
+        <label className="text-[10px] uppercase tracking-[0.12em] text-neutral-400">
+          Subtasks {subtasks.length > 0 && `(${completedCount}/${subtasks.length})`}
+        </label>
+        {subtasks.length > 0 && (
+          <div className="flex-1 mx-3 h-1.5 rounded-full bg-neutral-100 overflow-hidden max-w-[140px]">
+            <div
+              className="h-full bg-emerald-500 transition-all"
+              style={{ width: `${subtasks.length ? (completedCount / subtasks.length) * 100 : 0}%` }}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        {subtasks.map((st) => (
+          <div
+            key={st.id}
+            className="flex items-center gap-2 rounded-lg border border-neutral-100 bg-neutral-50/60 px-2.5 py-2 group"
+          >
+            <input
+              type="checkbox"
+              checked={st.isCompleted}
+              onChange={(e) => toggleSubtask(st.id, e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-neutral-300 accent-emerald-600 cursor-pointer"
+            />
+            <span
+              className={`flex-1 text-[12px] ${
+                st.isCompleted ? "text-neutral-400 line-through" : "text-neutral-700"
+              }`}
+            >
+              {st.title}
+            </span>
+            {st.source === "ai_extracted" && (
+              <span className="text-[8px] uppercase tracking-wider text-violet-500 shrink-0">AI</span>
+            )}
+            <button
+              onClick={() => deleteSubtask(st.id)}
+              className="opacity-0 group-hover:opacity-100 text-neutral-300 hover:text-red-500 transition shrink-0"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-2 mt-2">
+        <input
+          value={newTitle}
+          onChange={(e) => setNewTitle(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+          placeholder="Add a subtask…"
+          className="flex-1 h-[34px] rounded-lg border border-neutral-200 bg-white px-2.5 text-[12px] text-neutral-900 outline-none focus:border-neutral-400"
+        />
+        <button
+          onClick={handleAdd}
+          disabled={adding || !newTitle.trim()}
+          className="h-[34px] px-3 rounded-lg bg-neutral-900 text-white text-[11px] font-['Lexend:Medium',_sans-serif] disabled:opacity-40 hover:bg-neutral-800"
+        >
+          <Plus size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Draft Task Row ───────────────────────────────────────────────
 
 function TaskEditorModal({
@@ -982,6 +1098,8 @@ function TaskEditorModal({
               {error}
             </div>
           )}
+
+          <TaskSubtasksSection taskId={task.id} />
         </div>
 
         <div className="px-5 py-4 border-t border-neutral-100 flex items-center justify-between shrink-0">
@@ -1904,18 +2022,17 @@ function ListBoardView({
                             {task.description}
                           </div>
                         )}
-                        {task.tags && task.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1.5">
-                            {task.tags.slice(0, 3).map((tag) => (
-                              <span
-                                key={tag}
-                                className="bg-neutral-100 text-neutral-500 text-[10px] px-1.5 py-0.5 rounded-full"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                        <div className="flex flex-wrap gap-1 mt-1.5 items-center">
+                          {task.tags && task.tags.slice(0, 3).map((tag) => (
+                            <span
+                              key={tag}
+                              className="bg-neutral-100 text-neutral-500 text-[10px] px-1.5 py-0.5 rounded-full"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                          <SubtaskProgressChip task={task} />
+                        </div>
                         <div className="mt-1 text-[10px] text-violet-600/80 line-clamp-1">
                           {hierarchy.path}
                         </div>
@@ -2393,6 +2510,7 @@ function KanbanBoardView({
                       >
                         {pm.label}
                       </span>
+                      <SubtaskProgressChip task={task} />
                     </div>
 
                     {/* Actions */}
@@ -2732,6 +2850,7 @@ function HierarchyBoardView({
                                             >
                                               {pm.label}
                                             </span>
+                                            <SubtaskProgressChip task={task} />
                                             <span
                                               className={`inline-flex items-center gap-1 text-[9px] font-['Lexend:Medium',_sans-serif] px-1.5 py-0.5 rounded-full border ${sm.color}`}
                                             >

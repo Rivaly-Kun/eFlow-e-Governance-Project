@@ -7,6 +7,7 @@ import {
   submitTaskForReview,
   Task,
 } from "../../services/taskService";
+import { ProfilePage } from "./ProfilePage";
 import { useAuth } from "../../contexts/AuthContext";
 import {
   subscribeToNotifications,
@@ -2211,12 +2212,16 @@ export const employeePages: Record<
     "Liquidation Report Help": AICoaching,
     "Digital Literacy Support": AICoaching,
   },
+  settings: {
+    "Profile & Account": ProfilePage,
+  },
 };
 
 export const employeeDefaultPages: Record<string, string> = {
   workspace: "Active Tasks",
   empfin: "Expense & Liquidation Submission",
   achievement: "Departmental Goals",
+  settings: "Profile & Account",
 };
 
 export function EmployeeContent({

@@ -10,11 +10,11 @@ const LLM_TIMEOUT_MS = 120_000;
 const LLM_MAX_ATTEMPTS = 2;
 
 let cachedAuthKey: string | null = null;
-let authKeyPromise: Promise<string | null> | null = null;
+let authKeyPromise: Promise<string> | null = null;
 
 const fetchAuthKey = async (): Promise<string> => {
   if (cachedAuthKey) return cachedAuthKey;
-  if (authKeyPromise) return authKeyPromise as Promise<string>;
+  if (authKeyPromise) return authKeyPromise;
 
   authKeyPromise = fetch(`/api/authkey`)
     .then(async (res) => {
@@ -29,7 +29,7 @@ const fetchAuthKey = async (): Promise<string> => {
       authKeyPromise = null; // allow retry next time
       console.error("[LLM] Failed to fetch auth key — is the eFlow server running?", error);
       throw error;
-    }) as Promise<string>;
+    });
 
   return authKeyPromise;
 };

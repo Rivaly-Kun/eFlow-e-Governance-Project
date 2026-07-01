@@ -18,6 +18,7 @@ import {
 import { useAuth } from "../../contexts/AuthContext";
 import { Employee } from "../../services/employeeService";
 import { createTask, CreateTaskPayload } from "../../services/taskService";
+import { createSubtasksBatch } from "../../services/subtaskService";
 import {
   decomposeProposal,
   ProposalDecompositionResult,
@@ -225,6 +226,12 @@ export default function ProposalImport() {
   const [taskPayloads, setTaskPayloads] = useState<
     Record<string, CreateTaskPayload>
   >({});
+  const [taskSubtasksByKey, setTaskSubtasksByKey] = useState<
+    Record<string, string[]>
+  >({});
+  const [subtasksCreatedByKey, setSubtasksCreatedByKey] = useState<
+    Record<string, number>
+  >({});
 
   const taskKey = (pi: number, pj: number, ai: number, ti: number) =>
     `${pi}-${pj}-${ai}-${ti}`;
@@ -232,6 +239,7 @@ export default function ProposalImport() {
   const buildTaskPayloads = useCallback(
     (decomposed: ProposalDecompositionResult) => {
       const payloads: Record<string, CreateTaskPayload> = {};
+      const subtasksMap: Record<string, string[]> = {};
       const proposalTitle =
         decomposed.proposal?.title ||
         fileName.replace(/\.pdf$/i, "") ||
@@ -252,6 +260,7 @@ export default function ProposalImport() {
             const activityId = `${projectId}-activity-${ai + 1}`;
             activity.tasks.forEach((task, ti) => {
               const key = taskKey(pi, pj, ai, ti);
+              subtasksMap[key] = task.subtasks || [];
               const contextLines = [
                 `Program: ${program.title}`,
                 `Project: ${project.title}`,
@@ -323,15 +332,16 @@ export default function ProposalImport() {
         });
       });
 
-      return payloads;
+      return { payloads, subtasksMap };
     },
     [employeeById, fileName, userProfile?.departmentId],
   );
 
   const autoCreateTasks = useCallback(
     async (decomposed: ProposalDecompositionResult) => {
-      const payloadMap = buildTaskPayloads(decomposed);
+      const { payloads: payloadMap, subtasksMap } = buildTaskPayloads(decomposed);
       setTaskPayloads(payloadMap);
+      setTaskSubtasksByKey(subtasksMap);
 
       const entries = Object.entries(payloadMap);
       if (entries.length === 0) {
@@ -342,12 +352,27 @@ export default function ProposalImport() {
 
       const created = new Set<string>();
       const failed = new Set<string>();
+      const subtaskCounts: Record<string, number> = {};
 
       await Promise.all(
         entries.map(async ([key, payload]) => {
           try {
-            await createTask(payload);
+            const createdTask = await createTask(payload);
             created.add(key);
+
+            const subtaskTitles = subtasksMap[key] || [];
+            if (subtaskTitles.length > 0) {
+              try {
+                const createdSubtasks = await createSubtasksBatch(
+                  createdTask.id,
+                  subtaskTitles,
+                  "ai_extracted",
+                );
+                subtaskCounts[key] = createdSubtasks.length;
+              } catch (subErr) {
+                console.error("Failed to create subtasks for task:", key, subErr);
+              }
+            }
           } catch (err) {
             console.error("Failed to auto-create task:", err);
             failed.add(key);
@@ -357,6 +382,7 @@ export default function ProposalImport() {
 
       setCreatedTaskKeys(created);
       setFailedTaskKeys(failed);
+      setSubtasksCreatedByKey(subtaskCounts);
 
       if (failed.size > 0) {
         setAutoCreateStatus("error");
@@ -427,6 +453,8 @@ export default function ProposalImport() {
       setCreatedTaskKeys(new Set());
       setFailedTaskKeys(new Set());
       setTaskPayloads({});
+      setTaskSubtasksByKey({});
+      setSubtasksCreatedByKey({});
 
       // Phase 1: Extract text
       setPhase("extracting");
@@ -578,6 +606,8 @@ export default function ProposalImport() {
               setCreatedTaskKeys(new Set());
               setFailedTaskKeys(new Set());
               setTaskPayloads({});
+              setTaskSubtasksByKey({});
+              setSubtasksCreatedByKey({});
             }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-['Lexend:Medium',_sans-serif] bg-white text-neutral-700 border border-neutral-200 hover:bg-neutral-50"
           >
@@ -876,6 +906,11 @@ export default function ProposalImport() {
                                           }`}
                                         >
                                           {task.priority}
+                                        </span>
+                                      )}
+                                      {task.subtasks && task.subtasks.length > 0 && (
+                                        <span className="rounded-full px-2 py-0.5 text-[9px] bg-violet-100 text-violet-700 inline-flex items-center gap-1">
+                                          <Layers size={9} /> {task.subtasks.length} steps
                                         </span>
                                       )}
                                     </div>

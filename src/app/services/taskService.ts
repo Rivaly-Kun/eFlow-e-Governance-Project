@@ -69,6 +69,8 @@ export interface Task extends TaskHierarchy {
   barangay?: string;
   estimatedHours?: number;
   budgetImpact?: number;
+  subtaskCount?: number;
+  subtaskCompletedCount?: number;
 }
 
 export interface TaskSubmissionMetadata {
@@ -200,7 +202,9 @@ function rowToTask(row: Record<string, unknown>): Task {
     updatedAt: new Date((row.updated_at as string) || Date.now()).getTime(),
     auditHash: readString(row.audit_hash),
     feedback: readString(row.feedback),
-    latestSubmission: undefined,
+    latestSubmission: row.latest_submission
+      ? (row.latest_submission as TaskSubmissionMetadata)
+      : undefined,
     rejectionNote: readString(row.rejection_note),
     rejectedAt: row.rejected_at ? new Date(row.rejected_at as string).getTime() : undefined,
     reopenReason: readString(row.reopen_reason),
@@ -226,6 +230,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     barangay: readString(row.barangay),
     estimatedHours: (row.estimated_hours as number) || undefined,
     budgetImpact: (row.budget_impact as number) || undefined,
+    subtaskCount: (row.subtask_count as number) || 0,
+    subtaskCompletedCount: (row.subtask_completed_count as number) || 0,
   };
 }
 
@@ -468,6 +474,7 @@ export const createTask = async (
   }
 
   await notifyTaskListeners();
+  return task;
 };
 
 // ─── assignTask ───────────────────────────────────────────────────
@@ -567,25 +574,104 @@ export const submitTaskForReview = async (
   submission: TaskSubmissionInput,
 ): Promise<void> => {
   const trimmedNote = submission.note.trim();
-  if (!trimmedNote) throw new Error('Submission note is required.');
-  if (!submission.submitterId) throw new Error('Submitter ID is required.');
+  if (!trimmedNote) throw new Error("Submission note is required.");
+  if (!submission.submitterId) throw new Error("Submitter ID is required.");
 
-  const current = await fetchTaskById(taskId);
-  if (!current) throw new Error('Task not found.');
+  const attachments = submission.attachments || [];
 
-  await supabase.from('tasks').update({
-    status: 'for_review',
-    feedback: trimmedNote,
-  }).eq('id', taskId);
+  // Upload each file to Supabase Storage, get a long-lived signed URL
+  // (60 days — comfortably beyond any capstone demo or review cycle).
+  // Also insert a relational row per file into task_attachments so a
+  // fresh signed URL can always be regenerated later from file_path,
+  // even after this one expires.
+  const uploadedUrls = await Promise.all(
+    attachments.map(async (file, idx) => {
+      const safeName =
+        typeof file.name === "string" && file.name.trim().length > 0
+          ? file.name
+          : `attachment-${idx + 1}`;
+      const path = `${taskId}/${submission.submitterId}/${Date.now()}-${safeName}`;
 
-  await supabase.from('task_status_history').insert({
+      const { error: uploadError } = await supabase.storage
+        .from("task-attachments")
+        .upload(path, file, { upsert: false });
+      if (uploadError) throw uploadError;
+
+      const { data: signedData, error: signError } = await supabase.storage
+        .from("task-attachments")
+        .createSignedUrl(path, 60 * 60 * 24 * 60); // 60 days
+      if (signError) throw signError;
+
+      await supabase.from("task_attachments").insert({
+        task_id: taskId,
+        uploaded_by: submission.submitterId,
+        uploader_name: submission.submitterName,
+        file_name: safeName,
+        file_path: path,
+        file_size: file.size || 0,
+        mime_type: file.type || "",
+      });
+
+      return signedData.signedUrl;
+    }),
+  );
+
+  const now = Date.now();
+  const latestSubmission: TaskSubmissionMetadata = {
+    note: trimmedNote,
+    submitterId: submission.submitterId,
+    submitterName: submission.submitterName,
+    submittedAt: now,
+    attachments: uploadedUrls,
+  };
+
+  await supabase
+    .from("tasks")
+    .update({
+      status: "for_review",
+      latest_submission: latestSubmission,
+      rejection_note: null,
+      rejected_at: null,
+      feedback: null,
+    })
+    .eq("id", taskId);
+
+  await supabase.from("task_status_history").insert({
     task_id: taskId,
-    from_status: 'in_progress',
-    to_status: 'for_review',
+    from_status: "in_progress",
+    to_status: "for_review",
     actor_id: submission.submitterId,
     actor_name: submission.submitterName,
-    note: trimmedNote || 'Submitted for review',
+    note: trimmedNote,
   });
+
+  await logTaskActivity(
+    taskId,
+    "submitted",
+    `Submitted for review by ${submission.submitterName}`,
+    submission.submitterId,
+    submission.submitterName,
+  );
+
+  // Notify the task's dept head / assigner
+  const { data: taskRow } = await supabase
+    .from("tasks")
+    .select("created_by, title")
+    .eq("id", taskId)
+    .single();
+  if (taskRow?.created_by) {
+    await createNotification(taskRow.created_by, {
+      type: "approval_needed",
+      title: "Task Submitted for Review",
+      message: `${submission.submitterName} submitted "${taskRow.title}" for review.`,
+      taskId,
+      taskTitle: taskRow.title,
+      actorId: submission.submitterId,
+      actorName: submission.submitterName,
+      statusFrom: "in_progress",
+      statusTo: "for_review",
+    });
+  }
 
   await notifyTaskListeners();
 };

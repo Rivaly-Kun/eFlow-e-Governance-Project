@@ -316,6 +316,21 @@ export function subscribeToProfiles(callback: (profiles: UserProfile[]) => void)
   };
 }
 
+// ─── updateOwnProfile ───────────────────────────────────────────────
+// For the logged-in user editing their own profile. Whitelisted fields
+// only — role/org_id/is_active are blocked client-side here AND at the
+// DB level via the guard_self_profile_update trigger (defense in depth).
+export async function updateOwnProfile(
+  userId: string,
+  data: { full_name?: string },
+): Promise<void> {
+  const update: Record<string, unknown> = {};
+  if (data.full_name !== undefined) update.full_name = data.full_name;
+
+  const { error } = await supabase.from("profiles").update(update).eq("id", userId);
+  if (error) throw error;
+}
+
 // ─── SYSTEM CONFIG OPERATIONS ────────────────────────────────────
 
 export async function fetchConfig(key: string): Promise<string | null> {
