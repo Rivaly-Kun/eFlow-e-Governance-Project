@@ -18,6 +18,8 @@ import {
   useEmployeeNotes,
 } from "../../hooks/useFirebaseData";
 import { useAuth } from "../../contexts/AuthContext";
+import { useOrgs } from "../../hooks/useSupabaseData";
+import { getDescendantOrgIds } from "../../../lib/supabaseService";
 import { updateEmployeeNotes } from "../../services/employeeNotesService";
 import { Settings } from "@carbon/icons-react";
 import {
@@ -390,14 +392,21 @@ function AggregatedHealth() {
   const { tasks } = useTasks();
   const { employees: allEmployees } = useEmployees();
   const { userProfile } = useAuth();
+  const { orgs } = useOrgs();
 
-  // Filter to department
+  // Filter to entire org subtree (own node + all descendants), not just
+  // an exact match — this is the fix for Dept Head not seeing sub-section
+  // tasks.
+  const scopedOrgIds = useMemo(
+    () => getDescendantOrgIds(orgs, userProfile?.departmentId),
+    [orgs, userProfile?.departmentId],
+  );
   const deptTasks = useMemo(() => {
-    if (!userProfile?.departmentId) return tasks;
+    if (scopedOrgIds.length === 0) return tasks;
     return tasks.filter(
-      (t) => !t.department || t.department === userProfile.departmentId,
+      (t) => !t.orgId || scopedOrgIds.includes(t.orgId),
     );
-  }, [tasks, userProfile?.departmentId]);
+  }, [tasks, scopedOrgIds]);
 
   const PROJECTS = useMemo(
     () => deriveProjectsFromTasks(deptTasks, allEmployees || []),
@@ -6579,17 +6588,23 @@ export function DeptHeadTaskBoard() {
   const { deptEmployees, directoryLoading, userProfile } =
     useDeptDirectoryEmployees();
   const { notes, loading: notesLoading } = useEmployeeNotes();
+  const { orgs } = useOrgs();
 
-  // Filter tasks by department
+  const scopedOrgIds = useMemo(
+    () => getDescendantOrgIds(orgs, userProfile?.departmentId),
+    [orgs, userProfile?.departmentId],
+  );
+  // Filter tasks to org subtree — unassigned tasks still show regardless
+  // of scoping so they can be triaged, matching the original behavior.
   const deptTasks = useMemo(() => {
-    if (!userProfile?.departmentId) return tasks;
+    if (scopedOrgIds.length === 0) return tasks;
     return tasks.filter(
       (t) =>
-        !t.department ||
-        t.department === userProfile.departmentId ||
+        !t.orgId ||
+        scopedOrgIds.includes(t.orgId) ||
         t.status === "pending_assignment",
     );
-  }, [tasks, userProfile?.departmentId]);
+  }, [tasks, scopedOrgIds]);
 
   if (directoryLoading || notesLoading) {
     return (

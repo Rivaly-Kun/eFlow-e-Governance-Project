@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import svgPaths from "../../imports/svg-svkvdgwod6";
 import { useAuth } from "../../contexts/AuthContext";
 import { MigrationTool } from "../SuperAdmin/MigrationTool";
@@ -435,6 +435,16 @@ const roleNavConfigs: Record<
       },
     ],
   },
+  teamleader: {
+    defaultSection: "deptportfolio",
+    navItems: [
+      {
+        id: "deptportfolio",
+        icon: <Folder size={16} />,
+        label: "Section Workspace",
+      },
+    ],
+  },
   employee: {
     defaultSection: "workspace",
     navItems: [
@@ -464,6 +474,7 @@ import { LegislativeContent } from "../Legislative/LegislativeContent";
 import { HRMOContent } from "../HRMO/HRMOContent";
 import { FinanceContent } from "../Finance/FinanceContent";
 import { DeptHeadContent } from "../DeptHead/DeptHeadContent";
+import { TeamLeaderContent } from "../TeamLeader/TeamLeaderContent";
 import { EmployeeContent } from "../Employee/EmployeeContent";
 
 function getSidebarContent(role: string, section: string): SidebarContent {
@@ -647,8 +658,8 @@ function getSidebarContent(role: string, section: string): SidebarContent {
                 isActive: true,
                 hasDropdown: true,
                 children: [
-                  { label: "Infrastructure (₱450M)" },
-                  { label: "Environmental Protection (₱170M)" },
+                  { label: "Infrastructure (â‚±450M)" },
+                  { label: "Environmental Protection (â‚±170M)" },
                   { label: "Revenue Projections" },
                 ],
               },
@@ -1491,7 +1502,7 @@ function TwoLevelSidebar({ role }: { role: string }) {
           )}
           {role === "teamleader" && (
             <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
-              <DeptHeadContent
+              <TeamLeaderContent
                 activeSection={activeSection}
                 activePage={activePage}
               />
@@ -1538,7 +1549,7 @@ function TwoLevelSidebar({ role }: { role: string }) {
   );
 }
 
-// === FRAME (role from auth — no tabs) ===
+// === FRAME (role from auth â€” no tabs) ===
 
 export function Frame760({ role }: { role: string }) {
   return (

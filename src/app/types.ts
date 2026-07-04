@@ -122,6 +122,7 @@ export interface Task {
   assigneeId?: string;
   assigneeName?: string;
   department?: string;
+  orgId?: string;
   teamId?: string;
   teamName?: string;
   teamMemberIds?: string[];

@@ -290,6 +290,7 @@ export default function ProposalImport() {
                 tags: task.requiredSkills || [],
                 status: "pending_assignment",
                 department: userProfile?.departmentId || "",
+                orgId: userProfile?.departmentId || undefined,
                 teamId: userProfile?.departmentId || "",
                 teamName:
                   leadMember?.departmentName ||

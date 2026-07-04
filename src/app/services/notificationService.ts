@@ -100,6 +100,20 @@ export async function createNotification(
     reason: notification.reason || '',
     read: false,
   });
+
+  // Fire-and-forget email — never let this throw into the caller. The
+  // in-app notification above has already succeeded regardless of
+  // whether email delivery works.
+  fetch(`${import.meta.env.VITE_LLM_BASE_URL}/controlpanelEflow/api/notifications/email`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId,
+      title: notification.title,
+      body: notification.message,
+      taskId: notification.taskId || null,
+    }),
+  }).catch((err) => console.error("Email notification request failed:", err));
 }
 
 export async function markNotificationRead(userId: string, notificationId: string): Promise<void> {

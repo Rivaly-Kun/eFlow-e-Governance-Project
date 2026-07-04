@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { User, Mail, IdCard, Building2, Shield, Lock, Activity } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
-import { updateOwnProfile, fetchAllOrgs } from "../../../lib/supabaseService";
+import { updateOwnProfile, fetchAllOrgs, updateEmailPreference } from "../../../lib/supabaseService";
 import { supabase } from "../../../lib/supabase";
 
 function InfoRow({
@@ -44,6 +44,9 @@ export function ProfilePage() {
   const [pwSaving, setPwSaving] = useState(false);
   const [pwMsg, setPwMsg] = useState("");
   const [pwError, setPwError] = useState("");
+
+  const [emailEnabled, setEmailEnabled] = useState(true);
+  const [emailSaving, setEmailSaving] = useState(false);
 
   useEffect(() => {
     if (!userProfile?.departmentId) return;
@@ -190,6 +193,33 @@ export function ProfilePage() {
           >
             {burnout} burnout risk
           </span>
+        </div>
+
+        {/* Email notifications */}
+        <div className="bg-white rounded-xl border border-neutral-200 p-5">
+          <div className="text-[12px] font-['Lexend:SemiBold',_sans-serif] text-neutral-800 mb-3 flex items-center gap-2">
+            <Mail size={14} /> Email Notifications
+          </div>
+          <p className="text-[11px] text-neutral-500 mb-3">
+            Receive an email when tasks are assigned, updated, or need your review.
+          </p>
+          <button
+            onClick={async () => {
+              if (!userProfile?.uid) return;
+              setEmailSaving(true);
+              try {
+                const next = !emailEnabled;
+                await updateEmailPreference(userProfile.uid, next);
+                setEmailEnabled(next);
+              } finally {
+                setEmailSaving(false);
+              }
+            }}
+            disabled={emailSaving}
+            className="px-3 py-2 rounded-lg bg-neutral-900 text-white text-[12px] font-['Lexend:Medium',_sans-serif] disabled:opacity-40 hover:bg-neutral-800"
+          >
+            {emailSaving ? "…" : emailEnabled ? "Enabled — Turn Off" : "Enable Email Notifications"}
+          </button>
         </div>
 
         {/* Change password */}

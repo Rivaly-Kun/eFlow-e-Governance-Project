@@ -1,5 +1,5 @@
-// ─── eFlow Task Service (Supabase) ────────────────────────────────
-// Full rewrite from Firebase RTDB → Supabase PostgreSQL.
+﻿// â”€â”€â”€ eFlow Task Service (Supabase) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Full rewrite from Firebase RTDB â†’ Supabase PostgreSQL.
 // All exported function signatures kept identical.
 
 import { supabase } from '../../lib/supabase';
@@ -46,6 +46,7 @@ export interface Task extends TaskHierarchy {
   teamMemberIds?: string[];
   teamMemberNames?: string[];
   department?: string;
+  orgId?: string;
   priority?: 'low' | 'medium' | 'high';
   deadline?: string;
   dueDate?: string;
@@ -116,6 +117,7 @@ export interface CreateTaskPayload {
   tags?: string[];
   status?: TaskStatus;
   department?: string;
+  orgId?: string;
   teamId?: string;
   teamName?: string;
   teamMemberIds?: string[];
@@ -151,6 +153,7 @@ export interface UpdateTaskPayload {
   tags?: string[];
   status?: TaskStatus;
   department?: string;
+  orgId?: string;
   teamId?: string;
   teamName?: string;
   teamMemberIds?: string[];
@@ -175,7 +178,7 @@ export interface UpdateTaskPayload {
   importBatchId?: string;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const readString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
@@ -195,6 +198,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     teamMemberIds: (row.team_member_ids as string[]) || [],
     teamMemberNames: (row.team_member_names as string[]) || [],
     department: readString(row.department),
+    orgId: readString(row.org_id),
     deadline: readString(row.deadline),
     dueDate: readString(row.due_date),
     tags: (row.tags as string[]) || [],
@@ -245,6 +249,7 @@ function taskToRow(task: Partial<Task>): Record<string, unknown> {
   if (task.assignedTo !== undefined) row.assigned_to = task.assignedTo || null;
   if (task.assigneeName !== undefined) row.assignee_name = task.assigneeName || '';
   if (task.department !== undefined) row.department = task.department || '';
+  if (task.orgId !== undefined) row.org_id = task.orgId || null;
   if (task.teamId !== undefined) row.team_id = task.teamId || '';
   if (task.teamName !== undefined) row.team_name = task.teamName || '';
   if (task.teamMemberIds !== undefined) row.team_member_ids = task.teamMemberIds;
@@ -290,7 +295,7 @@ const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   completed: 'Completed',
 };
 
-// ─── Local listener system ────────────────────────────────────────
+// â”€â”€â”€ Local listener system â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const taskListeners = new Set<(tasks: Task[]) => void>();
 
@@ -315,7 +320,7 @@ async function fetchTaskById(taskId: string): Promise<Record<string, unknown> | 
   return data || null;
 }
 
-// ─── subscribeToTasks ─────────────────────────────────────────────
+// â”€â”€â”€ subscribeToTasks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 let seedPromise: Promise<void> | null = null;
 
@@ -384,7 +389,7 @@ export const subscribeToTasks = (callback: (tasks: Task[]) => void) => {
   };
 };
 
-// ─── createTask ───────────────────────────────────────────────────
+// â”€â”€â”€ createTask â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const createTask = async (
   titleOrPayload: string | CreateTaskPayload,
@@ -477,7 +482,7 @@ export const createTask = async (
   return task;
 };
 
-// ─── assignTask ───────────────────────────────────────────────────
+// â”€â”€â”€ assignTask â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const assignTask = async (
   taskId: string,
@@ -515,7 +520,7 @@ export const assignTask = async (
   await notifyTaskListeners();
 };
 
-// ─── updateTask ───────────────────────────────────────────────────
+// â”€â”€â”€ updateTask â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const updateTask = async (
   taskId: string,
@@ -526,7 +531,7 @@ export const updateTask = async (
   await notifyTaskListeners();
 };
 
-// ─── updateTaskStatus ─────────────────────────────────────────────
+// â”€â”€â”€ updateTaskStatus â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const updateTaskStatus = async (
   taskId: string,
@@ -567,7 +572,7 @@ export const updateTaskStatus = async (
   await notifyTaskListeners();
 };
 
-// ─── submitTaskForReview ──────────────────────────────────────────
+// â”€â”€â”€ submitTaskForReview â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const submitTaskForReview = async (
   taskId: string,
@@ -580,7 +585,7 @@ export const submitTaskForReview = async (
   const attachments = submission.attachments || [];
 
   // Upload each file to Supabase Storage, get a long-lived signed URL
-  // (60 days — comfortably beyond any capstone demo or review cycle).
+  // (60 days â€” comfortably beyond any capstone demo or review cycle).
   // Also insert a relational row per file into task_attachments so a
   // fresh signed URL can always be regenerated later from file_path,
   // even after this one expires.
@@ -676,7 +681,7 @@ export const submitTaskForReview = async (
   await notifyTaskListeners();
 };
 
-// ─── verifyTask ───────────────────────────────────────────────────
+// â”€â”€â”€ verifyTask â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const verifyTask = async (
   taskId: string,
@@ -759,14 +764,14 @@ async function generateAuditHash(taskData: any): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// ─── deleteTask ───────────────────────────────────────────────────
+// â”€â”€â”€ deleteTask â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const deleteTask = async (taskId: string): Promise<void> => {
   await supabase.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('id', taskId);
   await notifyTaskListeners();
 };
 
-// ─── reassignTask ─────────────────────────────────────────────────
+// â”€â”€â”€ reassignTask â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const reassignTask = async (
   taskId: string,
@@ -803,7 +808,7 @@ export const reassignTask = async (
   await notifyTaskListeners();
 };
 
-// ─── undoCompletedTask ────────────────────────────────────────────
+// â”€â”€â”€ undoCompletedTask â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const undoCompletedTask = async (
   taskId: string,
@@ -851,7 +856,7 @@ export const undoCompletedTask = async (
   await notifyTaskListeners();
 };
 
-// ─── Activity Log ─────────────────────────────────────────────────
+// â”€â”€â”€ Activity Log â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function logTaskActivity(
   taskId: string,

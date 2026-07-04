@@ -45,6 +45,24 @@ export async function fetchAllOrgs(): Promise<Organization[]> {
   return data as Organization[];
 }
 
+// ─── getDescendantOrgIds ────────────────────────────────────────────
+// Given the full org list and an anchor org id, returns the anchor's id
+// plus every descendant's id (using the ltree `path` column). Used to
+// scope tasks/employees to "everything under my node," not just an
+// exact match on my own node — this is what lets a Dept Head see their
+// sub-sections' tasks, and a Team Leader see only their own section.
+export function getDescendantOrgIds(
+  orgs: Organization[],
+  anchorOrgId: string | null | undefined,
+): string[] {
+  if (!anchorOrgId) return [];
+  const anchor = orgs.find((o) => o.id === anchorOrgId);
+  if (!anchor) return [anchorOrgId];
+  return orgs
+    .filter((o) => o.path === anchor.path || o.path.startsWith(`${anchor.path}.`))
+    .map((o) => o.id);
+}
+
 function generateSlug(name: string): string {
   return name
     .toLowerCase()
@@ -328,6 +346,18 @@ export async function updateOwnProfile(
   if (data.full_name !== undefined) update.full_name = data.full_name;
 
   const { error } = await supabase.from("profiles").update(update).eq("id", userId);
+  if (error) throw error;
+}
+
+// ─── updateEmailPreference ──────────────────────────────────────────
+export async function updateEmailPreference(
+  userId: string,
+  enabled: boolean,
+): Promise<void> {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ email_notifications_enabled: enabled })
+    .eq("id", userId);
   if (error) throw error;
 }
 

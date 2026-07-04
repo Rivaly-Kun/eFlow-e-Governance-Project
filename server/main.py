@@ -5,6 +5,9 @@ Admin user management endpoints for Supabase Auth.
 
 import os
 import logging
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,6 +24,9 @@ SUPABASE_SERVICE_ROLE_KEY = os.getenv(
 )
 
 supabase_admin: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+SMTP_EMAIL = os.getenv("SMTP_EMAIL")
+SMTP_APP_PASSWORD = os.getenv("SMTP_APP_PASSWORD")
 
 # Loaded at startup from app_config table — no hardcoded fallback.
 AUTH_KEY: str = ""
@@ -73,12 +79,79 @@ def verify_auth(authorization: Optional[str] = Header(None)):
     return True
 
 
+def send_email(to_email: str, subject: str, html_body: str) -> None:
+    """
+    Isolated on purpose: this is the only function that knows HOW email
+    gets sent. Swapping providers later (e.g. to Resend once LEDIPO has
+    a domain) means changing only this function's body.
+    """
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"eFlow Notifications <{SMTP_EMAIL}>"
+    msg["To"] = to_email
+    msg.attach(MIMEText(html_body, "html"))
+
+    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        server.starttls()
+        server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
+        server.sendmail(SMTP_EMAIL, to_email, msg.as_string())
+
+
 @app.get("/controlpanelEflow/api/authkey")
 async def get_authkey():
     """Return the live LLM auth key fetched from app_config."""
     if not AUTH_KEY:
         raise HTTPException(status_code=503, detail="Auth key not yet loaded")
     return {"api_key": AUTH_KEY}
+
+
+@app.post("/controlpanelEflow/api/notifications/email")
+async def send_email_notification(payload: dict, authorized: bool = Depends(verify_auth)):
+    """
+    payload: { userId, title, body, taskId? }
+    Looks up the user's email + email_notifications_enabled from Supabase.
+    Returns 200 with sent: false for missing email or disabled preference
+    — these are not errors, they're expected states.
+    """
+    try:
+        user_id = payload.get("userId")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="userId is required")
+
+        profile = (
+            supabase_admin.table("profiles")
+            .select("email, email_notifications_enabled, full_name")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+        if not profile.data or not profile.data.get("email"):
+            return {"sent": False, "reason": "no_email"}
+        if profile.data.get("email_notifications_enabled") is False:
+            return {"sent": False, "reason": "disabled"}
+
+        recipient = profile.data["email"]
+        name = profile.data.get("full_name", "")
+        title = payload.get("title", "eFlow Notification")
+        body_text = payload.get("body", "")
+
+        html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+          <h2 style="color:#171717;">{title}</h2>
+          <p style="color:#404040;">Hi {name},</p>
+          <p style="color:#404040;">{body_text}</p>
+          <p style="color:#a3a3a3; font-size:12px; margin-top:24px;">
+            This is an automated notification from eFlow — LEDIPO's project and task management system.
+          </p>
+        </div>
+        """
+        send_email(recipient, title, html)
+        return {"sent": True}
+    except Exception as e:
+        # Log and swallow — a failed email must never surface as a
+        # user-facing error. The in-app notification already succeeded.
+        print(f"Email notification failed: {e}")
+        return {"sent": False, "reason": str(e)}
 
 
 class CreateUserPayload(BaseModel):

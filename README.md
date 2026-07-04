@@ -20,3 +20,8 @@
     bash
 
     npm run dev
+
+    https://myaccount.google.com/apppasswords
+    to access the 
+    SMTP_EMAIL=eflow.notifications@gmail.com
+    SMTP_APP_PASSWORD=ttsv uyei cgdb vqdk
