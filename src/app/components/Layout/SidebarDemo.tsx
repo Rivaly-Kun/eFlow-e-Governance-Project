@@ -3,6 +3,7 @@ import svgPaths from "../../imports/svg-svkvdgwod6";
 import { useAuth } from "../../contexts/AuthContext";
 import { MigrationTool } from "../SuperAdmin/MigrationTool";
 import { NotificationBell } from "../ui/NotificationBell";
+import { ChatListDrawer } from "../ui/ChatListDrawer";
 import {
   Search,
   Dashboard,
@@ -1215,7 +1216,7 @@ function IconNavigation({
   onMigrationClick?: () => void;
 }) {
   const config = roleNavConfigs[role] || roleNavConfigs.superadmin;
-  const { user, logout } = useAuth();
+  const { user, userProfile, logout } = useAuth();
 
   return (
     <div
@@ -1254,6 +1255,13 @@ function IconNavigation({
           </IconNavButton>
         )}
         {user?.id && <NotificationBell userId={user.id} compact />}
+        {user?.id && (
+          <ChatListDrawer
+            userId={user.id}
+            userName={userProfile?.fullName}
+            userOrgId={userProfile?.departmentId}
+          />
+        )}
         <IconNavButton
           isActive={activeSection === "settings"}
           onClick={() => onSectionChange("settings")}

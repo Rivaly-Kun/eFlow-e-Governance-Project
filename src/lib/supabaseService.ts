@@ -63,6 +63,23 @@ export function getDescendantOrgIds(
     .map((o) => o.id);
 }
 
+// ─── getAncestorOrgIds ───────────────────────────────────────────────
+// Given a user's own org, returns that org's id plus every ancestor's
+// id — the opposite direction from getDescendantOrgIds. Used to find
+// which standing channels (own section, parent office, department...)
+// a user should see.
+export function getAncestorOrgIds(
+  orgs: Organization[],
+  orgId: string | null | undefined,
+): string[] {
+  if (!orgId) return [];
+  const org = orgs.find((o) => o.id === orgId);
+  if (!org) return [orgId];
+  const parts = org.path.split(".");
+  const ancestorPaths = parts.map((_, i) => parts.slice(0, i + 1).join("."));
+  return orgs.filter((o) => ancestorPaths.includes(o.path)).map((o) => o.id);
+}
+
 function generateSlug(name: string): string {
   return name
     .toLowerCase()

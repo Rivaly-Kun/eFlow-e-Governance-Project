@@ -23,6 +23,13 @@ import {
   deleteSubtask,
 } from "../../services/subtaskService";
 import {
+  ChatMessage,
+  getChannelForTask,
+  subscribeToChannelMessages,
+  sendMessage,
+  markChannelRead,
+} from "../../services/chatService";
+import {
   recommendTeam,
   LLMTeamRecommendation,
 } from "../../services/llmService";
@@ -54,7 +61,11 @@ import {
   Layers,
   RotateCcw,
   ListChecks,
+  MessageCircle,
 } from "lucide-react";
+import DOMPurify from "dompurify";
+import { RichTextEditor } from "./RichTextEditor";
+import { SimpleTableEditor } from "./SimpleTableEditor";
 
 // ─── PDF Extraction ───────────────────────────────────────────────
 
@@ -421,9 +432,10 @@ function SubmissionDetails({
         Submission
       </div>
       {submission.note && (
-        <div className="text-[11px] text-neutral-700 mt-0.5">
-          Note: {submission.note}
-        </div>
+        <div
+          className="text-[11px] text-neutral-700 mt-0.5 [&_p]:m-0 [&_table]:text-[10px] [&_ul]:pl-4 [&_ol]:pl-4"
+          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(submission.note) }}
+        />
       )}
       <div className="text-[10px] text-neutral-500 mt-0.5">
         By {submission.submitterName || "Unknown"}
@@ -788,6 +800,99 @@ function AssignmentModal({
   );
 }
 
+// ─── Task Chat Section ──────────────────────────────────────────────
+
+function TaskChatSection({
+  taskId,
+  currentUserId,
+  currentUserName,
+}: {
+  taskId: string;
+  currentUserId?: string;
+  currentUserName?: string;
+}) {
+  const [channelId, setChannelId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    getChannelForTask(taskId).then(setChannelId);
+  }, [taskId]);
+
+  useEffect(() => {
+    if (!channelId) return;
+    const unsub = subscribeToChannelMessages(channelId, setMessages);
+    if (currentUserId) markChannelRead(channelId, currentUserId);
+    return unsub;
+  }, [channelId, currentUserId]);
+
+  const handleSend = async () => {
+    if (!channelId || !draft.trim() || !currentUserId) return;
+    setSending(true);
+    try {
+      await sendMessage(channelId, currentUserId, currentUserName || "Someone", draft);
+      setDraft("");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!channelId) {
+    return (
+      <div className="pt-2 text-[11px] text-neutral-400 italic">
+        Chat opens automatically once this task is assigned to someone.
+      </div>
+    );
+  }
+
+  return (
+    <div className="pt-2">
+      <label className="text-[10px] uppercase tracking-[0.12em] text-neutral-400 mb-2 block">
+        Task Chat
+      </label>
+      <div className="max-h-[220px] overflow-y-auto space-y-2 mb-2 pr-1">
+        {messages.map((m) => {
+          const mine = m.senderId === currentUserId;
+          return (
+            <div key={m.id} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
+              {!mine && (
+                <span className="text-[9px] text-neutral-400 mb-0.5">{m.senderName}</span>
+              )}
+              <div
+                className={`max-w-[85%] rounded-xl px-3 py-1.5 text-[12px] ${
+                  mine ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-800"
+                }`}
+              >
+                {m.content}
+              </div>
+            </div>
+          );
+        })}
+        {messages.length === 0 && (
+          <div className="text-[11px] text-neutral-400 italic py-2">No messages yet.</div>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          placeholder="Message the team…"
+          className="flex-1 h-[34px] rounded-lg border border-neutral-200 bg-white px-2.5 text-[12px] outline-none focus:border-neutral-400"
+        />
+        <button
+          onClick={handleSend}
+          disabled={sending || !draft.trim()}
+          className="h-[34px] px-3 rounded-lg bg-neutral-900 text-white text-[11px] font-['Lexend:Medium',_sans-serif] disabled:opacity-40 hover:bg-neutral-800"
+        >
+          <MessageCircle size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Task Subtasks Section ────────────────────────────────────────
 
 function TaskSubtasksSection({ taskId }: { taskId: string }) {
@@ -899,6 +1004,8 @@ function TaskEditorModal({
   error,
   employees,
   employeeById,
+  currentUserId,
+  currentUserName,
 }: {
   open: boolean;
   task: Task | null;
@@ -912,6 +1019,8 @@ function TaskEditorModal({
   error: string;
   employees: Employee[];
   employeeById: Record<string, Employee>;
+  currentUserId?: string;
+  currentUserName?: string;
 }) {
   if (!open || !task || !draft) return null;
 
@@ -1100,6 +1209,11 @@ function TaskEditorModal({
           )}
 
           <TaskSubtasksSection taskId={task.id} />
+          <TaskChatSection
+            taskId={task.id}
+            currentUserId={currentUserId}
+            currentUserName={currentUserName}
+          />
         </div>
 
         <div className="px-5 py-4 border-t border-neutral-100 flex items-center justify-between shrink-0">
@@ -1157,6 +1271,7 @@ function SubmitForReviewModal({
   error: string;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [noteMode, setNoteMode] = useState<"write" | "table">("write");
 
   if (!open || !task) return null;
 
@@ -1191,16 +1306,36 @@ function SubmitForReviewModal({
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           <div>
-            <label className="text-[10px] uppercase tracking-[0.12em] text-neutral-400">
-              Completion Note (required)
-            </label>
-            <textarea
-              rows={4}
-              value={note}
-              onChange={(e) => onNoteChange(e.target.value)}
-              placeholder="Summarize what was completed, results, or evidence details..."
-              className="mt-1 w-full resize-none rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-[13px] text-neutral-900 outline-none focus:border-neutral-400"
-            />
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] uppercase tracking-[0.12em] text-neutral-400">
+                Completion Note (required)
+              </label>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setNoteMode("write")}
+                  className={`text-[10px] px-2 py-0.5 rounded-full ${noteMode === "write" ? "bg-neutral-900 text-white" : "text-neutral-400 hover:bg-neutral-100"}`}
+                >
+                  Write
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNoteMode("table")}
+                  className={`text-[10px] px-2 py-0.5 rounded-full ${noteMode === "table" ? "bg-neutral-900 text-white" : "text-neutral-400 hover:bg-neutral-100"}`}
+                >
+                  Table
+                </button>
+              </div>
+            </div>
+            {noteMode === "write" ? (
+              <RichTextEditor
+                value={note}
+                onChange={onNoteChange}
+                placeholder="Summarize what was completed, results, or evidence details..."
+              />
+            ) : (
+              <SimpleTableEditor onChange={onNoteChange} />
+            )}
           </div>
 
           <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-3 py-3">
@@ -4363,6 +4498,8 @@ export function MondayBoard({
         error={taskEditorError}
         employees={deptEmployees}
         employeeById={employeeById}
+        currentUserId={currentUserId}
+        currentUserName={currentUserName}
       />
 
       <SubmitForReviewModal
