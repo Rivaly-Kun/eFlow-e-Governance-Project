@@ -96,7 +96,7 @@ const buildEmployeesContext = (
         ? `\n  Strengths: ${notes.strengths || "-"}\n  Weaknesses: ${notes.weaknesses || "-"}\n  Notes: ${notes.notes || "-"}\n  Tags: ${(notes.tags || []).join(", ") || "-"}`
         : "";
 
-      return `- ID: ${employee.id}\n  Name: ${employee.name}\n  Team: ${employee.departmentName ?? employee.department ?? "Unassigned"}\n  Job: ${employee.jobTitle || "-"}\n  Description: ${employee.jobDescription || "-"}\n  Workload (0-100): ${employee.currentWorkload}${noteText}`;
+      return `- ID: ${employee.id}\n  Name: ${employee.name}\n  Team: ${employee.departmentName ?? employee.department ?? "Unassigned"}\n  Job: ${employee.jobTitle || "-"}\n  Skills: ${employee.jobDescription || "-"}\n  Workload (0-100): ${employee.currentWorkload}${noteText}`;
     })
     .join("\n\n");
 
@@ -267,7 +267,7 @@ export const recommendTeam = async (
   const employeesContext = buildEmployeesContext(employees, employeeNotes);
   const taskBlock = buildTaskDetailsBlock(task, hierarchyContext);
 
-  const prompt = `You are an AI assistant helping a Department Head assign tasks to employees using a Genetic Algorithm-like evaluation approach.\n\n${taskBlock}\n\nAvailable Employees:\n${employeesContext}\n\nInstructions:\n1. Select a team of 1 to N employees. You may choose as many as needed based on complexity.\n2. Use job descriptions and manager notes (strengths/weaknesses/tags) to match skills.\n3. Consider workload. Workload above 80 indicates burnout risk.\n4. Choose a lead candidate among the team (include them in the list).\n5. Output your response as strict JSON with no markdown.\n\nRequired JSON format:\n{\n  "recommendedEmployeeIds": ["id_1", "id_2"],\n  "reasoning": "Why this team and size were selected, plus workload assessment.",\n  "burnoutWarning": true/false\n}`;
+  const prompt = `You are an AI assistant helping a Department Head assign tasks to employees using a Genetic Algorithm-like evaluation approach.\n\n${taskBlock}\n\nAvailable Employees:\n${employeesContext}\n\nInstructions:\n1. Select a team of 1 to N employees. You may choose as many as needed based on complexity.\n2. Use the Skills field and manager notes (strengths/weaknesses/tags) to match employee capabilities to the task.\n3. Consider workload. Workload above 80 indicates burnout risk.\n4. Choose a lead candidate among the team (include them in the list).\n5. Output your response as strict JSON with no markdown.\n\nRequired JSON format:\n{\n  "recommendedEmployeeIds": ["id_1", "id_2"],\n  "reasoning": "Why this team and size were selected, plus workload assessment.",\n  "burnoutWarning": true/false\n}`;
 
   console.info("[LLM] Recommendation prompt:", prompt);
 

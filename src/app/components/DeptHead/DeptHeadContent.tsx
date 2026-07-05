@@ -6140,6 +6140,7 @@ function useDeptDirectoryEmployees() {
   const { users, loading: usersLoading } = useUsers();
   const { departments } = useDepartments();
   const { userProfile } = useAuth();
+  const { orgs } = useOrgs();
 
   const departmentNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -6171,12 +6172,16 @@ function useDeptDirectoryEmployees() {
 
     return users.map((user) => {
       const name = user.fullName || user.email || "Unnamed User";
-      const departmentId = user.departmentId || "";
+      const departmentId = user.org_id || user.departmentId || "";
+      const skills = (user as unknown as Record<string, unknown>).skills as Record<string, boolean> | undefined;
+      const skillList = skills
+        ? Object.keys(skills).filter((k) => skills[k]).join(", ")
+        : "";
       return {
         id: user.uid,
         name,
         jobTitle: titleForRole(user.role),
-        jobDescription: "",
+        jobDescription: skillList || titleForRole(user.role),
         currentWorkload: typeof user.workload === "number" ? user.workload : 0,
         department: departmentId || undefined,
         departmentName: departmentId
@@ -6241,13 +6246,17 @@ function useDeptDirectoryEmployees() {
     return Array.from(merged.values());
   }, [allEmployees, usersAsEmployees]);
 
+  const scopedOrgIds = useMemo(() => {
+    if (!userProfile?.departmentId) return new Set<string>();
+    return new Set(getDescendantOrgIds(orgs, userProfile.departmentId));
+  }, [orgs, userProfile?.departmentId]);
+
   const deptEmployees = useMemo(() => {
     if (!userProfile?.departmentId) return directoryEmployees;
     const currentEmail = userProfile.email?.toLowerCase();
-    const departmentId = userProfile.departmentId;
 
     return directoryEmployees.filter((emp) => {
-      if (emp.department !== departmentId) return false;
+      if (!emp.department || !scopedOrgIds.has(emp.department)) return false;
       if (userProfile.uid && emp.id === userProfile.uid) return false;
       if (currentEmail && emp.email?.toLowerCase() === currentEmail) {
         return false;
@@ -6259,7 +6268,7 @@ function useDeptDirectoryEmployees() {
         : undefined;
       const matchedUser = matchById || matchByEmail;
 
-      if (matchedUser?.role === "department_head") return false;
+      if (matchedUser?.role === "department_head" || matchedUser?.role === "dept_head") return false;
       if (headUsers.ids.has(emp.id)) return false;
       if (emp.email && headUsers.emails.has(emp.email.toLowerCase())) {
         return false;
@@ -6275,11 +6284,12 @@ function useDeptDirectoryEmployees() {
     userProfile?.departmentId,
     userProfile?.email,
     userProfile?.uid,
+    scopedOrgIds,
   ]);
 
   const directoryLoading = employeesLoading || usersLoading;
 
-  return { deptEmployees, directoryLoading, userProfile };
+  return { deptEmployees, allEmployees: directoryEmployees, directoryLoading, userProfile };
 }
 
 // ==================== SUBORDINATE MANAGER ====================
@@ -6348,7 +6358,8 @@ function SubordinateManager({
 }
 
 function TeamSupervision() {
-  const { deptEmployees, directoryLoading } = useDeptDirectoryEmployees();
+  const { deptEmployees, allEmployees, directoryLoading, userProfile } =
+    useDeptDirectoryEmployees();
 
   if (directoryLoading) {
     return (
@@ -6585,7 +6596,7 @@ function EmployeeInsights() {
 export function DeptHeadTaskBoard() {
   // Fetch realtime data from Firebase
   const { tasks } = useTasks();
-  const { deptEmployees, directoryLoading, userProfile } =
+  const { deptEmployees, allEmployees, directoryLoading, userProfile } =
     useDeptDirectoryEmployees();
   const { notes, loading: notesLoading } = useEmployeeNotes();
   const { orgs } = useOrgs();
@@ -6629,6 +6640,7 @@ export function DeptHeadTaskBoard() {
       <MondayBoard
         tasks={deptTasks}
         employees={deptEmployees}
+        allEmployees={allEmployees}
         employeeNotes={notes}
         role="depthead"
         departmentFilter={userProfile?.departmentId}

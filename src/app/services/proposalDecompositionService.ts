@@ -194,7 +194,10 @@ const buildCompactEmployeesContext = (
   employees
     .map((employee) => {
       const notes = employeeNotes?.[employee.id];
-      return `- ID: ${employee.id} | ${employee.name} | Workload: ${employee.currentWorkload}% | Skills: ${notes?.strengths || "General"}`;
+      const profileSkills = employee.jobDescription || "";
+      const noteSkills = notes?.strengths || "";
+      const combinedSkills = [profileSkills, noteSkills].filter(Boolean).join(", ") || "General";
+      return `- ID: ${employee.id} | ${employee.name} | Workload: ${employee.currentWorkload}% | Skills: ${combinedSkills}`;
     })
     .join("\n");
 
@@ -260,13 +263,41 @@ const shouldUseStructuredFallback = (
 const inferSkillsFromText = (text: string): string[] => {
   const rules = [
     { keyword: "workshop", skill: "facilitation" },
+    { keyword: "facilitat", skill: "facilitation" },
     { keyword: "consult", skill: "stakeholder engagement" },
-    { keyword: "analysis", skill: "economic analysis" },
+    { keyword: "stakeholder", skill: "stakeholder engagement" },
+    { keyword: "analysis", skill: "data analysis" },
+    { keyword: "economic", skill: "economic analysis" },
+    { keyword: "diagnostic", skill: "economic analysis" },
     { keyword: "benchmark", skill: "benchmarking" },
     { keyword: "planning", skill: "strategic planning" },
+    { keyword: "strategic", skill: "strategic planning" },
     { keyword: "writing", skill: "technical writing" },
+    { keyword: "report", skill: "report writing" },
+    { keyword: "document", skill: "technical writing" },
     { keyword: "presentation", skill: "presentation" },
-    { keyword: "validation", skill: "policy coordination" },
+    { keyword: "validation", skill: "stakeholder validation" },
+    { keyword: "coordinat", skill: "project coordination" },
+    { keyword: "policy", skill: "policy analysis" },
+    { keyword: "regulat", skill: "regulatory compliance" },
+    { keyword: "budget", skill: "budgeting" },
+    { keyword: "invest", skill: "investment promotion" },
+    { keyword: "zoning", skill: "zoning & land use" },
+    { keyword: "urban", skill: "urban planning" },
+    { keyword: "gis", skill: "GIS mapping" },
+    { keyword: "mapping", skill: "GIS mapping" },
+    { keyword: "traffic", skill: "traffic analysis" },
+    { keyword: "swot", skill: "SWOT analysis" },
+    { keyword: "survey", skill: "data gathering" },
+    { keyword: "data gather", skill: "data gathering" },
+    { keyword: "data collect", skill: "data gathering" },
+    { keyword: "research", skill: "data gathering" },
+    { keyword: "visioning", skill: "strategic planning" },
+    { keyword: "roadmap", skill: "strategic planning" },
+    { keyword: "competitiv", skill: "economic analysis" },
+    { keyword: "legislat", skill: "policy analysis" },
+    { keyword: "enactment", skill: "policy analysis" },
+    { keyword: "public relation", skill: "public relations" },
   ];
 
   const lower = text.toLowerCase();
@@ -456,6 +487,7 @@ const applyLocalRecommendations = (
   employeeNotes?: EmployeeNotesMap,
 ) => {
   if (!employees || employees.length === 0) return;
+  console.log("[Decomposition DEBUG] Running applyLocalRecommendations with employees:", employees.map(e => e.name));
 
   result.programs.forEach((program) => {
     program.projects.forEach((project) => {
@@ -792,6 +824,8 @@ Required JSON shape:
       data.content ||
       "";
 
+    console.log("[Decomposition DEBUG] Raw LLM response content:\n", contentString);
+
     // Parse the LLM JSON output
     let parsed = parseLlmJson(contentString);
 
@@ -838,6 +872,7 @@ Required JSON shape:
               }
 
               if (!task.recommendedEmployeeIds || task.recommendedEmployeeIds.length === 0) {
+                console.log(`[Decomposition DEBUG] Task "${task.title}" has no LLM recommendations. Running local scoring fallback...`);
                 const taskForScoring: Task = {
                   id: "temp",
                   title: task.title,
@@ -848,7 +883,9 @@ Required JSON shape:
                   updatedAt: Date.now(),
                 };
                 const scored = scoreEmployees(taskForScoring, employees, employeeNotes);
+                console.log(`[Decomposition DEBUG] Scored employees for task "${task.title}":`, scored.map(s => ({ name: s.employeeName, score: s.totalScore, skillMatch: s.breakdown.skillMatch })));
                 const selected = scored.length > 0 ? selectFallbackTeam(scored) : [];
+                console.log(`[Decomposition DEBUG] Selected fallback team for task "${task.title}":`, selected.map(s => s.employeeName));
 
                 if (selected.length > 0) {
                   task.recommendedEmployeeIds = selected.map((c) => c.employeeId);

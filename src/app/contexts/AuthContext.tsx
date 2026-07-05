@@ -36,7 +36,7 @@ interface AuthContextValue {
   createManagedUser: (
     newEmail: string,
     newPassword: string,
-    profile: { full_name: string; role: UserRole; org_id?: string; employee_id?: string },
+    profile: { full_name: string; role: UserRole; org_id?: string; employee_id?: string; skills?: Record<string, boolean> },
   ) => Promise<string>;
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -197,7 +197,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (
       newEmail: string,
       newPassword: string,
-      profileData: { full_name: string; role: UserRole; org_id?: string; employee_id?: string },
+      profileData: { full_name: string; role: UserRole; org_id?: string; employee_id?: string; skills?: Record<string, boolean> },
     ): Promise<string> => {
       setError(null);
       try {
@@ -216,6 +216,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             role: profileData.role,
             org_id: profileData.org_id || null,
             employee_id: profileData.employee_id || '',
+            skills: profileData.skills || {},
           }),
         });
 

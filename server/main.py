@@ -161,6 +161,7 @@ class CreateUserPayload(BaseModel):
     role: str = "employee"
     org_id: Optional[str] = None
     employee_id: str = ""
+    skills: dict = {}
 
 
 @app.post("/controlpanelEflow/api/admin/users/create")
@@ -188,6 +189,7 @@ async def create_managed_user(
             "org_id": payload.org_id,
             "employee_id": payload.employee_id,
             "is_active": True,
+            "skills": payload.skills,
         }).execute()
 
         return {"uid": uid, "email": payload.email}

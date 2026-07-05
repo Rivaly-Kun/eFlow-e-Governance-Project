@@ -25,7 +25,10 @@ export function ChatListDrawer({
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
+  
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
 
   const { orgs } = useOrgs();
   const ancestorOrgIds = useMemo(
@@ -46,13 +49,40 @@ export function ChatListDrawer({
     return unsub;
   }, [activeChannelId, userId]);
 
+  // Position the panel dynamically to the right of the button
   useEffect(() => {
+    if (!open || !buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const panelHeight = activeChannelId ? 380 : 300;
+    const spaceBelow = window.innerHeight - rect.top;
+    const top =
+      spaceBelow >= panelHeight
+        ? rect.top
+        : Math.max(8, rect.bottom - panelHeight);
+    setPanelStyle({
+      position: "fixed",
+      top,
+      left: rect.right + 12,
+      zIndex: 9999,
+      width: 320,
+    });
+  }, [open, activeChannelId]);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (
+        !buttonRef.current?.contains(target) &&
+        !panelRef.current?.contains(target)
+      ) {
+        setOpen(false);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  }, [open]);
 
   const unreadTotal = channels.filter((c) => c.unread).length;
 
@@ -65,8 +95,9 @@ export function ChatListDrawer({
   if (!userId) return null;
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative">
       <button
+        ref={buttonRef}
         onClick={() => setOpen((v) => !v)}
         className="relative w-8 h-8 rounded-lg flex items-center justify-center text-neutral-500 hover:bg-neutral-100 transition-colors"
       >
@@ -79,7 +110,11 @@ export function ChatListDrawer({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-10 w-[320px] bg-white rounded-xl border border-neutral-200 shadow-lg z-50 overflow-hidden">
+        <div
+          ref={panelRef}
+          style={panelStyle}
+          className="bg-white rounded-xl border border-neutral-200 shadow-lg overflow-hidden"
+        >
           {!activeChannelId ? (
             <div className="max-h-[380px] overflow-y-auto">
               <div className="px-3 py-2.5 border-b border-neutral-100 text-[11px] font-['Lexend:SemiBold',_sans-serif] text-neutral-700">
@@ -135,7 +170,7 @@ export function ChatListDrawer({
                 ))}
               {channels.length === 0 && (
                 <div className="px-3 py-6 text-center text-[11px] text-neutral-400">
-                  No chats yet — they appear once you're assigned a task.
+                  No chats yet.
                 </div>
               )}
             </div>

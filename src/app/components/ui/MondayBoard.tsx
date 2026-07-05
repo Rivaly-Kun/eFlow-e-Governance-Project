@@ -38,6 +38,9 @@ import {
   ProposalDecompositionResult,
 } from "../../services/proposalDecompositionService";
 import type { EmployeeNotesMap } from "../../services/employeeNotesService";
+import { useOrgs } from "../../hooks/useSupabaseData";
+import { getDescendantOrgIds } from "../../../lib/supabaseService";
+import { Organization } from "../../types";
 import {
   Sparkles,
   Loader2,
@@ -91,6 +94,55 @@ async function extractTextFromPdf(file: File): Promise<string> {
   return pages.join("\n\n");
 }
 
+function filterEmployeesByPdfMentions(
+  pdfText: string,
+  allEmployees: Employee[],
+  orgs: Organization[]
+): Employee[] {
+  if (!allEmployees || allEmployees.length === 0) return [];
+  
+  const textUpper = pdfText.toUpperCase();
+  
+  const mentionedOrgs = orgs.filter((org) => {
+    const nameMatch = org.name && textUpper.includes(org.name.toUpperCase());
+    const slugMatch = org.slug && textUpper.includes(org.slug.toUpperCase());
+    
+    let acronymMatch = false;
+    if (org.slug === "ledip" || org.slug === "ledipo") {
+      acronymMatch = textUpper.includes("LEDIP") || textUpper.includes("LEDIPO");
+    } else if (org.slug === "cpdo") {
+      acronymMatch = textUpper.includes("CPDO");
+    } else if (org.slug === "bplo") {
+      acronymMatch = textUpper.includes("BPLO") || textUpper.includes("BUSINESS PERMITS");
+    } else if (org.slug === "ociib") {
+      acronymMatch = textUpper.includes("OCIIB") || textUpper.includes("INCENTIVES BOARD");
+    }
+    
+    return nameMatch || slugMatch || acronymMatch;
+  });
+
+  if (mentionedOrgs.length === 0) {
+    console.log("[PDF Scope Filter] No matching proponents found in PDF. Using all employees.");
+    return allEmployees;
+  }
+
+  const allowedOrgIds = new Set<string>();
+  mentionedOrgs.forEach((org) => {
+    const descendants = getDescendantOrgIds(orgs, org.id);
+    descendants.forEach((id) => allowedOrgIds.add(id));
+  });
+
+  console.log("[PDF Scope Filter] Mentioned Orgs:", mentionedOrgs.map(o => o.name));
+  console.log("[PDF Scope Filter] Allowed Org IDs:", Array.from(allowedOrgIds));
+
+  const filtered = allEmployees.filter((emp) => {
+    return emp.department && allowedOrgIds.has(emp.department);
+  });
+
+  console.log("[PDF Scope Filter] Filtered Employees:", filtered.map(e => e.name));
+  return filtered;
+}
+
 // ─── Types ────────────────────────────────────────────────────────
 
 type BoardView = "list" | "kanban" | "timeline" | "hierarchy";
@@ -134,6 +186,7 @@ interface DraftTask {
 interface MondayBoardProps {
   tasks: Task[];
   employees?: Employee[];
+  allEmployees?: Employee[];
   employeeNotes?: EmployeeNotesMap;
   role: "depthead" | "employee";
   departmentFilter?: string;
@@ -1723,6 +1776,7 @@ function DraftTaskRow({
 function DraftCockpit({
   draftTasks,
   employees,
+  allEmployees,
   employeeNotes,
   onUpdate,
   onDelete,
@@ -1734,6 +1788,7 @@ function DraftCockpit({
 }: {
   draftTasks: DraftTask[];
   employees: Employee[];
+  allEmployees?: Employee[];
   employeeNotes?: EmployeeNotesMap;
   onUpdate: (key: string, patch: Partial<DraftTask>) => void;
   onDelete: (key: string) => void;
@@ -1900,7 +1955,7 @@ function DraftCockpit({
                         <DraftTaskRow
                           key={dt.key}
                           dt={dt}
-                          employees={employees}
+                          employees={allEmployees && allEmployees.length > 0 ? allEmployees : employees}
                           employeeNotes={employeeNotes}
                           onUpdate={onUpdate}
                           onDelete={onDelete}
@@ -3365,6 +3420,7 @@ function TimelineView({
 export function MondayBoard({
   tasks,
   employees = [],
+  allEmployees = [],
   employeeNotes,
   role,
   departmentFilter,
@@ -3378,6 +3434,7 @@ export function MondayBoard({
   onUpdateTask,
   onDeleteTask,
 }: MondayBoardProps) {
+  const { orgs } = useOrgs();
   // ── View & composer state ─────────────────────────────────────
   const [boardView, setBoardView] = useState<BoardView>("list");
   const [composerOpen, setComposerOpen] = useState(role === "depthead");
@@ -3385,9 +3442,8 @@ export function MondayBoard({
 
   // ── Employee lookups ──────────────────────────────────────────
   const deptEmployees = useMemo(() => {
-    if (!departmentFilter || !employees) return employees || [];
-    return employees.filter((e) => e.department === departmentFilter);
-  }, [employees, departmentFilter]);
+    return employees || [];
+  }, [employees]);
 
   const deptEmployeesWithNotes = useMemo(
     () => deptEmployees.filter((emp) => Boolean(employeeNotes?.[emp.id])),
@@ -3403,12 +3459,14 @@ export function MondayBoard({
   );
 
   const employeeById = useMemo(
-    () =>
-      Object.fromEntries(deptEmployees.map((e) => [e.id, e])) as Record<
+    () => {
+      const candidates = allEmployees && allEmployees.length > 0 ? allEmployees : deptEmployees;
+      return Object.fromEntries(candidates.map((e) => [e.id, e])) as Record<
         string,
         Employee
-      >,
-    [deptEmployees],
+      >;
+    },
+    [deptEmployees, allEmployees],
   );
 
   const [taskEditorOpen, setTaskEditorOpen] = useState(false);
@@ -3850,10 +3908,13 @@ export function MondayBoard({
 
     setPdfPhase("decomposing");
     try {
+      const candidates = allEmployees && allEmployees.length > 0
+        ? filterEmployeesByPdfMentions(text, allEmployees, orgs)
+        : employeesForAi;
       const result = await decomposeProposal(
         text,
         file.name.replace(/\.pdf$/i, ""),
-        employeesForAi,
+        candidates,
         employeeNotes,
       );
       setDraftTasks(buildDraftTasks(result, file.name.replace(/\.pdf$/i, "")));
@@ -4350,6 +4411,7 @@ export function MondayBoard({
                       <DraftCockpit
                         draftTasks={draftTasks}
                         employees={deptEmployees}
+                        allEmployees={allEmployees}
                         employeeNotes={employeeNotes}
                         onUpdate={handleDraftUpdate}
                         onDelete={handleDraftDelete}
@@ -4530,7 +4592,7 @@ export function MondayBoard({
       <AssignmentModal
         open={taskEditorAssignOpen && taskEditorOpen}
         onClose={() => setTaskEditorAssignOpen(false)}
-        employees={deptEmployees}
+        employees={allEmployees && allEmployees.length > 0 ? allEmployees : deptEmployees}
         employeeNotes={employeeNotes}
         selectedIds={taskEditorDraft?.teamMemberIds || []}
         leadId={taskEditorDraft?.leadMemberId || null}
@@ -4553,7 +4615,7 @@ export function MondayBoard({
           setAssignModalOpen(false);
           setAssignModalTaskKey(null);
         }}
-        employees={deptEmployees}
+        employees={allEmployees && allEmployees.length > 0 ? allEmployees : deptEmployees}
         employeeNotes={employeeNotes}
         selectedIds={currentDraftTask?.assignedMemberIds || []}
         leadId={currentDraftTask?.leadMemberId || null}
@@ -4571,7 +4633,7 @@ export function MondayBoard({
       <AssignmentModal
         open={manualModalOpen}
         onClose={() => setManualModalOpen(false)}
-        employees={deptEmployees}
+        employees={allEmployees && allEmployees.length > 0 ? allEmployees : deptEmployees}
         employeeNotes={employeeNotes}
         selectedIds={selectedMembers.map((m) => m.id)}
         leadId={selectedMembers[0]?.id || null}
