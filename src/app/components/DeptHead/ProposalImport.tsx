@@ -245,6 +245,7 @@ export default function ProposalImport() {
   const [subtasksCreatedByKey, setSubtasksCreatedByKey] = useState<
     Record<string, number>
   >({});
+  const [progressMsg, setProgressMsg] = useState("");
 
   const taskKey = (pi: number, pj: number, ai: number, ti: number) =>
     `${pi}-${pj}-${ai}-${ti}`;
@@ -469,6 +470,7 @@ export default function ProposalImport() {
       setTaskPayloads({});
       setTaskSubtasksByKey({});
       setSubtasksCreatedByKey({});
+      setProgressMsg("");
 
       // Phase 1: Extract text
       setPhase("extracting");
@@ -489,6 +491,7 @@ export default function ProposalImport() {
 
       // Phase 2: Decompose via LLM
       setPhase("decomposing");
+      setProgressMsg("");
       try {
         console.log("ProposalImport [DEBUG]: Sourced deptEmployees passed to AI:", deptEmployees.map(e => ({ id: e.id, name: e.name, department: e.department, jobTitle: e.jobTitle, skills: e.jobDescription })));
         const decomposed = await decomposeProposal(
@@ -496,6 +499,9 @@ export default function ProposalImport() {
           file.name.replace(/\.pdf$/i, ""),
           deptEmployees,
           employeeNotes,
+          (current, total, partTitle) => {
+            setProgressMsg(`Processing part ${current} of ${total}: ${partTitle}`);
+          },
         );
         setResult(decomposed);
         setPhase("done");
@@ -619,6 +625,7 @@ export default function ProposalImport() {
               setTaskPayloads({});
               setTaskSubtasksByKey({});
               setSubtasksCreatedByKey({});
+              setProgressMsg("");
             }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-['Lexend:Medium',_sans-serif] bg-white text-neutral-700 border border-neutral-200 hover:bg-neutral-50"
           >
@@ -662,13 +669,15 @@ export default function ProposalImport() {
           <div className="text-[16px] font-['Lexend:SemiBold',_sans-serif] text-neutral-800">
             {phase === "extracting"
               ? "Extracting text from PDF…"
-              : "AI is decomposing the proposal…"}
+              : progressMsg || "AI is decomposing the proposal…"}
           </div>
           <div className="text-[13px] text-neutral-500 mt-1">
             {fileName} ·{" "}
             {phase === "extracting"
               ? "Reading pages"
-              : "This may take up to 2 minutes for large proposals"}
+              : progressMsg
+                ? "Each part is processed individually for better recommendations"
+                : "This may take up to 5 minutes for multi-part proposals"}
           </div>
           <div className="mt-6 flex justify-center gap-3">
             <div

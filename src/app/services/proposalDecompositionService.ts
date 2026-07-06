@@ -493,6 +493,9 @@ const applyLocalRecommendations = (
     program.projects.forEach((project) => {
       project.activities.forEach((activity) => {
         activity.tasks.forEach((task) => {
+          if (task.recommendedEmployeeIds && task.recommendedEmployeeIds.length > 0) {
+            return; // Already has a real recommendation — don't overwrite it
+          }
           const taskForScoring: Task = {
             id: "temp",
             title: task.title,
@@ -515,6 +518,7 @@ const applyLocalRecommendations = (
                       .join(", ")}.`
                   : scored[0].reasoning;
               task.burnoutWarning = team.some((c) => c.burnoutWarning);
+              task.recommendationSource = "fallback";
             }
           }
         });
@@ -700,9 +704,172 @@ const buildFallbackDecomposition = (
   return result;
 };
 
-// ─── Main decompose function ─────────────────────────────────────
+// ─── LLM HTTP call helper ────────────────────────────────────────
+// Extracted so both whole-document and per-part paths share one
+// implementation instead of duplicating the fetch + timeout + parse.
 
-export const decomposeProposal = async (
+async function callDecompositionLLM(prompt: string): Promise<string> {
+  const runtimeToken = await fetchAuthKey();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
+
+  const response = await fetch(CHAT_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(runtimeToken ? { Authorization: `Bearer ${runtimeToken}` } : {}),
+    },
+    body: JSON.stringify({
+      model: LLM_MODEL,
+      messages: [{ role: "user", content: prompt }],
+      stream: false,
+    }),
+    signal: controller.signal,
+  });
+
+  clearTimeout(timeout);
+
+  if (!response.ok) {
+    throw new Error(`LLM Error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return (
+    data.message?.content ||
+    data.choices?.[0]?.message?.content ||
+    data.response ||
+    data.content ||
+    ""
+  ) as string;
+}
+
+// ─── decomposeSinglePart ─────────────────────────────────────────────
+// Sends ONE part's content to the LLM — a much smaller ask than the
+// whole document, matching what every debug log shows the model
+// actually succeeding at. Falls back to the deterministic scorer only
+// for THIS part if its own call fails, not the whole document.
+async function decomposeSinglePart(
+  part: { title: string; description: string; schedule?: string; tasks: ProposalDecompositionTask[] },
+  employees?: Employee[],
+  employeeNotes?: EmployeeNotesMap,
+): Promise<ProposalDecompositionActivity> {
+  const employeeList = (employees || [])
+    .map((e) => `- ${e.name} (${e.id}): ${e.jobDescription || "no listed skills"}`)
+    .join("\n");
+
+  const prompt = `Break down ONE section of a government project proposal into actionable tasks.
+
+Section title: "${part.title}"
+Details: "${part.description}"
+Schedule: "${part.schedule || "not specified"}"
+
+Available team:
+${employeeList || "No employees provided — omit recommendedEmployeeIds."}
+
+Respond with JSON only, no preamble, no markdown fences:
+{
+  "tasks": [{
+    "title": "...", "description": "...",
+    "estimatedDuration": "2 days",
+    "requiredSkills": ["skill1", "skill2"],
+    "priority": "high",
+    "recommendedEmployeeIds": ["exact-id-from-list-above"],
+    "recommendationReasoning": "Why this person fits, referencing their actual listed skills.",
+    "subtasks": ["step 1", "step 2", "step 3"]
+  }]
+}
+
+Produce 1-4 tasks for this section only. Do not attempt to cover the whole proposal — only this section.`;
+
+  try {
+    const rawResponse = await callDecompositionLLM(prompt);
+    const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No JSON in LLM response");
+
+    const parsed = JSON.parse(jsonMatch[0]) as { tasks: ProposalDecompositionTask[] };
+    if (!parsed.tasks || parsed.tasks.length === 0) throw new Error("Empty tasks array");
+
+    // Resolve any name-based recommendations to IDs
+    if (employees && employees.length > 0) {
+      parsed.tasks.forEach((task) => {
+        const normalized = mapNamesToIds(getRecommendedValues(task), employees);
+        if (normalized.length > 0) {
+          task.recommendedEmployeeIds = normalized;
+        }
+        task.recommendationSource = (task.recommendedEmployeeIds && task.recommendedEmployeeIds.length > 0)
+          ? "llm"
+          : undefined;
+      });
+    }
+
+    return {
+      title: part.title,
+      description: part.description,
+      schedule: part.schedule,
+      methodology: [],
+      tasks: parsed.tasks,
+    };
+  } catch (err) {
+    console.warn(`[Per-Part LLM] Failed for "${part.title}", using local scoring for this part only:`, err);
+    const fallbackActivity: ProposalDecompositionActivity = {
+      title: part.title,
+      description: part.description,
+      schedule: part.schedule,
+      methodology: [],
+      tasks: part.tasks, // the regex-extracted tasks for this part, unscored
+    };
+    const wrapper: ProposalDecompositionResult = {
+      proposal: { title: part.title, description: part.description },
+      programs: [{ title: part.title, description: part.description, projects: [{ title: part.title, description: part.description, activities: [fallbackActivity] }] }],
+    };
+    applyLocalRecommendations(wrapper, employees, employeeNotes);
+    return fallbackActivity;
+  }
+}
+
+// ─── decomposeProposalByPart ─────────────────────────────────────────
+// Orchestrates the per-part calls sequentially (not Promise.all — a
+// local Ollama server holds one model in memory and processes one
+// request at a time; concurrent calls would just queue behind each
+// other while holding open connections for no benefit).
+async function decomposeProposalByPart(
+  proposalText: string,
+  proposalTitle: string,
+  employees?: Employee[],
+  employeeNotes?: EmployeeNotesMap,
+  onProgress?: (current: number, total: number, partTitle: string) => void,
+): Promise<ProposalDecompositionResult> {
+  const parts = extractPartSections(proposalText);
+  if (!parts || parts.length === 0) {
+    throw new Error("No parts extracted — caller should fall back to whole-document path");
+  }
+
+  const activities: ProposalDecompositionActivity[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (onProgress) onProgress(i + 1, parts.length, parts[i].title);
+    const activity = await decomposeSinglePart(parts[i], employees, employeeNotes);
+    activities.push(activity);
+  }
+
+  return {
+    proposal: { title: proposalTitle, description: proposalText.substring(0, 200) },
+    programs: activities.map((activity, index) => ({
+      title: activity.title || `Program ${index + 1}`,
+      description: activity.description,
+      projects: [
+        {
+          title: `${activity.title} Implementation`,
+          description: activity.description,
+          activities: [activity],
+        },
+      ],
+    })),
+  };
+}
+
+// ─── Whole-document path (original approach, renamed) ────────────
+
+const decomposeWholeDocument = async (
   proposalText: string,
   proposalTitle: string,
   employees?: Employee[],
@@ -791,38 +958,7 @@ Required JSON shape:
 }`;
 
   try {
-    const runtimeToken = await fetchAuthKey();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
-
-    const response = await fetch(CHAT_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(runtimeToken ? { Authorization: `Bearer ${runtimeToken}` } : {}),
-      },
-      body: JSON.stringify({
-        model: LLM_MODEL,
-        messages: [{ role: "user", content: prompt }],
-        stream: false,
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      console.error("LLM Decomposition Error:", response.status, response.statusText);
-      return buildFallbackDecomposition(proposalText, proposalTitle, employees, employeeNotes);
-    }
-
-    const data = await response.json();
-    const contentString =
-      data.message?.content ||
-      data.choices?.[0]?.message?.content ||
-      data.response ||
-      data.content ||
-      "";
+    const contentString = await callDecompositionLLM(prompt);
 
     console.log("[Decomposition DEBUG] Raw LLM response content:\n", contentString);
 
@@ -894,6 +1030,7 @@ Required JSON shape:
                       ? `Team of ${selected.length}: Lead ${selected[0].employeeName}, support ${selected.slice(1).map((c) => c.employeeName).join(", ")}.`
                       : selected[0].reasoning;
                   task.burnoutWarning = selected.some((c) => c.burnoutWarning);
+                  task.recommendationSource = "fallback";
                 }
               }
             });
@@ -924,3 +1061,28 @@ Required JSON shape:
     return buildFallbackDecomposition(proposalText, proposalTitle, employees, employeeNotes);
   }
 };
+
+// ─── Exported entry point ────────────────────────────────────────
+// Tries per-part LLM orchestration first for "Part N" documents,
+// falls back to whole-document path for everything else.
+
+export async function decomposeProposal(
+  proposalText: string,
+  proposalTitle: string,
+  employees?: Employee[],
+  employeeNotes?: EmployeeNotesMap,
+  onProgress?: (current: number, total: number, partTitle: string) => void,
+): Promise<ProposalDecompositionResult> {
+  const hasParts = /Part\s+\d+/i.test(proposalText);
+
+  if (hasParts) {
+    try {
+      return await decomposeProposalByPart(proposalText, proposalTitle, employees, employeeNotes, onProgress);
+    } catch (err) {
+      console.warn("[Decomposition] Per-part path failed, falling back to whole-document:", err);
+      // fall through to whole-document path below
+    }
+  }
+
+  return decomposeWholeDocument(proposalText, proposalTitle, employees, employeeNotes);
+}

@@ -2269,6 +2269,12 @@ function ListBoardView({
                                 {task.teamName}
                               </div>
                             )}
+                            {task.recommendationSource === "llm" && (
+                              <span className="text-[8px] uppercase tracking-wider text-violet-500">AI Reasoned</span>
+                            )}
+                            {task.recommendationSource === "fallback" && (
+                              <span className="text-[8px] uppercase tracking-wider text-neutral-400">Auto-Matched</span>
+                            )}
                             {memberNames.length > 1 && (
                               <div className="text-[10px] text-violet-600 mt-0.5 truncate">
                                 Team: {memberNames.slice(0, 3).join(", ")}
