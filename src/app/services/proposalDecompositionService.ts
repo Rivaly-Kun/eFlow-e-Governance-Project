@@ -24,7 +24,9 @@ export interface ProposalDecompositionTask {
   recommendationReasoning?: string;
   burnoutWarning?: boolean;
   subtasks?: string[];
+  recommendationSource?: "llm" | "fallback" | "import";
 }
+
 
 export interface ProposalDecompositionActivity {
   title: string;
@@ -360,8 +362,8 @@ const cleanHierarchyTitle = (value: string, fallback: string): string => {
 
 const extractPartSections = (proposalText: string): PartSection[] | null => {
   const sourceText = extractActionTable(proposalText);
-  const partRegex =
-    /Part\s+\d+\s*:?\s*([^\n]+?)(?=Part\s+\d+\s*:|Proposed Budget|Monitoring|$)/gi;
+const partRegex =
+  /Part\s+\d+\s*:?\s*([\s\S]+?)(?=Part\s+\d+\s*:|Proposed Budget|Monitoring|$)/gi;
   const matches = Array.from(sourceText.matchAll(partRegex));
 
   if (matches.length < 2) return null;

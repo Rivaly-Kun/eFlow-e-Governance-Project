@@ -1,4 +1,4 @@
-﻿// â”€â”€â”€ eFlow Task Service (Supabase) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€â”€ eFlow Task Service (Supabase) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Full rewrite from Firebase RTDB â†’ Supabase PostgreSQL.
 // All exported function signatures kept identical.
 
@@ -396,6 +396,19 @@ export const createTask = async (
   description?: string,
   deadline?: string,
 ) => {
+  const { data: { user } } = await supabase.auth.getUser();
+  let userOrgId: string | null = null;
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('org_id')
+      .eq('id', user.id)
+      .single();
+    if (profile) {
+      userOrgId = profile.org_id;
+    }
+  }
+
   let newTask: Record<string, unknown>;
 
   if (typeof titleOrPayload === 'object') {
@@ -408,6 +421,7 @@ export const createTask = async (
       priority: p.priority || 'medium',
       tags: p.tags || [],
       department: p.department || p.teamId || '',
+      orgId: p.orgId || userOrgId || undefined,
       teamId: p.teamId || p.department || '',
       teamName: p.teamName || '',
       teamMemberIds: p.teamMemberIds || [],
@@ -446,8 +460,14 @@ export const createTask = async (
       team_name: '',
       team_member_ids: [],
       team_member_names: [],
+      org_id: userOrgId,
     };
   }
+
+  if (user) {
+    newTask.created_by = user.id;
+  }
+
 
   const { data, error } = await supabase
     .from('tasks')

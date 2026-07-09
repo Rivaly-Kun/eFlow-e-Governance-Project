@@ -11,12 +11,15 @@
 
   export interface ChatChannelSummary {
     channelId: string;
+    channelType?: string;
     taskId?: string;
     orgId?: string;
     name: string;
     lastMessage?: string;
     lastMessageAt?: number;
     unread: boolean;
+    otherUserId?: string;
+    otherUserName?: string;
   }
 
   function rowToMessage(row: Record<string, unknown>): ChatMessage {
@@ -102,38 +105,121 @@
   // ─── subscribeToMyChannels ───────────────────────────────────────────
   // Powers the global chat icon's channel list. Unread = any message in
   // the channel newer than this user's last_read_at for that channel.
-  export function subscribeToMyChannels(
+  // ─── getOrCreateDirectChannel ────────────────────────────────────────
+// Direct channels aren't keyed by task_id or org_id like the other two
+// types — they're keyed by the pair of members. Look up via
+// chat_channel_members (the same table task channels already use for
+// membership) rather than inventing a second membership mechanism.
+export async function getOrCreateDirectChannel(
+  userIdA: string,
+  userIdB: string,
+): Promise<string> {
+  const { data: myDirectChannels } = await supabase
+    .from("chat_channel_members")
+    .select("channel_id, chat_channels!inner(channel_type)")
+    .eq("user_id", userIdA)
+    .eq("chat_channels.channel_type", "direct");
+
+  const candidateIds = (myDirectChannels || []).map((row: any) => row.channel_id);
+
+  if (candidateIds.length > 0) {
+    const { data: shared } = await supabase
+      .from("chat_channel_members")
+      .select("channel_id")
+      .eq("user_id", userIdB)
+      .in("channel_id", candidateIds)
+      .maybeSingle();
+
+    if (shared?.channel_id) return shared.channel_id;
+  }
+
+  const { data: newChannel, error } = await supabase
+    .from("chat_channels")
+    .insert({ channel_type: "direct", name: "" })
+    .select()
+    .single();
+  if (error) throw error;
+
+  await supabase.from("chat_channel_members").insert([
+    { channel_id: newChannel.id, user_id: userIdA },
+    { channel_id: newChannel.id, user_id: userIdB },
+  ]);
+
+  return newChannel.id;
+}
+
+export function subscribeToMyChannels(
     userId: string,
     ancestorOrgIds: string[],
     callback: (channels: ChatChannelSummary[]) => void,
   ): () => void {
     const load = async () => {
-      // Task channels — unchanged from Phase 8
+      // Task channels — membership-based, filter to only task channels
       const { data: memberships } = await supabase
         .from("chat_channel_members")
-        .select("channel_id, last_read_at, chat_channels(id, name, task_id)")
+        .select("channel_id, last_read_at, chat_channels(id, name, task_id, channel_type)")
         .eq("user_id", userId);
 
       const taskSummaries: ChatChannelSummary[] = await Promise.all(
-        (memberships || []).map(async (m: any) => {
-          const { data: lastMsg } = await supabase
-            .from("chat_messages")
-            .select("content, created_at")
-            .eq("channel_id", m.channel_id)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          return {
-            channelId: m.channel_id,
-            taskId: m.chat_channels?.task_id || undefined,
-            name: m.chat_channels?.name || "Untitled",
-            lastMessage: lastMsg?.content,
-            lastMessageAt: lastMsg?.created_at ? new Date(lastMsg.created_at).getTime() : undefined,
-            unread: lastMsg?.created_at
-              ? new Date(lastMsg.created_at) > new Date(m.last_read_at)
-              : false,
-          };
-        }),
+        (memberships || [])
+          .filter((m: any) => m.chat_channels?.task_id)
+          .map(async (m: any) => {
+            const { data: lastMsg } = await supabase
+              .from("chat_messages")
+              .select("content, created_at")
+              .eq("channel_id", m.channel_id)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            return {
+              channelId: m.channel_id,
+              channelType: m.chat_channels?.channel_type,
+              taskId: m.chat_channels?.task_id || undefined,
+              name: m.chat_channels?.name || "Untitled",
+              lastMessage: lastMsg?.content,
+              lastMessageAt: lastMsg?.created_at ? new Date(lastMsg.created_at).getTime() : undefined,
+              unread: lastMsg?.created_at
+                ? new Date(lastMsg.created_at) > new Date(m.last_read_at)
+                : false,
+            };
+          }),
+      );
+
+      // Direct channels — membership-based, filter to direct type
+      const directSummaries: ChatChannelSummary[] = await Promise.all(
+        (memberships || [])
+          .filter((m: any) => m.chat_channels?.channel_type === "direct")
+          .map(async (m: any) => {
+            // Find the other member in this direct channel
+            const { data: otherMember } = await supabase
+              .from("chat_channel_members")
+              .select("user_id, profiles(full_name)")
+              .eq("channel_id", m.channel_id)
+              .neq("user_id", userId)
+              .maybeSingle();
+
+            const { data: lastMsg } = await supabase
+              .from("chat_messages")
+              .select("content, created_at")
+              .eq("channel_id", m.channel_id)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            const otherName = (otherMember?.profiles as any)?.full_name || "Unknown";
+            return {
+              channelId: m.channel_id,
+              channelType: "direct",
+              name: otherName,
+              lastMessage: lastMsg?.content,
+              lastMessageAt: lastMsg?.created_at ? new Date(lastMsg.created_at).getTime() : undefined,
+              unread: lastMsg?.created_at
+                ? new Date(lastMsg.created_at) > new Date(m.last_read_at)
+                : false,
+              otherUserId: otherMember?.user_id,
+              otherUserName: otherName,
+            };
+          }),
       );
 
       // Org (standing) channels — NEW. No membership table to query;
@@ -157,6 +243,7 @@
               .maybeSingle();
             return {
               channelId: ch.id,
+              channelType: "org",
               orgId: ch.org_id,
               name: ch.name,
               lastMessage: lastMsg?.content,
@@ -167,7 +254,7 @@
         );
       }
 
-      const all = [...orgSummaries, ...taskSummaries];
+      const all = [...directSummaries, ...orgSummaries, ...taskSummaries];
       all.sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
       callback(all);
     };

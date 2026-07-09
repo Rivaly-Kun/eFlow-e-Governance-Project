@@ -4,6 +4,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { MigrationTool } from "../SuperAdmin/MigrationTool";
 import { NotificationBell } from "../ui/NotificationBell";
 import { ChatListDrawer } from "../ui/ChatListDrawer";
+import { IncomingCallListener } from "../ui/IncomingCallListener";
 import {
   Search,
   Dashboard,
@@ -1262,6 +1263,7 @@ function IconNavigation({
             userOrgId={userProfile?.departmentId}
           />
         )}
+        {user?.id && <IncomingCallListener userId={user.id} />}
         <IconNavButton
           isActive={activeSection === "settings"}
           onClick={() => onSectionChange("settings")}

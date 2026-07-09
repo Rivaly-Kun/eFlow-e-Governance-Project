@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { MessageCircle, X } from "lucide-react";
+import { MessageCircle, X, Phone, Video } from "lucide-react";
 import {
   ChatChannelSummary,
   ChatMessage,
@@ -8,6 +8,8 @@ import {
   sendMessage,
   markChannelRead,
 } from "../../services/chatService";
+import { initiateCall, ActiveCall } from "../../services/callService";
+import { CallModal } from "./CallModal";
 import { useOrgs } from "../../hooks/useSupabaseData";
 import { getAncestorOrgIds } from "../../../lib/supabaseService";
 
@@ -25,6 +27,7 @@ export function ChatListDrawer({
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
+  const [outgoingCall, setOutgoingCall] = useState<ActiveCall | null>(null);
   
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -120,6 +123,30 @@ export function ChatListDrawer({
               <div className="px-3 py-2.5 border-b border-neutral-100 text-[11px] font-['Lexend:SemiBold',_sans-serif] text-neutral-700">
                 Chats
               </div>
+              {channels.filter((c) => c.channelType === "direct").length > 0 && (
+                <div className="px-3 py-1.5 text-[9px] uppercase tracking-wider text-neutral-400 bg-neutral-50">
+                  Direct Messages
+                </div>
+              )}
+              {channels
+                .filter((c) => c.channelType === "direct")
+                .map((c) => (
+                  <button
+                    key={c.channelId}
+                    onClick={() => setActiveChannelId(c.channelId)}
+                    className="w-full text-left px-3 py-2.5 hover:bg-neutral-50 border-b border-neutral-50 flex items-center justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[12px] text-neutral-800 truncate font-['Lexend:Medium',_sans-serif]">
+                        {c.name}
+                      </div>
+                      <div className="text-[10px] text-neutral-400 truncate">
+                        {c.lastMessage || "No messages yet"}
+                      </div>
+                    </div>
+                    {c.unread && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 ml-2" />}
+                  </button>
+                ))}
               {channels.filter((c) => c.orgId).length > 0 && (
                 <div className="px-3 py-1.5 text-[9px] uppercase tracking-wider text-neutral-400 bg-neutral-50">
                   Standing Channels
@@ -144,13 +171,13 @@ export function ChatListDrawer({
                     {c.unread && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 ml-2" />}
                   </button>
                 ))}
-              {channels.filter((c) => !c.orgId).length > 0 && (
+              {channels.filter((c) => c.taskId).length > 0 && (
                 <div className="px-3 py-1.5 text-[9px] uppercase tracking-wider text-neutral-400 bg-neutral-50">
                   Task Chats
                 </div>
               )}
               {channels
-                .filter((c) => !c.orgId)
+                .filter((c) => c.taskId)
                 .map((c) => (
                   <button
                     key={c.channelId}
@@ -180,9 +207,69 @@ export function ChatListDrawer({
                 <span className="text-[11px] font-['Lexend:SemiBold',_sans-serif] text-neutral-700 truncate">
                   {channels.find((c) => c.channelId === activeChannelId)?.name}
                 </span>
-                <button onClick={() => setActiveChannelId(null)} className="text-neutral-400 hover:text-neutral-700">
-                  <X size={14} />
-                </button>
+                <div className="flex items-center gap-1">
+                  {channels.find((c) => c.channelId === activeChannelId)?.channelType === "direct" && (
+                    <>
+                      <button
+                        onClick={async () => {
+                          const ch = channels.find((c) => c.channelId === activeChannelId);
+                          if (!ch || !userId) return;
+                          const callId = await initiateCall(
+                            activeChannelId,
+                            userId,
+                            userName || "Someone",
+                            ch.otherUserId || "",
+                            ch.otherUserName || "Unknown",
+                            "audio",
+                          );
+                          setOutgoingCall({
+                            id: callId,
+                            channelId: activeChannelId,
+                            callerId: userId,
+                            callerName: userName || "Someone",
+                            calleeId: ch.otherUserId || "",
+                            calleeName: ch.otherUserName || "Unknown",
+                            callType: "audio",
+                            status: "ringing",
+                          });
+                        }}
+                        className="p-1.5 rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                      >
+                        <Phone size={14} />
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const ch = channels.find((c) => c.channelId === activeChannelId);
+                          if (!ch || !userId) return;
+                          const callId = await initiateCall(
+                            activeChannelId,
+                            userId,
+                            userName || "Someone",
+                            ch.otherUserId || "",
+                            ch.otherUserName || "Unknown",
+                            "video",
+                          );
+                          setOutgoingCall({
+                            id: callId,
+                            channelId: activeChannelId,
+                            callerId: userId,
+                            callerName: userName || "Someone",
+                            calleeId: ch.otherUserId || "",
+                            calleeName: ch.otherUserName || "Unknown",
+                            callType: "video",
+                            status: "ringing",
+                          });
+                        }}
+                        className="p-1.5 rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                      >
+                        <Video size={14} />
+                      </button>
+                    </>
+                  )}
+                  <button onClick={() => setActiveChannelId(null)} className="text-neutral-400 hover:text-neutral-700">
+                    <X size={14} />
+                  </button>
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto p-3 space-y-2">
                 {messages.map((m) => {
@@ -220,6 +307,9 @@ export function ChatListDrawer({
             </div>
           )}
         </div>
+      )}
+      {outgoingCall && (
+        <CallModal call={outgoingCall} isCaller={true} onClose={() => setOutgoingCall(null)} />
       )}
     </div>
   );

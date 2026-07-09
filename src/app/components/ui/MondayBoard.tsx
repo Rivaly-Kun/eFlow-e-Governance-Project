@@ -416,13 +416,19 @@ const buildTaskEditorDraft = (task: Task): TaskEditorDraft => ({
   leadMemberId: task.assigneeId || getTaskMemberIds(task)[0] || null,
 });
 
-const parseTaskDeadline = (raw: string): Date | null => {
+const parseTaskDeadline = (raw: string, projectStart?: Date): Date | null => {
   const value = raw.trim();
   if (!value) return null;
 
-  // Labels like "Month 1-2" are schedule phases, not absolute dates.
-  if (/^month\s+\d+/i.test(value) || /^phase\s+\d+/i.test(value)) {
-    return null;
+  // Match month or phase patterns like "Month 1", "Month 1-2", "Month 1 -2"
+  const monthMatch = value.match(/^(?:month|phase)\s*(\d+)(?:\s*-\s*(\d+))?/i);
+  if (monthMatch) {
+    const startMonth = parseInt(monthMatch[1], 10);
+    const endMonth = monthMatch[2] ? parseInt(monthMatch[2], 10) : startMonth;
+    const baseDate = projectStart || new Date();
+    const d = new Date(baseDate);
+    d.setMonth(d.getMonth() + endMonth);
+    return d;
   }
 
   const parsed = new Date(value);
@@ -430,10 +436,13 @@ const parseTaskDeadline = (raw: string): Date | null => {
   return parsed;
 };
 
-const getDeadlineInfo = (task: Task) => {
+const getDeadlineInfo = (task: Task, projectStart?: Date) => {
   const dl = task.deadline || task.dueDate;
   if (!dl) return null;
-  const parsedDeadline = parseTaskDeadline(dl);
+  const parsedDeadline = parseTaskDeadline(
+    dl,
+    projectStart || (task.createdAt ? new Date(task.createdAt) : undefined)
+  );
   if (!parsedDeadline) return null;
 
   const diff = parsedDeadline.getTime() - Date.now();
@@ -3218,10 +3227,53 @@ function TimelineView({
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const WEEKS = 12;
-  // Start 2 weeks before today
-  const windowStart = new Date(today);
+  // Find project start date dynamically
+  let earliestTime = today.getTime();
+  tasks.forEach((t) => {
+    if (t.createdAt) {
+      const time = new Date(t.createdAt).getTime();
+      if (!Number.isNaN(time) && time < earliestTime) {
+        earliestTime = time;
+      }
+    }
+  });
+  const projectStart = new Date(earliestTime);
+  projectStart.setHours(0, 0, 0, 0);
+
+  // First pass: parse all tasks that have deadlines
+  const parsedItems = tasks
+    .map((task) => {
+      const parsedDeadline = parseTaskDeadline(
+        task.deadline || task.dueDate || "",
+        projectStart,
+      );
+      return parsedDeadline ? { task, parsedDeadline } : null;
+    })
+    .filter(
+      (item): item is { task: Task; parsedDeadline: Date } => item !== null,
+    );
+
+  // Find window boundaries based on task dates
+  let latestTime = today.getTime() + 12 * 7 * 86400000; // default 12 weeks out
+  parsedItems.forEach(({ parsedDeadline }) => {
+    if (parsedDeadline.getTime() > latestTime) {
+      latestTime = parsedDeadline.getTime();
+    }
+  });
+
+  // Start 2 weeks before project start (or today, whichever is earlier)
+  const windowStart = new Date(Math.min(today.getTime(), projectStart.getTime()));
   windowStart.setDate(windowStart.getDate() - 14);
+  windowStart.setHours(0, 0, 0, 0);
+
+  // End 2 weeks after the latest deadline
+  const windowEnd = new Date(latestTime);
+  windowEnd.setDate(windowEnd.getDate() + 14);
+  windowEnd.setHours(0, 0, 0, 0);
+
+  // Calculate total weeks dynamically
+  const timeDiff = windowEnd.getTime() - windowStart.getTime();
+  const WEEKS = Math.max(12, Math.ceil(timeDiff / (7 * 86400000)));
   const totalDays = WEEKS * 7;
 
   const weeks: Date[] = Array.from({ length: WEEKS }, (_, i) => {
@@ -3239,16 +3291,7 @@ function TimelineView({
   const todayOffset = dayOffset(today);
   const todayPct = (todayOffset / totalDays) * 100;
 
-  const tasksWithDates = tasks
-    .map((task) => {
-      const parsedDeadline = parseTaskDeadline(
-        task.deadline || task.dueDate || "",
-      );
-      return parsedDeadline ? { task, parsedDeadline } : null;
-    })
-    .filter(
-      (item): item is { task: Task; parsedDeadline: Date } => item !== null,
-    );
+  const tasksWithDates = parsedItems;
 
   return (
     <div className="w-full bg-white border border-neutral-200 rounded-2xl overflow-hidden shadow-sm">
@@ -3301,7 +3344,7 @@ function TimelineView({
           const pm =
             priorityMeta[task.priority || "medium"] || priorityMeta.medium;
           const sm = statusMeta[task.status];
-          const dlInfo = getDeadlineInfo(task);
+          const dlInfo = getDeadlineInfo(task, projectStart);
           const isOverdue = dlInfo?.label.includes("overdue");
           const isDueToday = dlInfo?.label === "Due today";
 
@@ -3312,11 +3355,8 @@ function TimelineView({
                 ? "bg-red-500"
                 : isDueToday
                   ? "bg-amber-400"
-                  : task.priority === "high"
-                    ? "bg-red-400"
-                    : task.priority === "medium"
-                      ? "bg-blue-400"
-                      : "bg-emerald-400";
+                  : "bg-blue-400";
+
 
           return (
             <div
