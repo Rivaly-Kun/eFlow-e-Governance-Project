@@ -5,7 +5,6 @@
 export type UserRole =
   | 'super_admin'
   | 'dept_head'
-  | 'team_leader'
   | 'employee'
   // ── legacy (still referenced by non-migrated components) ──
   | 'department_head'
@@ -52,7 +51,9 @@ export interface UserProfile {
   // Supabase columns
   id: string;
   full_name: string;
+  avatar_path: string | null;
   email: string;
+  email_notifications_enabled: boolean;
   employee_id: string;
   org_id: string | null;
   role: UserRole;
@@ -68,11 +69,22 @@ export interface UserProfile {
   uid: string;
   employeeId: string;
   fullName: string;
+  avatarPath: string | null;
+  emailNotificationsEnabled: boolean;
   departmentId: string;
   burnoutLevel: 'low' | 'medium' | 'high';
   status: 'active' | 'inactive';
   createdAt: number;
   lastLogin: number;
+}
+
+export type ThemePreference = 'light' | 'dark' | 'system';
+
+export interface UserPreferences {
+  user_id: string;
+  theme: ThemePreference;
+  created_at: string;
+  updated_at: string;
 }
 
 // ─── System Config ───────────────────────────────────────────────

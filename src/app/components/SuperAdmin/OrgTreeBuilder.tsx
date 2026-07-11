@@ -61,14 +61,12 @@ const ORG_TYPE_OPTIONS: { value: OrgType; label: string }[] = [
 const ROLE_COLORS: Record<string, string> = {
   super_admin: 'bg-red-100 text-red-700',
   dept_head: 'bg-violet-100 text-violet-700',
-  team_leader: 'bg-blue-100 text-blue-700',
   employee: 'bg-emerald-100 text-emerald-700',
 };
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: 'Super Admin',
   dept_head: 'Dept Head',
-  team_leader: 'Team Leader',
   employee: 'Employee',
 };
 

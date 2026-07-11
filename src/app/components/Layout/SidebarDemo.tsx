@@ -5,6 +5,8 @@ import { MigrationTool } from "../SuperAdmin/MigrationTool";
 import { NotificationBell } from "../ui/NotificationBell";
 import { ChatListDrawer } from "../ui/ChatListDrawer";
 import { IncomingCallListener } from "../ui/IncomingCallListener";
+import { SettingsContent } from "../Settings/SettingsContent";
+import { getProfileAvatarUrl } from "../../services/userSettingsService";
 import {
   Search,
   Dashboard,
@@ -34,7 +36,6 @@ import {
   CloudUpload,
   Notification,
   Security,
-  Integration,
   StarFilled,
   Group,
   Calendar as CalendarIcon,
@@ -78,14 +79,43 @@ function InterfacesLogo1() {
 }
 
 function Avatar() {
+  const { userProfile } = useAuth();
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getProfileAvatarUrl(userProfile?.avatar_path)
+      .then((url) => {
+        if (active) setAvatarUrl(url);
+      })
+      .catch(() => {
+        if (active) setAvatarUrl(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [userProfile?.avatar_path]);
+
+  const profileInitials = (userProfile?.full_name || '?')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
     <div
-      className="bg-neutral-100 relative rounded-[999px] shrink-0 size-8"
+      className="bg-neutral-100 relative rounded-[999px] shrink-0 size-8 overflow-hidden dark:bg-slate-800"
       data-name="Avatar"
     >
-      <div className="box-border content-stretch flex flex-row items-center justify-center overflow-clip p-0 relative size-8">
-        <User size={16} className="text-neutral-900" />
-      </div>
+      {avatarUrl ? (
+        <img src={avatarUrl} alt="Your profile" className="size-full object-cover" />
+      ) : (
+        <div className="box-border content-stretch flex flex-row items-center justify-center overflow-clip p-0 relative size-8 text-[10px] font-semibold text-neutral-700 dark:text-slate-200">
+          {profileInitials}
+        </div>
+      )}
       <div
         aria-hidden="true"
         className="absolute border border-neutral-200 border-solid inset-0 pointer-events-none rounded-[999px]"
@@ -384,7 +414,6 @@ const roleNavConfigs: Record<
         label: "Org Structure",
       },
       { id: "migration", icon: <Renew size={16} />, label: "Migration Tool" },
-      { id: "settings", icon: <Settings size={16} />, label: "Settings" },
     ],
   },
   executive: {
@@ -488,34 +517,19 @@ function getSidebarContent(role: string, section: string): SidebarContent {
         items: [
           {
             icon: <User size={16} className="text-neutral-900" />,
-            label: "Profile settings",
+            label: "Profile",
           },
           {
-            icon: <Security size={16} className="text-neutral-900" />,
-            label: "Security",
+            icon: <Settings size={16} className="text-neutral-900" />,
+            label: "Appearance",
           },
           {
             icon: <Notification size={16} className="text-neutral-900" />,
             label: "Notifications",
           },
-        ],
-      },
-      {
-        title: "Workspace",
-        items: [
           {
             icon: <Settings size={16} className="text-neutral-900" />,
-            label: "Preferences",
-            hasDropdown: true,
-            children: [
-              { label: "Theme settings" },
-              { label: "Time zone" },
-              { label: "Default notifications" },
-            ],
-          },
-          {
-            icon: <Integration size={16} className="text-neutral-900" />,
-            label: "Integrations",
+            label: "Security",
           },
         ],
       },
@@ -1058,21 +1072,21 @@ function getSidebarContent(role: string, section: string): SidebarContent {
             title: "Core Workflows",
             items: [
               {
-                icon: <FolderOpen size={16} className="text-neutral-900" />,
-                label: "Programs & Activities",
+                icon: <Folder size={16} className="text-neutral-900" />,
+                label: "Task Board & Composer",
                 isActive: true,
               },
               {
-                icon: <Task size={16} className="text-neutral-900" />,
-                label: "Task Composer",
+                icon: <Group size={16} className="text-neutral-900" />,
+                label: "Team Supervision",
               },
               {
                 icon: <Analytics size={16} className="text-neutral-900" />,
                 label: "Team Intelligence",
               },
               {
-                icon: <UserMultiple size={16} className="text-neutral-900" />,
-                label: "Team Supervision",
+                icon: <CloudUpload size={16} className="text-neutral-900" />,
+                label: "Proposal Import",
               },
             ],
           },
@@ -1087,65 +1101,17 @@ function getSidebarContent(role: string, section: string): SidebarContent {
             title: "Dashboard",
             items: [
               {
-                icon: <FolderOpen size={16} className="text-neutral-900" />,
-                label: "Blank Dashboard",
+                icon: <Task size={16} className="text-neutral-900" />,
+                label: "My Task Workspace",
                 isActive: true,
               },
-            ],
-          },
-        ],
-      },
-      empfin: {
-        title: "Project Financials",
-        sections: [
-          {
-            title: "Expense Reporting",
-            items: [
               {
-                icon: <DocumentAdd size={16} className="text-neutral-900" />,
-                label: "Expense & Liquidation Submission",
-                isActive: true,
-                hasDropdown: true,
-                children: [
-                  { label: "Exact Spent Amount" },
-                  { label: "Receipt Upload (OR/AR)" },
-                  { label: "Remaining Budget Calc" },
-                ],
+                icon: <ChartBar size={16} className="text-neutral-900" />,
+                label: "My Performance Overview",
               },
               {
-                icon: <AddLarge size={16} className="text-neutral-900" />,
-                label: "Cash Advance Requests",
-              },
-            ],
-          },
-        ],
-      },
-      achievement: {
-        title: "Collaborative Achievement",
-        sections: [
-          {
-            title: "Team Progress",
-            items: [
-              {
-                icon: <Group size={16} className="text-neutral-900" />,
-                label: "Departmental Goals",
-                isActive: true,
-                hasDropdown: true,
-                children: [
-                  { label: "Team Milestones" },
-                  { label: "Compliance Metrics" },
-                  { label: "Social Norming Stats" },
-                ],
-              },
-              {
-                icon: <StarFilled size={16} className="text-neutral-900" />,
-                label: "Agentic AI Coaching",
-                hasDropdown: true,
-                children: [
-                  { label: "Workflow Guidance" },
-                  { label: "Liquidation Report Help" },
-                  { label: "Digital Literacy Support" },
-                ],
+                icon: <Settings size={16} className="text-neutral-900" />,
+                label: "Profile & Settings",
               },
             ],
           },
@@ -1427,7 +1393,7 @@ function TwoLevelSidebar({ role }: { role: string }) {
 
   const handleSectionChange = (section: string) => {
     setActiveSection(section);
-    setActivePage(undefined);
+    setActivePage(section === "settings" ? "Profile" : undefined);
   };
 
   const handleMigrationClick = () => {
@@ -1461,6 +1427,12 @@ function TwoLevelSidebar({ role }: { role: string }) {
             activePage={activePage}
             onPageChange={setActivePage}
           />
+          {activeSection === "settings" ? (
+            <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto rounded-r-2xl dark:bg-slate-950">
+              <SettingsContent activePage={activePage} />
+            </div>
+          ) : (
+            <>
           {/* Main Content Area */}
           {role === "superadmin" && (
             <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
@@ -1553,6 +1525,8 @@ function TwoLevelSidebar({ role }: { role: string }) {
                 </div>
               </div>
             )}
+            </>
+          )}
         </>
       )}
     </div>

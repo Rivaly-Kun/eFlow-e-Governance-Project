@@ -18,6 +18,7 @@
     lastMessage?: string;
     lastMessageAt?: number;
     unread: boolean;
+    isLeadOf?: boolean;
     otherUserId?: string;
     otherUserName?: string;
   }
@@ -65,7 +66,7 @@
       .channel(channelIdUnique)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "chat_messages", filter: `channel_id=eq.${channelId}` },
+        { event: "*", schema: "public", table: "chat_messages", filter: `channel_id=eq.${channelId}` },
         () => load(),
       )
       .subscribe();
@@ -75,6 +76,38 @@
     };
   }
 
+// ─── sendMessageWithMentions ─────────────────────────────────────────
+export async function sendMessageWithMentions(
+  channelId: string,
+  senderId: string,
+  senderName: string,
+  content: string,
+): Promise<void> {
+  await sendMessage(channelId, senderId, senderName, content);
+
+  const mentionPattern = /@(\w+)/g;
+  const mentioned = [...content.matchAll(mentionPattern)].map((m) => m[1]);
+  if (mentioned.length === 0) return;
+
+  const { data: members } = await supabase
+    .from("chat_channel_members")
+    .select("user_id, profiles(full_name)")
+    .eq("channel_id", channelId);
+
+  for (const name of mentioned) {
+    const match = (members || []).find((m: any) =>
+      m.profiles?.full_name?.toLowerCase().startsWith(name.toLowerCase()),
+    );
+    if (match && match.user_id !== senderId) {
+      const { createNotification } = await import("./notificationService");
+      await createNotification(match.user_id, {
+        type: "comment",
+        title: "You were mentioned",
+        message: `${senderName} mentioned you: "${content.slice(0, 80)}"`,
+      });
+    }
+  }
+}
   // ─── sendMessage ─────────────────────────────────────────────────────
   export async function sendMessage(
     channelId: string,
@@ -100,6 +133,34 @@
       .update({ last_read_at: new Date().toISOString() })
       .eq("channel_id", channelId)
       .eq("user_id", userId);
+  }
+
+  // ─── deleteMessage ───────────────────────────────────────────────────
+  export async function deleteMessage(messageId: string): Promise<void> {
+    const res = await fetch("/api/admin/chat/messages/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageId }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("FastAPI delete message error:", errText);
+      throw new Error(`Failed to delete message: ${errText}`);
+    }
+  }
+
+  // ─── updateMessageContent ────────────────────────────────────────────
+  export async function updateMessageContent(messageId: string, newContent: string): Promise<void> {
+    const res = await fetch("/api/admin/chat/messages/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageId, newContent }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("FastAPI update message content error:", errText);
+      throw new Error(`Failed to update message: ${errText}`);
+    }
   }
 
   // ─── subscribeToMyChannels ───────────────────────────────────────────
@@ -171,6 +232,13 @@ export function subscribeToMyChannels(
               .order("created_at", { ascending: false })
               .limit(1)
               .maybeSingle();
+            
+            const { data: task } = await supabase
+              .from("tasks")
+              .select("assigned_to")
+              .eq("id", m.chat_channels?.task_id)
+              .maybeSingle();
+            
             return {
               channelId: m.channel_id,
               channelType: m.chat_channels?.channel_type,
@@ -181,6 +249,7 @@ export function subscribeToMyChannels(
               unread: lastMsg?.created_at
                 ? new Date(lastMsg.created_at) > new Date(m.last_read_at)
                 : false,
+              isLeadOf: task?.assigned_to === userId,
             };
           }),
       );
@@ -249,6 +318,7 @@ export function subscribeToMyChannels(
               lastMessage: lastMsg?.content,
               lastMessageAt: lastMsg?.created_at ? new Date(lastMsg.created_at).getTime() : undefined,
               unread: false, // no per-user read tracking for standing channels
+              isLeadOf: false,
             };
           }),
         );

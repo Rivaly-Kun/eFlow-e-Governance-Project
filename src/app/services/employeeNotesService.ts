@@ -18,8 +18,10 @@ export type EmployeeNotesMap = Record<string, EmployeeNote>;
 export const subscribeToEmployeeNotes = (
   callback: (notes: EmployeeNotesMap) => void,
 ) => {
+  let disposed = false;
   const load = async () => {
     const { data } = await supabase.from('employee_notes').select('*');
+    if (disposed) return;
     if (!data) { callback({}); return; }
 
     const map: EmployeeNotesMap = {};
@@ -37,7 +39,20 @@ export const subscribeToEmployeeNotes = (
     callback(map);
   };
   load();
-  return () => {};
+
+  const channel = supabase
+    .channel(`employee-notes-changes-${Math.random().toString(36).slice(2)}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'employee_notes' },
+      () => { load(); },
+    )
+    .subscribe();
+
+  return () => {
+    disposed = true;
+    supabase.removeChannel(channel);
+  };
 };
 
 export const updateEmployeeNotes = async (

@@ -40,6 +40,7 @@ interface AuthContextValue {
   ) => Promise<string>;
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateUserProfile: (changes: Partial<Pick<UserProfile, 'full_name' | 'avatar_path' | 'email_notifications_enabled'>>) => void;
   clearError: () => void;
 }
 
@@ -65,6 +66,8 @@ function addCompatAliases(data: Record<string, unknown>): UserProfile {
     ...data,
     uid: data.id,
     fullName: data.full_name,
+    avatarPath: typeof data.avatar_path === 'string' ? data.avatar_path : null,
+    emailNotificationsEnabled: data.email_notifications_enabled !== false,
     employeeId: data.employee_id,
     departmentId: data.org_id,
     burnoutLevel: data.burnout_level,
@@ -265,6 +268,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearError = useCallback(() => setError(null), []);
 
+  // Settings saves use this to keep every signed-in-user surface (including
+  // the sidebar avatar) in sync without waiting for a realtime round trip.
+  const updateUserProfile = useCallback(
+    (changes: Partial<Pick<UserProfile, 'full_name' | 'avatar_path' | 'email_notifications_enabled'>>) => {
+      setUserProfile((current) =>
+        current
+          ? addCompatAliases({ ...current, ...changes } as unknown as Record<string, unknown>)
+          : current,
+      );
+    },
+    [],
+  );
+
   return (
     <AuthContext.Provider
       value={{
@@ -277,6 +293,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         createManagedUser,
         resetPassword,
         logout,
+        updateUserProfile,
         clearError,
       }}
     >

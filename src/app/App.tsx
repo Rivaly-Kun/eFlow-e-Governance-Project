@@ -1,4 +1,5 @@
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { UserPreferencesProvider, useUserPreferences } from "./contexts/UserPreferencesContext";
 import { LoginPage } from "./components/Auth/LoginPage";
 import { Frame760 } from "./components/Layout/SidebarDemo";
 import { ToastProvider } from "./components/ui/Toast";
@@ -11,8 +12,6 @@ function mapRoleToPanel(role: string): string {
     case 'dept_head':
     case 'department_head':
       return 'depthead';
-    case 'team_leader':
-      return 'teamleader';
     case 'employee':
       return 'employee';
     default:
@@ -61,9 +60,10 @@ function LoadingSkeleton() {
 // ─── Auth-gated main content ─────────────────────────────────────
 function AppContent() {
   const { user, userProfile, loading } = useAuth();
+  const { loading: preferencesLoading } = useUserPreferences();
 
   // Still resolving auth state
-  if (loading) return <LoadingSkeleton />;
+  if (loading || (user && preferencesLoading)) return <LoadingSkeleton />;
 
   // Not authenticated → show login
   if (!user || !userProfile) return <LoginPage />;
@@ -78,9 +78,11 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <ToastProvider>
-        <AppContent />
-      </ToastProvider>
+      <UserPreferencesProvider>
+        <ToastProvider>
+          <AppContent />
+        </ToastProvider>
+      </UserPreferencesProvider>
     </AuthProvider>
   );
 }

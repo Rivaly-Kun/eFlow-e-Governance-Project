@@ -208,6 +208,40 @@ async def delete_managed_user(
         return {"deleted": uid}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+class UpdateMessagePayload(BaseModel):
+    messageId: str
+    newContent: str
+
+
+@app.post("/controlpanelEflow/api/admin/chat/messages/update")
+async def update_chat_message(
+    payload: UpdateMessagePayload,
+    authorized: bool = Depends(verify_auth),
+):
+    try:
+        supabase_admin.table("chat_messages").update({
+            "content": payload.newContent
+        }).eq("id", payload.messageId).execute()
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class DeleteMessagePayload(BaseModel):
+    messageId: str
+
+
+@app.post("/controlpanelEflow/api/admin/chat/messages/delete")
+async def delete_chat_message(
+    payload: DeleteMessagePayload,
+    authorized: bool = Depends(verify_auth),
+):
+    try:
+        supabase_admin.table("chat_messages").delete().eq("id", payload.messageId).execute()
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 
 if __name__ == "__main__":

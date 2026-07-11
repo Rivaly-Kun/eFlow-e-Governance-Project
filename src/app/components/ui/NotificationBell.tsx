@@ -1,6 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ReactDOM from "react-dom";
-import { Bell, CheckCheck, X } from "lucide-react";
+import { Bell, CheckCheck, Maximize2, Minimize2, X } from "lucide-react";
 import {
   markAllNotificationsRead,
   markNotificationRead,
@@ -31,9 +37,94 @@ export function NotificationBell({
 }) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  // ── Free-form panel position/size ────────────────────────────────────
+  const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const [panelSize, setPanelSize] = useState<{ w: number; h: number }>({
+    w: 320,
+    h: 440,
+  });
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const dragState = useRef<{
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+  } | null>(null);
+  const resizeState = useRef<{
+    startX: number;
+    startY: number;
+    origW: number;
+    origH: number;
+  } | null>(null);
+
+  const startDrag = useCallback(
+    (e: React.MouseEvent) => {
+      if (isFullscreen) return;
+      e.preventDefault();
+      const pos = panelPos ?? { x: 80, y: 80 };
+      dragState.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        origX: pos.x,
+        origY: pos.y,
+      };
+      const onMove = (ev: MouseEvent) => {
+        if (!dragState.current) return;
+        setPanelPos({
+          x: dragState.current.origX + ev.clientX - dragState.current.startX,
+          y: dragState.current.origY + ev.clientY - dragState.current.startY,
+        });
+      };
+      const onUp = () => {
+        dragState.current = null;
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [isFullscreen, panelPos],
+  );
+
+  const startResize = useCallback(
+    (e: React.MouseEvent) => {
+      if (isFullscreen) return;
+      e.preventDefault();
+      e.stopPropagation();
+      resizeState.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        origW: panelSize.w,
+        origH: panelSize.h,
+      };
+      const onMove = (ev: MouseEvent) => {
+        if (!resizeState.current) return;
+        setPanelSize({
+          w: Math.max(
+            280,
+            resizeState.current.origW + ev.clientX - resizeState.current.startX,
+          ),
+          h: Math.max(
+            300,
+            resizeState.current.origH + ev.clientY - resizeState.current.startY,
+          ),
+        });
+      };
+      const onUp = () => {
+        resizeState.current = null;
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [isFullscreen, panelSize],
+  );
 
   useEffect(() => {
     if (!userId) return;
@@ -43,23 +134,21 @@ export function NotificationBell({
     };
   }, [userId]);
 
-  // Position the panel whenever it opens
+  // Seed initial panel position from button location on first open
   useEffect(() => {
-    if (!open || !buttonRef.current) return;
+    if (!open || panelPos !== null || !buttonRef.current) return;
     const rect = buttonRef.current.getBoundingClientRect();
-    const panelHeight = 420;
-    const spaceBelow = window.innerHeight - rect.top;
-    const top =
-      spaceBelow >= panelHeight
-        ? rect.top
-        : Math.max(8, rect.bottom - panelHeight);
-    setPanelStyle({
-      position: "fixed",
-      top,
-      left: rect.right + 12,
-      zIndex: 9999,
-      width: 320,
-    });
+    const left = rect.right > 0 ? rect.right + 12 : 80;
+    const top = Math.max(8, rect.top - 350);
+    setPanelPos({ x: left, y: top });
+  }, [open, panelPos]);
+
+  // Reset on close
+  useEffect(() => {
+    if (!open) {
+      setPanelPos(null);
+      setIsFullscreen(false);
+    }
   }, [open]);
 
   // Close on outside click
@@ -87,14 +176,44 @@ export function NotificationBell({
 
   const buttonSize = compact ? "size-10 min-w-10" : "h-9 w-9";
 
+  const panelComputedStyle: React.CSSProperties = isFullscreen
+    ? {
+        position: "fixed",
+        inset: 0,
+        width: "100vw",
+        height: "100vh",
+        zIndex: 9999,
+        borderRadius: 0,
+      }
+    : {
+        position: "fixed",
+        left: panelPos?.x ?? 80,
+        top: panelPos?.y ?? 80,
+        width: panelSize.w,
+        height: panelSize.h,
+        zIndex: 9999,
+        minWidth: 280,
+        minHeight: 300,
+      };
+
   const panel = open
     ? ReactDOM.createPortal(
         <div
           ref={panelRef}
-          style={panelStyle}
-          className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl"
+          style={panelComputedStyle}
+          className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl flex flex-col"
         >
-          <div className="flex items-center justify-between border-b border-neutral-100 px-3 py-2.5">
+          {/* Drag Handle Bar */}
+          <div
+            onMouseDown={startDrag}
+            className="h-4 flex items-center justify-center bg-white border-b border-neutral-100 cursor-grab active:cursor-grabbing shrink-0 select-none group"
+            title="Drag to move"
+          >
+            <span className="w-6 h-0.5 rounded-full bg-neutral-400 opacity-30 group-hover:opacity-70 transition-opacity" />
+          </div>
+
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-neutral-100 px-3 py-2.5 shrink-0">
             <div>
               <div className="text-[11px] font-['Lexend:SemiBold',_sans-serif] uppercase tracking-[0.12em] text-neutral-400">
                 Notifications
@@ -115,6 +234,18 @@ export function NotificationBell({
                 </button>
               )}
               <button
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => setIsFullscreen((v) => !v)}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
+                title={isFullscreen ? "Restore" : "Fullscreen"}
+              >
+                {isFullscreen ? (
+                  <Minimize2 size={12} />
+                ) : (
+                  <Maximize2 size={12} />
+                )}
+              </button>
+              <button
                 onClick={() => setOpen(false)}
                 className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
                 title="Close"
@@ -124,7 +255,8 @@ export function NotificationBell({
             </div>
           </div>
 
-          <div className="max-h-[360px] overflow-y-auto">
+          {/* Notification list */}
+          <div className="flex-1 overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="px-4 py-8 text-center text-[12px] text-neutral-400">
                 No notifications yet
@@ -173,6 +305,21 @@ export function NotificationBell({
               })
             )}
           </div>
+
+          {/* Resize Handle Ball */}
+          {!isFullscreen && (
+            <div
+              onMouseDown={startResize}
+              className="absolute bottom-1.5 right-1.5 w-4 h-4 rounded-full bg-neutral-300 hover:bg-blue-400 cursor-nwse-resize flex items-center justify-center transition-colors shadow z-50 select-none"
+              title="Drag to resize"
+            >
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                <circle cx="6" cy="6" r="1.2" fill="white" opacity="0.9" />
+                <circle cx="3" cy="6" r="1.2" fill="white" opacity="0.6" />
+                <circle cx="6" cy="3" r="1.2" fill="white" opacity="0.6" />
+              </svg>
+            </div>
+          )}
         </div>,
         document.body,
       )

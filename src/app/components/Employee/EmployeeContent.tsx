@@ -7,8 +7,9 @@ import {
   submitTaskForReview,
   Task,
 } from "../../services/taskService";
-import { ProfilePage } from "./ProfilePage";
+import { SettingsContent } from "../Settings/SettingsContent";
 import { useAuth } from "../../contexts/AuthContext";
+import { useEmployeeNotes } from "../../hooks/useFirebaseData";
 import {
   subscribeToNotifications,
   type Notification,
@@ -2176,52 +2177,157 @@ export function EmployeeTaskBoard() {
   );
 }
 
+// ==================== PERFORMANCE OVERVIEW ====================
+
+export function EmployeePerformanceView() {
+  const { userProfile } = useAuth();
+  const { notes, loading: notesLoading } = useEmployeeNotes();
+  const [tasks, setTasks] = useState<Task[]>([]);
+
+  useEffect(() => {
+    if (!userProfile?.uid) {
+      setTasks([]);
+      return;
+    }
+
+    return subscribeToTasks((allTasks) => {
+      setTasks(
+        allTasks.filter(
+          (task) =>
+            task.assigneeId === userProfile.uid ||
+            (task.teamMemberIds || []).includes(userProfile.uid),
+        ),
+      );
+    });
+  }, [userProfile?.uid]);
+
+  const totals = useMemo(
+    () => ({
+      total: tasks.length,
+      completed: tasks.filter((task) => task.status === "completed").length,
+      inProgress: tasks.filter((task) => task.status === "in_progress").length,
+    }),
+    [tasks],
+  );
+  const workload = userProfile?.workload ?? 0;
+  const burnout =
+    userProfile?.burnoutLevel ||
+    (workload > 80 ? "high" : workload >= 60 ? "medium" : "low");
+  const health = {
+    low: {
+      label: "Low burnout risk",
+      description: "Your workload is currently within a sustainable range.",
+      card: "border-emerald-200 bg-emerald-50",
+      text: "text-emerald-700",
+      bar: "bg-emerald-500",
+    },
+    medium: {
+      label: "Moderate workload risk",
+      description: "Keep an eye on your active work and flag blockers early.",
+      card: "border-amber-200 bg-amber-50",
+      text: "text-amber-700",
+      bar: "bg-amber-500",
+    },
+    high: {
+      label: "High workload risk",
+      description: "Your Department Head can help rebalance your active assignments.",
+      card: "border-red-200 bg-red-50",
+      text: "text-red-700",
+      bar: "bg-red-500",
+    },
+  }[burnout];
+  const profileNote = userProfile?.uid ? notes[userProfile.uid] : undefined;
+
+  return (
+    <div className="min-h-full bg-neutral-50 p-8">
+      <Header
+        title="My Performance Overview"
+        subtitle="A clear view of your workload, delivery progress, and coaching profile"
+      />
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[
+          ["Total tasks", totals.total, "All assignments"],
+          ["Completed", totals.completed, "Delivered work"],
+          ["In progress", totals.inProgress, "Currently underway"],
+        ].map(([label, value, description]) => (
+          <div key={label as string} className="rounded-xl border border-neutral-200 bg-white p-4">
+            <div className="text-[10px] uppercase tracking-wider text-neutral-400">{label as string}</div>
+            <div className="mt-1 text-[25px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">{value as number}</div>
+            <div className="mt-0.5 text-[11px] text-neutral-500">{description as string}</div>
+          </div>
+        ))}
+      </div>
+
+      <section className={`mt-5 rounded-xl border p-5 ${health.card}`}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className={`text-[11px] uppercase tracking-wider font-medium ${health.text}`}>Workload health</div>
+            <h2 className={`mt-1 text-[16px] font-['Lexend:SemiBold',_sans-serif] ${health.text}`}>{health.label}</h2>
+            <p className={`mt-1 text-[12px] ${health.text}`}>{health.description}</p>
+          </div>
+          <div className={`rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-medium ${health.text}`}>{workload}% workload</div>
+        </div>
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/80">
+          <div className={`h-full ${health.bar}`} style={{ width: `${Math.min(workload, 100)}%` }} />
+        </div>
+      </section>
+
+      <section className="mt-5 rounded-xl border border-neutral-200 bg-white p-5">
+        <div className="flex items-center gap-2">
+          <Sparkles size={16} className="text-violet-600" />
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-neutral-400">Department Head profile</div>
+            <h2 className="text-[15px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">Your strengths and coaching context</h2>
+          </div>
+        </div>
+
+        {notesLoading ? (
+          <p className="mt-5 text-[12px] text-neutral-400">Loading your profile…</p>
+        ) : profileNote ? (
+          <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-lg bg-emerald-50 p-4">
+              <div className="text-[10px] uppercase tracking-wider text-emerald-600">Strengths</div>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-emerald-900">{profileNote.strengths || "No strengths have been recorded yet."}</p>
+            </div>
+            <div className="rounded-lg bg-amber-50 p-4">
+              <div className="text-[10px] uppercase tracking-wider text-amber-600">Growth areas</div>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-amber-900">{profileNote.weaknesses || "No growth areas have been recorded yet."}</p>
+            </div>
+            <div className="rounded-lg bg-neutral-50 p-4 md:col-span-2">
+              <div className="text-[10px] uppercase tracking-wider text-neutral-400">Notes</div>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-neutral-700">{profileNote.notes || "No additional coaching notes have been shared."}</p>
+              {profileNote.tags.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {profileNote.tags.map((tag) => (
+                    <span key={tag} className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] text-violet-700">{tag}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-5 rounded-lg bg-neutral-50 px-4 py-5 text-[12px] text-neutral-500">Your Department Head has not added a performance profile yet.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
 // ==================== ROUTER ====================
 export const employeePages: Record<
   string,
   Record<string, React.ComponentType>
 > = {
   workspace: {
-    "Active Tasks": EmployeeTaskBoard,
-    "GA-Delegated Assignments": EmployeeTaskBoard,
-    "Context-Aware Reminders": ActiveTasks,
-    "One-Tap Complete": ActiveTasks,
-    "Daily Stand-Up Input": DailyStandUp,
-    "Text Update": DailyStandUp,
-    "Voice Note": DailyStandUp,
-    "Auto-Transcription": DailyStandUp,
-    "Mobile & Viber Integration": ViberIntegration,
-    "Viber Account Linking": ViberIntegration,
-    "Keyword Notifications": ViberIntegration,
-    "Remote DB Updates": ViberIntegration,
-  },
-  empfin: {
-    "Expense & Liquidation Submission": LiquidationPortal,
-    "Exact Spent Amount": LiquidationPortal,
-    "Receipt Upload (OR/AR)": LiquidationPortal,
-    "Remaining Budget Calc": LiquidationPortal,
-    "Cash Advance Requests": CashAdvanceRequests,
-  },
-  achievement: {
-    "Departmental Goals": TeamProgress,
-    "Team Milestones": TeamProgress,
-    "Compliance Metrics": TeamProgress,
-    "Social Norming Stats": TeamProgress,
-    "Agentic AI Coaching": AICoaching,
-    "Workflow Guidance": AICoaching,
-    "Liquidation Report Help": AICoaching,
-    "Digital Literacy Support": AICoaching,
-  },
-  settings: {
-    "Profile & Account": ProfilePage,
+    "My Task Workspace": EmployeeTaskBoard,
+    "My Performance Overview": EmployeePerformanceView,
+    "Profile & Settings": () => <SettingsContent activePage="Profile" />,
   },
 };
 
 export const employeeDefaultPages: Record<string, string> = {
-  workspace: "Active Tasks",
-  empfin: "Expense & Liquidation Submission",
-  achievement: "Departmental Goals",
-  settings: "Profile & Account",
+  workspace: "My Task Workspace",
 };
 
 export function EmployeeContent({
