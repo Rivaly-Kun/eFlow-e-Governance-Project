@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import svgPaths from "../../imports/svg-svkvdgwod6";
 import { useAuth } from "../../contexts/AuthContext";
 import { MigrationTool } from "../SuperAdmin/MigrationTool";
@@ -404,6 +404,26 @@ const roleNavConfigs: Record<
         label: "Dashboard",
       },
       {
+        id: "projects",
+        icon: <FolderOpen size={16} />,
+        label: "Projects",
+      },
+      {
+        id: "tasks",
+        icon: <Task size={16} />,
+        label: "Tasks",
+      },
+      {
+        id: "reports",
+        icon: <ChartBar size={16} />,
+        label: "Reports",
+      },
+      {
+        id: "announcements",
+        icon: <Notification size={16} />,
+        label: "Announcements",
+      },
+      {
         id: "users",
         icon: <UserMultiple size={16} />,
         label: "User Management",
@@ -412,6 +432,21 @@ const roleNavConfigs: Record<
         id: "org_tree",
         icon: <Folder size={16} />,
         label: "Org Structure",
+      },
+      {
+        id: "permissions",
+        icon: <Security size={16} />,
+        label: "Permissions",
+      },
+      {
+        id: "audit",
+        icon: <Report size={16} />,
+        label: "Audit Log",
+      },
+      {
+        id: "administration",
+        icon: <Settings size={16} />,
+        label: "System Settings",
       },
       { id: "migration", icon: <Renew size={16} />, label: "Migration Tool" },
     ],
@@ -457,8 +492,13 @@ const roleNavConfigs: Record<
     ],
   },
   depthead: {
-    defaultSection: "deptportfolio",
+    defaultSection: "command",
     navItems: [
+      {
+        id: "command",
+        icon: <Home size={16} />,
+        label: "Command Center",
+      },
       {
         id: "deptportfolio",
         icon: <Folder size={16} />,
@@ -477,8 +517,9 @@ const roleNavConfigs: Record<
     ],
   },
   employee: {
-    defaultSection: "workspace",
+    defaultSection: "mywork",
     navItems: [
+      { id: "mywork", icon: <Home size={16} />, label: "My Work" },
       { id: "workspace", icon: <Folder size={16} />, label: "Department Workspace" },
     ],
   },
@@ -582,6 +623,48 @@ function getSidebarContent(role: string, section: string): SidebarContent {
               },
             ],
           },
+        ],
+      },
+      projects: {
+        title: "Projects",
+        sections: [
+          { title: "Portfolio", items: [{ icon: <FolderOpen size={16} className="text-neutral-900" />, label: "All Projects", isActive: true }] },
+        ],
+      },
+      tasks: {
+        title: "Tasks",
+        sections: [
+          { title: "Operations", items: [{ icon: <Task size={16} className="text-neutral-900" />, label: "All Tasks", isActive: true }] },
+        ],
+      },
+      reports: {
+        title: "Reports",
+        sections: [
+          { title: "Analytics", items: [{ icon: <ChartBar size={16} className="text-neutral-900" />, label: "System Reports", isActive: true }] },
+        ],
+      },
+      announcements: {
+        title: "Announcements",
+        sections: [
+          { title: "Communications", items: [{ icon: <Notification size={16} className="text-neutral-900" />, label: "Announcements", isActive: true }] },
+        ],
+      },
+      permissions: {
+        title: "Permissions",
+        sections: [
+          { title: "Access Control", items: [{ icon: <Security size={16} className="text-neutral-900" />, label: "Permissions", isActive: true }] },
+        ],
+      },
+      audit: {
+        title: "Audit Log",
+        sections: [
+          { title: "Security", items: [{ icon: <Report size={16} className="text-neutral-900" />, label: "Audit Log", isActive: true }] },
+        ],
+      },
+      administration: {
+        title: "Administration",
+        sections: [
+          { title: "Configuration", items: [{ icon: <Settings size={16} className="text-neutral-900" />, label: "System Settings", isActive: true }] },
         ],
       },
       migration: {
@@ -1065,6 +1148,37 @@ function getSidebarContent(role: string, section: string): SidebarContent {
       },
     },
     depthead: {
+      command: {
+        title: "Command Center",
+        sections: [
+          {
+            title: "Overview",
+            items: [
+              {
+                icon: <Home size={16} className="text-neutral-900" />,
+                label: "Dashboard",
+                isActive: true,
+              },
+              {
+                icon: <FolderOpen size={16} className="text-neutral-900" />,
+                label: "Projects",
+              },
+              {
+                icon: <CheckmarkOutline size={16} className="text-neutral-900" />,
+                label: "For Review",
+              },
+              {
+                icon: <ChartBar size={16} className="text-neutral-900" />,
+                label: "Reports",
+              },
+              {
+                icon: <Notification size={16} className="text-neutral-900" />,
+                label: "Announcements",
+              },
+            ],
+          },
+        ],
+      },
       deptportfolio: {
         title: "Department Workspace",
         sections: [
@@ -1094,6 +1208,22 @@ function getSidebarContent(role: string, section: string): SidebarContent {
       },
     },
     employee: {
+      mywork: {
+        title: "My Work",
+        sections: [
+          {
+            title: "Daily work",
+            items: [
+              { icon: <Task size={16} className="text-neutral-900" />, label: "My Tasks", isActive: true },
+              { icon: <FolderOpen size={16} className="text-neutral-900" />, label: "My Projects" },
+              { icon: <CalendarIcon size={16} className="text-neutral-900" />, label: "Deadlines" },
+              { icon: <Time size={16} className="text-neutral-900" />, label: "Task History" },
+              { icon: <Notification size={16} className="text-neutral-900" />, label: "Announcements" },
+              { icon: <Report size={16} className="text-neutral-900" />, label: "My Work Report" },
+            ],
+          },
+        ],
+      },
       workspace: {
         title: "Department Workspace",
         sections: [
@@ -1537,9 +1667,8 @@ function TwoLevelSidebar({ role }: { role: string }) {
 
 export function Frame760({ role }: { role: string }) {
   return (
-    <div className="bg-neutral-50 box-border content-stretch flex flex-col items-center justify-start p-6 relative size-full min-h-screen gap-4">
-      {/* Outlined Container */}
-      <div className="border border-neutral-200 rounded-2xl overflow-hidden shadow-sm flex-1 w-full max-w-[1880px] min-h-0">
+    <div className="bg-neutral-50 box-border content-stretch flex flex-col items-center justify-start relative size-full min-h-screen">
+      <div className="flex-1 w-full min-h-0">
         <TwoLevelSidebar role={role} />
       </div>
     </div>

@@ -7,6 +7,21 @@ import { UserManagement } from "./UserManagement";
 import { OrgTreeBuilder } from "./OrgTreeBuilder";
 import { MigrationTool } from "./MigrationTool";
 import { SystemSettings } from "./SystemSettings";
+import { AdminAnnouncements } from "./AdminAnnouncements";
+import { AdminAuditLog } from "./AdminAuditLog";
+import { AdminPermissions } from "./AdminPermissions";
+import { ProjectsWorkspace } from "../workflow/ProjectsWorkspace";
+import { ReportsWorkspace } from "../workflow/ReportsWorkspace";
+import { AdminTasks } from "./AdminTasks";
+
+// System-wide scope: super admin sees every org (empty scopedOrgIds = all).
+const ADMIN_SCOPE = { isSuperAdmin: true, scopedOrgIds: [] as string[] };
+function AdminProjects() {
+  return <ProjectsWorkspace scope={ADMIN_SCOPE} eyebrow="Administration · Projects" />;
+}
+function AdminReports() {
+  return <ReportsWorkspace scope={ADMIN_SCOPE} eyebrow="Administration · Reports" />;
+}
 
 // ─── Section → Page mapping ──────────────────────────────────────
 const superAdminPages: Record<string, Record<string, React.ComponentType>> = {
@@ -18,6 +33,27 @@ const superAdminPages: Record<string, Record<string, React.ComponentType>> = {
   },
   org_tree: {
     "Org Structure": OrgTreeBuilder,
+  },
+  projects: {
+    "All Projects": AdminProjects,
+  },
+  tasks: {
+    "All Tasks": AdminTasks,
+  },
+  reports: {
+    "System Reports": AdminReports,
+  },
+  announcements: {
+    Announcements: AdminAnnouncements,
+  },
+  audit: {
+    "Audit Log": AdminAuditLog,
+  },
+  permissions: {
+    Permissions: AdminPermissions,
+  },
+  administration: {
+    "System Settings": SystemSettings,
   },
   migration: {
     "Migration Tool": MigrationTool,
@@ -32,6 +68,13 @@ export const defaultPages: Record<string, string> = {
   dashboard: "Dashboard Overview",
   users: "All Users",
   org_tree: "Org Structure",
+  projects: "All Projects",
+  tasks: "All Tasks",
+  reports: "System Reports",
+  announcements: "Announcements",
+  audit: "Audit Log",
+  permissions: "Permissions",
+  administration: "System Settings",
   migration: "Migration Tool",
   settings: "System Settings",
 };

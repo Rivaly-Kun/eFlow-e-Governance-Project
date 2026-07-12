@@ -7,7 +7,10 @@ import {
   fetchAllProfiles,
   subscribeToOrgs,
   subscribeToProfiles,
+  getDescendantOrgIds,
 } from '../../lib/supabaseService';
+import { subscribeToProjects, type Project } from '../services/projectService';
+import { useAuth } from '../contexts/AuthContext';
 import type { Organization, UserProfile, DashboardMetrics } from '../types';
 
 // ─── useOrgs ─────────────────────────────────────────────────────
@@ -103,4 +106,41 @@ export function useDashboardMetrics(): { metrics: DashboardMetrics; loading: boo
   }, [profiles, orgs]);
 
   return { metrics, loading };
+}
+
+// ─── useProjectsData ─────────────────────────────────────────────
+// Realtime operational projects. RLS already scopes what the server returns;
+// this hook just wires the subscription into React.
+export function useProjectsData() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const unsub = subscribeToProjects((data) => {
+      if (!cancelled) {
+        setProjects(data);
+        setLoading(false);
+      }
+    });
+    return () => { cancelled = true; unsub(); };
+  }, []);
+
+  return { projects, loading };
+}
+
+// ─── useScopedOrgIds ─────────────────────────────────────────────
+// The current user's org plus every descendant (their subtree). Empty array
+// means "no scope filter" (e.g. super admin) — callers treat empty as all.
+export function useScopedOrgIds(): { scopedOrgIds: string[]; isSuperAdmin: boolean; orgs: Organization[] } {
+  const { orgs } = useOrgs();
+  const { userProfile } = useAuth();
+  const isSuperAdmin = userProfile?.role === 'super_admin';
+
+  const scopedOrgIds = useMemo(() => {
+    if (isSuperAdmin) return [];
+    return getDescendantOrgIds(orgs, userProfile?.org_id);
+  }, [orgs, userProfile?.org_id, isSuperAdmin]);
+
+  return { scopedOrgIds, isSuperAdmin, orgs };
 }

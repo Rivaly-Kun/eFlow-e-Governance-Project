@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
+import { fetchEffectivePermissions } from '../services/permissionService';
 import type { UserProfile, UserRole } from '../types';
 
 // ─── Error message mapper ────────────────────────────────────────
@@ -42,6 +43,9 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   updateUserProfile: (changes: Partial<Pick<UserProfile, 'full_name' | 'avatar_path' | 'email_notifications_enabled'>>) => void;
   clearError: () => void;
+  // Capability check. UI convenience only — RLS remains the enforcement boundary.
+  can: (permission: string) => boolean;
+  permissions: Set<string>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -83,6 +87,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<Set<string>>(new Set());
+
+  // Load effective permissions whenever the signed-in profile (id/role) changes.
+  useEffect(() => {
+    let active = true;
+    if (!userProfile?.id) {
+      setPermissions(new Set());
+      return;
+    }
+    fetchEffectivePermissions(userProfile.id, userProfile.role)
+      .then((perms) => { if (active) setPermissions(perms); })
+      .catch(() => { if (active) setPermissions(new Set()); });
+    return () => { active = false; };
+  }, [userProfile?.id, userProfile?.role]);
+
+  const can = useCallback(
+    (permission: string) => {
+      // Super admin implicitly holds every capability.
+      if (userProfile?.role === 'super_admin') return true;
+      return permissions.has(permission);
+    },
+    [permissions, userProfile?.role],
+  );
 
   // Listen to Supabase Auth state
   useEffect(() => {
@@ -295,6 +322,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         updateUserProfile,
         clearError,
+        can,
+        permissions,
       }}
     >
       {children}

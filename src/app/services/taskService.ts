@@ -4,6 +4,7 @@
 
 import { supabase } from '../../lib/supabase';
 import { createNotification } from './notificationService';
+import { recordAudit } from './auditService';
 
 export type TaskStatus =
   | 'pending_assignment'
@@ -72,6 +73,12 @@ export interface Task extends TaskHierarchy {
   budgetImpact?: number;
   subtaskCount?: number;
   subtaskCompletedCount?: number;
+  // ── Core-workflow operational links (added Phase 0) ──
+  linkedProjectId?: string;
+  milestoneId?: string;
+  percentComplete?: number;
+  archivedAt?: number;
+  lastActivityAt?: number;
 }
 
 export interface TaskSubmissionMetadata {
@@ -143,6 +150,9 @@ export interface CreateTaskPayload {
   activitySchedule?: string;
   hierarchyPath?: string;
   importBatchId?: string;
+  linkedProjectId?: string;
+  milestoneId?: string;
+  percentComplete?: number;
 }
 
 export interface UpdateTaskPayload {
@@ -176,6 +186,9 @@ export interface UpdateTaskPayload {
   activitySchedule?: string;
   hierarchyPath?: string;
   importBatchId?: string;
+  linkedProjectId?: string;
+  milestoneId?: string;
+  percentComplete?: number;
 }
 
 // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -236,6 +249,11 @@ function rowToTask(row: Record<string, unknown>): Task {
     budgetImpact: (row.budget_impact as number) || undefined,
     subtaskCount: (row.subtask_count as number) || 0,
     subtaskCompletedCount: (row.subtask_completed_count as number) || 0,
+    linkedProjectId: readString(row.linked_project_id),
+    milestoneId: readString(row.milestone_id),
+    percentComplete: row.percent_complete == null ? undefined : (row.percent_complete as number),
+    archivedAt: row.archived_at ? new Date(row.archived_at as string).getTime() : undefined,
+    lastActivityAt: row.last_activity_at ? new Date(row.last_activity_at as string).getTime() : undefined,
   };
 }
 
@@ -284,6 +302,9 @@ function taskToRow(task: Partial<Task>): Record<string, unknown> {
   if (task.barangay !== undefined) row.barangay = task.barangay;
   if (task.estimatedHours !== undefined) row.estimated_hours = task.estimatedHours;
   if (task.budgetImpact !== undefined) row.budget_impact = task.budgetImpact;
+  if (task.linkedProjectId !== undefined) row.linked_project_id = task.linkedProjectId || null;
+  if (task.milestoneId !== undefined) row.milestone_id = task.milestoneId || null;
+  if (task.percentComplete !== undefined) row.percent_complete = task.percentComplete;
   return row;
 }
 
@@ -743,6 +764,16 @@ export const verifyTask = async (
       statusFrom: current.status as string,
       statusTo: 'completed',
     });
+
+    await recordAudit({
+      entityType: 'task',
+      entityId: taskId,
+      action: 'task.approved',
+      beforeData: { status: current.status },
+      afterData: { status: 'completed' },
+      metadata: { feedback: feedback || null },
+      orgId: (current.org_id as string) || null,
+    });
   } else {
     const reason = feedback || 'Needs rework';
     await supabase.from('tasks').update({
@@ -771,6 +802,16 @@ export const verifyTask = async (
       statusFrom: current.status as string,
       statusTo: 'in_progress',
       reason,
+    });
+
+    await recordAudit({
+      entityType: 'task',
+      entityId: taskId,
+      action: 'task.rejected',
+      reason,
+      beforeData: { status: current.status },
+      afterData: { status: 'in_progress' },
+      orgId: (current.org_id as string) || null,
     });
   }
 
@@ -873,6 +914,16 @@ export const undoCompletedTask = async (
     reason,
   });
 
+  await recordAudit({
+    entityType: 'task',
+    entityId: taskId,
+    action: 'task.reopened',
+    reason,
+    beforeData: { status: 'completed' },
+    afterData: { status: 'in_progress' },
+    orgId: (current.org_id as string) || null,
+  });
+
   await notifyTaskListeners();
 };
 
@@ -934,3 +985,47 @@ export function subscribeToTaskActivities(
 
   return () => supabase.removeChannel(channel);
 }
+
+// ─── archiveTask / unarchiveTask ─────────────────────────────────
+// Retains the task but excludes it from active work. Modeled via the
+// `archived_at` timestamp (not the status enum) so it is independent of the
+// task status CHECK constraint; new screens filter on archivedAt. Writes an
+// audit event — archiving is never silent.
+
+export const archiveTask = async (taskId: string, actor?: TaskActor): Promise<void> => {
+  const current = await fetchTaskById(taskId);
+  if (!current) throw new Error('Task not found.');
+  await supabase.from('tasks').update({
+    archived_at: new Date().toISOString(),
+  }).eq('id', taskId);
+
+  await recordAudit({
+    entityType: 'task',
+    entityId: taskId,
+    action: 'task.archived',
+    beforeData: { status: current.status, archived: false },
+    afterData: { archived: true },
+    orgId: (current.org_id as string) || null,
+  });
+
+  await notifyTaskListeners();
+};
+
+export const unarchiveTask = async (taskId: string, actor?: TaskActor): Promise<void> => {
+  const current = await fetchTaskById(taskId);
+  if (!current) throw new Error('Task not found.');
+  await supabase.from('tasks').update({
+    archived_at: null,
+  }).eq('id', taskId);
+
+  await recordAudit({
+    entityType: 'task',
+    entityId: taskId,
+    action: 'task.unarchived',
+    beforeData: { archived: true },
+    afterData: { archived: false },
+    orgId: (current.org_id as string) || null,
+  });
+
+  await notifyTaskListeners();
+};

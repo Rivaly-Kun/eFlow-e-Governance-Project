@@ -6939,10 +6939,35 @@ export const hiddenDeptHeadComponents = [
 
 // ==================== ROUTER ====================
 
+// ── Core Workflow (Phase 1) screens ──
+import { DeptHeadDashboard } from "./DeptHeadDashboard";
+import { ForReviewInbox } from "./ForReviewInbox";
+import { ProjectsWorkspace } from "../workflow/ProjectsWorkspace";
+import { ReportsWorkspace } from "../workflow/ReportsWorkspace";
+import { AnnouncementCenter } from "../workflow/AnnouncementCenter";
+import { useScopedOrgIds } from "../../hooks/useSupabaseData";
+
+// Dept Head scope wrappers — limit projects/reports to the head's own subtree.
+function DeptHeadProjects() {
+  const { scopedOrgIds, isSuperAdmin } = useScopedOrgIds();
+  return <ProjectsWorkspace scope={{ isSuperAdmin, scopedOrgIds }} eyebrow="Dept. Head · Projects" />;
+}
+function DeptHeadReports() {
+  const { scopedOrgIds, isSuperAdmin } = useScopedOrgIds();
+  return <ReportsWorkspace scope={{ isSuperAdmin, scopedOrgIds }} eyebrow="Dept. Head · Reports" />;
+}
+
 export const deptheadPages: Record<
   string,
   Record<string, React.ComponentType>
 > = {
+  command: {
+    Dashboard: DeptHeadDashboard,
+    Projects: DeptHeadProjects,
+    "For Review": ForReviewInbox,
+    Reports: DeptHeadReports,
+    Announcements: () => <AnnouncementCenter eyebrow="Dept. Head · Updates" />,
+  },
   deptportfolio: {
     "Task Board & Composer": DeptHeadTaskBoard,
     "Team Supervision": TeamSupervision,
@@ -6952,6 +6977,7 @@ export const deptheadPages: Record<
 };
 
 export const deptheadDefaultPages: Record<string, string> = {
+  command: "Dashboard",
   deptportfolio: "Task Board & Composer",
 };
 

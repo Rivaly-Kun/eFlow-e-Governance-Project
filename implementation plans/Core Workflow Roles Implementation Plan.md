@@ -13,14 +13,14 @@ Department Head work is first priority because it establishes the operational pr
 In scope:
 
 - Internal LEDIPO project, task, review, reporting, announcement, audit, and permission functionality.
-- Responsive web delivery and a staged PWA plan for field users.
+- Responsive web delivery for desktop, tablet, and mobile browsers.
 - Real data from Supabase, with realtime subscriptions where a user must immediately see a change.
 
 Out of scope for this release:
 
 - Citizen/public service requests.
-- A separate native React Native application before the responsive/PWA workflow is proven.
-- Production-grade AI, genetic-algorithm, blockchain, and process-mining claims before their input data, authorization, and evaluation criteria exist.
+- Native mobile application delivery.
+- Enhancements to the existing AI/LLM features, genetic-algorithm optimization, blockchain enhancements, and process-mining capabilities.
 
 ## Product decisions to make once
 
@@ -268,7 +268,7 @@ Add `My Work Report` with date/status/project filters and CSV/PDF export of only
 - An employee can find a project, post a progress update and comment, submit output, receive review feedback, correct the task, and later find the completed record in history.
 - Employees cannot read other employees' private task outputs or personal reports.
 
-## Phase 4 - Responsive web and PWA delivery
+## Phase 4 - Responsive web completion
 
 ### Responsive completion
 
@@ -276,36 +276,13 @@ Add `My Work Report` with date/status/project filters and CSV/PDF export of only
 - Use mobile-first task actions: update progress, comment, upload output, read announcement, and view deadline.
 - Add accessible touch targets, keyboard support, loading/error states, and low-bandwidth attachment handling.
 
-### PWA milestone
-
-1. Add web manifest, install prompt, icons, offline shell, and service-worker update strategy.
-2. Cache only static shell/app assets; do not present stale task data as current.
-3. Queue no workflow-changing action offline in v1. Display a clear reconnect state instead.
-4. Test Android installation and notification/deep-link behavior.
-
-### Native mobile decision gate
-
-Build React Native/Expo only after the responsive PWA passes field-user testing. At that point reuse the same APIs, RLS contracts, status model, and design tokens. Do not maintain a separate business-rule implementation.
-
-## Phase 5 - Advanced intelligence, after core data is reliable
-
-These are capstone objectives, but should be implemented only after Phases 0-4 provide enough clean, auditable data.
-
-| Capability | Minimum viable implementation | Evidence before calling it complete |
-| --- | --- | --- |
-| AI workload suggestions | Recommend ranked assignees with workload, skills, deadline, and explanation | Head can accept/reject; accepted/rejected suggestions are logged and evaluated |
-| Genetic allocation | Run a constrained assignment optimizer on a selected set of unassigned tasks | Comparable baseline, constraints, fitness explanation, manual override, and saved run result |
-| Process mining | Event-log based bottleneck and cycle-time dashboard | Events from real task/project transitions, filters, and no invented topology data |
-| Immutable audit trail | Hash chained audit-event batches with verification view | Clear threat model, batch identity, verification result, failure handling, and no claims that normal app data is on-chain if it is not |
-
 ## Delivery order and verification
 
 1. Phase 0 foundation and migration/RLS tests.
 2. Department Head dashboard, project lifecycle, review inbox, discussion/activity, reports.
 3. Admin projects/tasks, reports, announcements, audit, permissions, system settings route.
 4. Employee projects/history/progress/discussion/announcements/reports.
-5. Responsive/PWA delivery.
-6. Advanced intelligence pilots.
+5. Responsive web completion.
 
 For every phase:
 

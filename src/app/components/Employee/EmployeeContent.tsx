@@ -2315,10 +2315,27 @@ export function EmployeePerformanceView() {
 }
 
 // ==================== ROUTER ====================
+import {
+  EmployeeMyTasks,
+  EmployeeMyProjects,
+  EmployeeTaskHistory,
+  EmployeeDeadlines,
+  EmployeeWorkReport,
+} from "./EmployeeCoreWork";
+import { AnnouncementCenter } from "../workflow/AnnouncementCenter";
+
 export const employeePages: Record<
   string,
   Record<string, React.ComponentType>
 > = {
+  mywork: {
+    "My Tasks": EmployeeMyTasks,
+    "My Projects": EmployeeMyProjects,
+    Deadlines: EmployeeDeadlines,
+    "Task History": EmployeeTaskHistory,
+    Announcements: () => <AnnouncementCenter />,
+    "My Work Report": EmployeeWorkReport,
+  },
   workspace: {
     "My Task Workspace": EmployeeTaskBoard,
     "My Performance Overview": EmployeePerformanceView,
@@ -2327,6 +2344,7 @@ export const employeePages: Record<
 };
 
 export const employeeDefaultPages: Record<string, string> = {
+  mywork: "My Tasks",
   workspace: "My Task Workspace",
 };
 
