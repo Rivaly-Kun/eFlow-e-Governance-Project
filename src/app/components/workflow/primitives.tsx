@@ -342,6 +342,7 @@ export function ProgressBar({ value, tone = "neutral" }: { value: number; tone?:
 // ─── Formatting helpers ──────────────────────────────────────────
 export function formatDate(d?: string | number | null): string {
   if (!d) return "—";
+  if (typeof d === "string" && /month|phase|week/i.test(d)) return d;
   const date = typeof d === "number" ? new Date(d) : new Date(d);
   if (isNaN(date.getTime())) return "—";
   return date.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" });
@@ -349,6 +350,7 @@ export function formatDate(d?: string | number | null): string {
 
 export function relativeDays(d?: string | number | null): { label: string; overdue: boolean } {
   if (!d) return { label: "No deadline", overdue: false };
+  if (typeof d === "string" && /month|phase|week/i.test(d)) return { label: d, overdue: false };
   const date = typeof d === "number" ? new Date(d) : new Date(d);
   if (isNaN(date.getTime())) return { label: "No deadline", overdue: false };
   const days = Math.ceil((date.getTime() - Date.now()) / 86400000);

@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { MondayBoard } from "../ui/MondayBoard";
 import { NotificationBell } from "../ui/NotificationBell";
-import ProposalImport from "./ProposalImport";
 import {
   createTask,
   assignTask,
@@ -6972,7 +6971,6 @@ export const deptheadPages: Record<
     "Task Board & Composer": DeptHeadTaskBoard,
     "Team Supervision": TeamSupervision,
     "Team Intelligence": EmployeeInsights,
-    "Proposal Import": ProposalImport,
   },
 };
 

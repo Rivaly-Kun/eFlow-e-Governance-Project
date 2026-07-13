@@ -21,6 +21,8 @@ import { useAuth } from "../../contexts/AuthContext";
 import { Employee } from "../../services/employeeService";
 import { createTask, CreateTaskPayload } from "../../services/taskService";
 import { createSubtasksBatch } from "../../services/subtaskService";
+import { createProject, fetchMilestones } from "../../services/projectService";
+import { supabase } from "../../../lib/supabase";
 import {
   decomposeProposal,
   ProposalDecompositionResult,
@@ -245,15 +247,18 @@ export default function ProposalImport() {
   const [subtasksCreatedByKey, setSubtasksCreatedByKey] = useState<
     Record<string, number>
   >({});
+
   const [progressMsg, setProgressMsg] = useState("");
 
   const taskKey = (pi: number, pj: number, ai: number, ti: number) =>
     `${pi}-${pj}-${ai}-${ti}`;
 
-  const buildTaskPayloads = useCallback(
-    (decomposed: ProposalDecompositionResult) => {
-      const payloads: Record<string, CreateTaskPayload> = {};
-      const subtasksMap: Record<string, string[]> = {};
+
+  const autoCreateTasks = useCallback(
+    async (decomposed: ProposalDecompositionResult) => {
+      setAutoCreateStatus("creating");
+      setAutoCreateMessage("Creating projects and milestones...");
+
       const proposalTitle =
         decomposed.proposal?.title ||
         fileName.replace(/\.pdf$/i, "") ||
@@ -266,135 +271,168 @@ export default function ProposalImport() {
       const proposalId = `proposal-${proposalSlug || "imported"}`;
       const importBatchId = `${proposalId}-${Date.now()}`;
 
-      decomposed.programs.forEach((program, pi) => {
-        const programId = `${proposalId}-program-${pi + 1}`;
-        program.projects.forEach((project, pj) => {
-          const projectId = `${programId}-project-${pj + 1}`;
-          project.activities.forEach((activity, ai) => {
-            const activityId = `${projectId}-activity-${ai + 1}`;
-            activity.tasks.forEach((task, ti) => {
-              const key = taskKey(pi, pj, ai, ti);
-              subtasksMap[key] = task.subtasks || [];
-              const contextLines = [
-                `Program: ${program.title}`,
-                `Project: ${project.title}`,
-                `Activity: ${activity.title}`,
-                activity.schedule ? `Schedule: ${activity.schedule}` : "",
-                activity.methodology && activity.methodology.length > 0
-                  ? `Methodology: ${activity.methodology.join(", ")}`
-                  : "",
-              ].filter(Boolean);
-              const contextBlock = contextLines.length
-                ? `Context:\n${contextLines.join("\n")}`
-                : "";
-              const description = [task.description, contextBlock]
-                .filter(Boolean)
-                .join("\n\n");
-              const recommendedIds = task.recommendedEmployeeIds || [];
-              const recommendedMembers = recommendedIds
-                .map((id) => employeeById[id])
-                .filter((member): member is Employee => Boolean(member));
-              const leadMember = recommendedMembers[0];
-
-              payloads[key] = {
-                title: task.title,
-                description: description || "No description provided.",
-                deadline: activity.schedule || "",
-                priority: task.priority || "medium",
-                tags: task.requiredSkills || [],
-                status: "pending_assignment",
-                department: userProfile?.departmentId || "",
-                orgId: userProfile?.departmentId || undefined,
-                teamId: userProfile?.departmentId || "",
-                teamName:
-                  leadMember?.departmentName ||
-                  leadMember?.department ||
-                  userProfile?.departmentId ||
-                  "Imported",
-                teamMemberIds: recommendedMembers.map((member) => member.id),
-                teamMemberNames: recommendedMembers.map((member) => member.name),
-                assigneeId: leadMember?.id,
-                assigneeName: leadMember?.name,
-                recommendedEmployeeIds: recommendedIds,
-                recommendationReasoning: task.recommendationReasoning,
-                recommendationSource:
-                  recommendedIds.length > 0 || task.recommendationReasoning
-                    ? "import"
-                    : undefined,
-                recommendationLeadId: recommendedIds[0],
-                burnoutWarning: task.burnoutWarning,
-                proposalId,
-                proposalTitle,
-                programId,
-                programTitle: program.title,
-                projectId,
-                projectTitle: project.title,
-                activityId,
-                activityTitle: activity.title,
-                activitySchedule: activity.schedule || "",
-                hierarchyPath: [
-                  proposalTitle,
-                  program.title,
-                  project.title,
-                  activity.title,
-                ]
-                  .filter(Boolean)
-                  .join(" > "),
-                importBatchId,
-              };
-            });
-          });
-        });
-      });
-
-      return { payloads, subtasksMap };
-    },
-    [employeeById, fileName, userProfile?.departmentId],
-  );
-
-  const autoCreateTasks = useCallback(
-    async (decomposed: ProposalDecompositionResult) => {
-      const { payloads: payloadMap, subtasksMap } = buildTaskPayloads(decomposed);
-      setTaskPayloads(payloadMap);
-      setTaskSubtasksByKey(subtasksMap);
-
-      const entries = Object.entries(payloadMap);
-      if (entries.length === 0) {
-        setAutoCreateStatus("done");
-        setAutoCreateMessage("No tasks found to create.");
-        return;
-      }
-
       const created = new Set<string>();
       const failed = new Set<string>();
       const subtaskCounts: Record<string, number> = {};
+      const subtasksMap: Record<string, string[]> = {};
+      const payloadMap: Record<string, CreateTaskPayload> = {};
 
-      await Promise.all(
-        entries.map(async ([key, payload]) => {
-          try {
-            const createdTask = await createTask(payload);
-            created.add(key);
+      try {
+        for (let pi = 0; pi < decomposed.programs.length; pi++) {
+          const program = decomposed.programs[pi];
+          const programId = `${proposalId}-program-${pi + 1}`;
 
-            const subtaskTitles = subtasksMap[key] || [];
-            if (subtaskTitles.length > 0) {
-              try {
-                const createdSubtasks = await createSubtasksBatch(
-                  createdTask.id,
-                  subtaskTitles,
-                  "ai_extracted",
-                );
-                subtaskCounts[key] = createdSubtasks.length;
-              } catch (subErr) {
-                console.error("Failed to create subtasks for task:", key, subErr);
+          for (let pj = 0; pj < program.projects.length; pj++) {
+            const project = program.projects[pj];
+            const projectId = `${programId}-project-${pj + 1}`;
+
+            // Create milestones input for this project
+            const milestonesInput = project.activities.map((activity) => ({
+              title: activity.title.trim(),
+              dueDate: activity.schedule || null,
+            }));
+
+            let dbProjectId = "";
+            try {
+              // Check for existing project to prevent duplicates
+              const { data: existingProjs } = await supabase
+                .from("projects")
+                .select("id")
+                .eq("title", project.title.trim())
+                .eq("org_id", userProfile?.departmentId || "")
+                .is("archived_at", null);
+
+              if (existingProjs && existingProjs.length > 0) {
+                dbProjectId = existingProjs[0].id;
+              } else {
+                const newProj = await createProject({
+                  title: project.title.trim(),
+                  description: `Imported via proposal: ${proposalTitle}`,
+                  orgId: userProfile?.departmentId || null,
+                  ownerId: userProfile?.uid || null,
+                  status: "active",
+                  priority: "medium",
+                  milestones: milestonesInput,
+                });
+                dbProjectId = newProj.id;
+              }
+            } catch (projErr) {
+              console.error("Failed to create/resolve project:", project.title, projErr);
+              dbProjectId = projectId;
+            }
+
+            // Fetch milestone mapping for this project
+            let milestoneMap = new Map<string, string>();
+            try {
+              const dbMilestones = await fetchMilestones(dbProjectId);
+              milestoneMap = new Map(dbMilestones.map((m) => [m.title.toLowerCase().trim(), m.id]));
+            } catch (mErr) {
+              console.error("Failed to fetch milestones for project:", dbProjectId, mErr);
+            }
+
+            for (let ai = 0; ai < project.activities.length; ai++) {
+              const activity = project.activities[ai];
+              const activityId = `${projectId}-activity-${ai + 1}`;
+              const dbMilestoneId = milestoneMap.get(activity.title.toLowerCase().trim()) || "";
+
+              for (let ti = 0; ti < activity.tasks.length; ti++) {
+                const task = activity.tasks[ti];
+                const key = `${pi}-${pj}-${ai}-${ti}`;
+                const subtaskTitles = task.subtasks || [];
+                subtasksMap[key] = subtaskTitles;
+
+                const recommendedIds = task.recommendedEmployeeIds || [];
+                const recommendedMembers = recommendedIds
+                  .map((id) => employeeById[id])
+                  .filter((member): member is Employee => Boolean(member));
+                const leadMember = recommendedMembers[0];
+
+                const payload: CreateTaskPayload = {
+                  title: task.title,
+                  description: [
+                    task.description,
+                    `Context:\nProgram: ${program.title}\nProject: ${project.title}\nActivity: ${activity.title}`,
+                  ]
+                    .filter(Boolean)
+                    .join("\n\n"),
+                  deadline: activity.schedule || "",
+                  priority: task.priority || "medium",
+                  tags: task.requiredSkills || [],
+                  status: "pending_assignment",
+                  department: userProfile?.departmentId || "",
+                  orgId: userProfile?.departmentId || undefined,
+                  teamId: userProfile?.departmentId || "",
+                  teamName:
+                    leadMember?.departmentName ||
+                    leadMember?.department ||
+                    userProfile?.departmentId ||
+                    "Imported",
+                  teamMemberIds: recommendedMembers.map((member) => member.id),
+                  teamMemberNames: recommendedMembers.map((member) => member.name),
+                  assigneeId: leadMember?.id,
+                  assigneeName: leadMember?.name,
+                  recommendedEmployeeIds: recommendedIds,
+                  recommendationReasoning: task.recommendationReasoning,
+                  recommendationSource:
+                    recommendedIds.length > 0 || task.recommendationReasoning
+                      ? "import"
+                      : undefined,
+                  recommendationLeadId: recommendedIds[0],
+                  burnoutWarning: task.burnoutWarning,
+                  proposalId,
+                  proposalTitle,
+                  programId,
+                  programTitle: program.title,
+                  projectId,
+                  projectTitle: project.title,
+                  activityId,
+                  activityTitle: activity.title,
+                  activitySchedule: activity.schedule || "",
+                  linkedProjectId: dbProjectId,
+                  milestoneId: dbMilestoneId,
+                  hierarchyPath: [
+                    proposalTitle,
+                    program.title,
+                    project.title,
+                    activity.title,
+                  ]
+                    .filter(Boolean)
+                    .join(" > "),
+                  importBatchId,
+                };
+
+                payloadMap[key] = payload;
+
+                try {
+                  const createdTask = await createTask(payload);
+                  created.add(key);
+
+                  if (subtaskTitles.length > 0) {
+                    try {
+                      const createdSubtasks = await createSubtasksBatch(
+                        createdTask.id,
+                        subtaskTitles,
+                        "ai_extracted",
+                      );
+                      subtaskCounts[key] = createdSubtasks.length;
+                    } catch (subErr) {
+                      console.error("Failed to create subtasks for task:", key, subErr);
+                    }
+                  }
+                } catch (err) {
+                  console.error("Failed to auto-create task:", err);
+                  failed.add(key);
+                }
               }
             }
-          } catch (err) {
-            console.error("Failed to auto-create task:", err);
-            failed.add(key);
           }
-        }),
-      );
+        }
+      } catch (err) {
+        console.error("Failed to run auto-creation process:", err);
+      }
 
+      setTaskPayloads(payloadMap);
+      setTaskSubtasksByKey(subtasksMap);
       setCreatedTaskKeys(created);
       setFailedTaskKeys(failed);
       setSubtasksCreatedByKey(subtaskCounts);
@@ -411,7 +449,7 @@ export default function ProposalImport() {
         );
       }
     },
-    [buildTaskPayloads],
+    [employeeById, fileName, userProfile?.departmentId, userProfile?.uid],
   );
 
   const retryFailedTasks = useCallback(async () => {

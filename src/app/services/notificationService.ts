@@ -103,8 +103,8 @@ export async function createNotification(
 
   // Fire-and-forget email — never let this throw into the caller. The
   // in-app notification above has already succeeded regardless of
-  // whether email delivery works.
-  fetch(`${import.meta.env.VITE_LLM_BASE_URL}/controlpanelEflow/api/notifications/email`, {
+  const apiBase = (import.meta.env.VITE_LLM_BASE_URL || "").replace(/\/$/, "");
+  fetch(`${apiBase}/controlpanelEflow/api/notifications/email`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

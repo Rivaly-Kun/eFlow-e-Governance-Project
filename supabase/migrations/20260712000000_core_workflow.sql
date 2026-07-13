@@ -24,37 +24,49 @@
 -- caller's RLS. Used by the policies below. Querying profiles/organizations from
 -- policies on OTHER tables does not recurse.
 
-create or replace function public.auth_role()
-returns text language sql stable security definer set search_path = public as $$
-  select role::text from public.profiles where id = auth.uid()
+create or replace function public.auth_role(caller_id uuid)
+returns text language plpgsql stable security definer set search_path = public as $$
+begin
+  return (select role::text from public.profiles where id = caller_id);
+end;
 $$;
 
-create or replace function public.auth_org_path()
-returns text language sql stable security definer set search_path = public as $$
-  select o.path::text
-  from public.organizations o
-  join public.profiles p on p.org_id = o.id
-  where p.id = auth.uid()
+create or replace function public.auth_org_path(caller_id uuid)
+returns text language plpgsql stable security definer set search_path = public as $$
+begin
+  return (
+    select o.path::text
+    from public.organizations o
+    join public.profiles p on p.org_id = o.id
+    where p.id = caller_id
+  );
+end;
 $$;
 
 -- Is target_org the caller's own org or a descendant of it? (ltree/text safe.)
-create or replace function public.org_in_my_subtree(target_org uuid)
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (
+create or replace function public.org_in_my_subtree(target_org uuid, caller_id uuid)
+returns boolean language plpgsql stable security definer set search_path = public as $$
+declare
+  caller_path text;
+begin
+  caller_path := public.auth_org_path(caller_id);
+  if caller_path is null then
+    return false;
+  end if;
+  return exists (
     select 1
     from public.organizations o
     where o.id = target_org
-      and public.auth_org_path() is not null
-      and (
-        o.path::text = public.auth_org_path()
-        or o.path::text like public.auth_org_path() || '.%'
-      )
-  )
+      and (o.path::text = caller_path or o.path::text like caller_path || '.%')
+  );
+end;
 $$;
 
-create or replace function public.is_super_admin()
-returns boolean language sql stable security definer set search_path = public as $$
-  select public.auth_role() = 'super_admin'
+create or replace function public.is_super_admin(caller_id uuid)
+returns boolean language plpgsql stable security definer set search_path = public as $$
+begin
+  return public.auth_role(caller_id) = 'super_admin';
+end;
 $$;
 
 -- Generic updated_at touch trigger reused by every table below.
@@ -106,27 +118,41 @@ create table if not exists public.project_members (
 create index if not exists project_members_user_idx on public.project_members(user_id);
 
 -- Am I a member of this project?
-create or replace function public.is_project_member(target_project uuid)
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (
+create or replace function public.is_project_member(target_project uuid, caller_id uuid)
+returns boolean language plpgsql stable security definer set search_path = public as $$
+begin
+  return exists (
     select 1 from public.project_members m
-    where m.project_id = target_project and m.user_id = auth.uid()
-  )
+    where m.project_id = target_project and m.user_id = caller_id
+  );
+end;
 $$;
 
 -- Can I see this project? super admin, in-subtree, owner, or member.
-create or replace function public.can_see_project(target_project uuid)
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (
-    select 1 from public.projects p
-    where p.id = target_project
-      and (
-        public.is_super_admin()
-        or public.org_in_my_subtree(p.org_id)
-        or p.owner_id = auth.uid()
-        or public.is_project_member(target_project)
-      )
-  )
+create or replace function public.can_see_project(target_project uuid, caller_id uuid)
+returns boolean language plpgsql stable security definer set search_path = public as $$
+declare
+  proj_org uuid;
+  proj_owner uuid;
+begin
+  if public.is_super_admin(caller_id) then
+    return true;
+  end if;
+
+  select org_id, owner_id into proj_org, proj_owner
+  from public.projects
+  where id = target_project;
+
+  if not found then
+    return false;
+  end if;
+
+  return (
+    proj_owner = caller_id
+    or public.org_in_my_subtree(proj_org, caller_id)
+    or public.is_project_member(target_project, caller_id)
+  );
+end;
 $$;
 
 -- ═══ milestones ══════════════════════════════════════════════════════════════
@@ -333,38 +359,38 @@ begin
   -- ── projects ──────────────────────────────────────────────────────────────
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='projects' and policyname='projects readable in scope') then
     create policy "projects readable in scope" on public.projects for select to authenticated
-      using (public.can_see_project(id));
+      using (public.can_see_project(id, auth.uid()));
   end if;
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='projects' and policyname='projects writable in subtree') then
     create policy "projects writable in subtree" on public.projects for insert to authenticated
-      with check (public.is_super_admin() or public.org_in_my_subtree(org_id));
+      with check (public.is_super_admin(auth.uid()) or public.org_in_my_subtree(org_id, auth.uid()));
   end if;
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='projects' and policyname='projects updatable in subtree') then
     create policy "projects updatable in subtree" on public.projects for update to authenticated
-      using (public.is_super_admin() or public.org_in_my_subtree(org_id) or owner_id = auth.uid())
-      with check (public.is_super_admin() or public.org_in_my_subtree(org_id) or owner_id = auth.uid());
+      using (public.is_super_admin(auth.uid()) or public.org_in_my_subtree(org_id, auth.uid()) or owner_id = auth.uid())
+      with check (public.is_super_admin(auth.uid()) or public.org_in_my_subtree(org_id, auth.uid()) or owner_id = auth.uid());
   end if;
 
   -- ── project_members ───────────────────────────────────────────────────────
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='project_members' and policyname='members readable for visible projects') then
     create policy "members readable for visible projects" on public.project_members for select to authenticated
-      using (user_id = auth.uid() or public.can_see_project(project_id));
+      using (user_id = auth.uid() or public.can_see_project(project_id, auth.uid()));
   end if;
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='project_members' and policyname='members writable by managers') then
     create policy "members writable by managers" on public.project_members for all to authenticated
-      using (public.is_super_admin() or public.can_see_project(project_id))
-      with check (public.is_super_admin() or public.can_see_project(project_id));
+      using (public.is_super_admin(auth.uid()) or public.can_see_project(project_id, auth.uid()))
+      with check (public.is_super_admin(auth.uid()) or public.can_see_project(project_id, auth.uid()));
   end if;
 
   -- ── milestones ────────────────────────────────────────────────────────────
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='milestones' and policyname='milestones readable for visible projects') then
     create policy "milestones readable for visible projects" on public.milestones for select to authenticated
-      using (public.can_see_project(project_id));
+      using (public.can_see_project(project_id, auth.uid()));
   end if;
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='milestones' and policyname='milestones writable by managers') then
     create policy "milestones writable by managers" on public.milestones for all to authenticated
-      using (public.is_super_admin() or public.org_in_my_subtree((select org_id from public.projects where id = project_id)))
-      with check (public.is_super_admin() or public.org_in_my_subtree((select org_id from public.projects where id = project_id)));
+      using (public.is_super_admin(auth.uid()) or public.org_in_my_subtree((select org_id from public.projects where id = project_id), auth.uid()))
+      with check (public.is_super_admin(auth.uid()) or public.org_in_my_subtree((select org_id from public.projects where id = project_id), auth.uid()));
   end if;
 
   -- ── task_progress_updates ─────────────────────────────────────────────────
@@ -387,8 +413,8 @@ begin
   -- Author edits their own; managers/super-admin may soft-delete (moderation).
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='task_comments' and policyname='comments update author or moderator') then
     create policy "comments update author or moderator" on public.task_comments for update to authenticated
-      using (author_id = auth.uid() or public.is_super_admin() or public.auth_role() = 'dept_head')
-      with check (author_id = auth.uid() or public.is_super_admin() or public.auth_role() = 'dept_head');
+      using (author_id = auth.uid() or public.is_super_admin(auth.uid()) or public.auth_role(auth.uid()) = 'dept_head')
+      with check (author_id = auth.uid() or public.is_super_admin(auth.uid()) or public.auth_role(auth.uid()) = 'dept_head');
   end if;
 
   -- ── task_comment_attachments ──────────────────────────────────────────────
@@ -405,7 +431,7 @@ begin
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='announcements' and policyname='announcements readable') then
     create policy "announcements readable" on public.announcements for select to authenticated
       using (
-        public.is_super_admin()
+        public.is_super_admin(auth.uid())
         or created_by = auth.uid()
         or (status = 'published' and exists (
               select 1 from public.announcement_recipients r
@@ -414,18 +440,18 @@ begin
   end if;
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='announcements' and policyname='announcements writable by publishers') then
     create policy "announcements writable by publishers" on public.announcements for all to authenticated
-      using (public.is_super_admin())
-      with check (public.is_super_admin());
+      using (public.is_super_admin(auth.uid()))
+      with check (public.is_super_admin(auth.uid()));
   end if;
 
   -- ── announcement_recipients ───────────────────────────────────────────────
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='announcement_recipients' and policyname='recipients read own') then
     create policy "recipients read own" on public.announcement_recipients for select to authenticated
-      using (user_id = auth.uid() or public.is_super_admin());
+      using (user_id = auth.uid() or public.is_super_admin(auth.uid()));
   end if;
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='announcement_recipients' and policyname='recipients insert by admin') then
     create policy "recipients insert by admin" on public.announcement_recipients for insert to authenticated
-      with check (public.is_super_admin());
+      with check (public.is_super_admin(auth.uid()));
   end if;
   -- A recipient can mark their own row read.
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='announcement_recipients' and policyname='recipients update own') then
@@ -443,9 +469,9 @@ begin
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='audit_events' and policyname='audit readable admin or subtree') then
     create policy "audit readable admin or subtree" on public.audit_events for select to authenticated
       using (
-        public.is_super_admin()
+        public.is_super_admin(auth.uid())
         or actor_id = auth.uid()
-        or (org_id is not null and public.org_in_my_subtree(org_id))
+        or (org_id is not null and public.org_in_my_subtree(org_id, auth.uid()))
       );
   end if;
 
@@ -455,17 +481,17 @@ begin
   end if;
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='role_permissions' and policyname='role perms writable by admin') then
     create policy "role perms writable by admin" on public.role_permissions for all to authenticated
-      using (public.is_super_admin()) with check (public.is_super_admin());
+      using (public.is_super_admin(auth.uid())) with check (public.is_super_admin(auth.uid()));
   end if;
 
   -- ── user_permission_overrides ─────────────────────────────────────────────
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='user_permission_overrides' and policyname='overrides readable self or admin') then
     create policy "overrides readable self or admin" on public.user_permission_overrides for select to authenticated
-      using (user_id = auth.uid() or public.is_super_admin());
+      using (user_id = auth.uid() or public.is_super_admin(auth.uid()));
   end if;
   if not exists (select 1 from pg_policies where schemaname='public' and tablename='user_permission_overrides' and policyname='overrides writable by admin') then
     create policy "overrides writable by admin" on public.user_permission_overrides for all to authenticated
-      using (public.is_super_admin()) with check (public.is_super_admin());
+      using (public.is_super_admin(auth.uid())) with check (public.is_super_admin(auth.uid()));
   end if;
 end;
 $$;

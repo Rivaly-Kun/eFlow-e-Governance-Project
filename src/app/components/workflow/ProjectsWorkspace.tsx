@@ -76,8 +76,10 @@ const MILESTONE_STATUS_META: Record<string, { label: string; tone: string }> = {
   completed: { label: "Completed", tone: "bg-emerald-50 text-emerald-700" },
 };
 
+// ─── Main ProjectsWorkspace ───────────────────────────────────────
 export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eyebrow: string }) {
-  const { projects, loading } = useProjectsData();
+  const { projects: dbProjects, loading: projectsLoading } = useProjectsData();
+  const { tasks, loading: tasksLoading } = useTasks();
   const { orgs } = useOrgs();
   const { can } = useAuth();
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -87,9 +89,9 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
   const [orgFilter, setOrgFilter] = useState("all");
 
   const inScope = useMemo(() => {
-    if (scope.isSuperAdmin || scope.scopedOrgIds.length === 0) return projects;
-    return projects.filter((p) => !p.orgId || scope.scopedOrgIds.includes(p.orgId));
-  }, [projects, scope]);
+    if (scope.isSuperAdmin || scope.scopedOrgIds.length === 0) return dbProjects;
+    return dbProjects.filter((p) => !p.orgId || scope.scopedOrgIds.includes(p.orgId));
+  }, [dbProjects, scope]);
 
   const filtered = useMemo(() => {
     let rows = inScope;
@@ -104,7 +106,8 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
     return rows;
   }, [inScope, statusFilter, orgFilter, query, scope.isSuperAdmin]);
 
-  const detail = detailId ? projects.find((p) => p.id === detailId) : null;
+  const detail = detailId ? dbProjects.find((p) => p.id === detailId) : null;
+  const loading = projectsLoading || tasksLoading;
 
   if (loading) return <div className="p-8"><LoadingState label="Loading projects…" /></div>;
 
@@ -120,7 +123,7 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
       <PageHeader
         eyebrow={eyebrow}
         title="Projects"
-        subtitle="Create, track, and archive the projects your teams deliver."
+        subtitle="Create, track, and manage all your projects and proposal programmes."
         actions={
           can("projects.create") ? (
             <WButton icon={<Plus size={14} />} variant="primary" onClick={() => setComposerOpen(true)}>
@@ -185,7 +188,7 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
 // ─── Project card ────────────────────────────────────────────────
 function ProjectCard({ project, orgs, onOpen }: { project: Project; orgs: Organization[]; onOpen: () => void }) {
   const { tasks } = useTasks();
-  const pTasks = tasks.filter((t) => t.linkedProjectId === project.id && !t.archivedAt);
+  const pTasks = tasks.filter((t) => (t.linkedProjectId === project.id || t.projectId === project.id) && !t.archivedAt);
   const done = pTasks.filter((t) => t.status === "completed").length;
   const pct = pTasks.length ? Math.round((done / pTasks.length) * 100) : 0;
   const orgName = orgs.find((o) => o.id === project.orgId)?.name;
@@ -197,7 +200,14 @@ function ProjectCard({ project, orgs, onOpen }: { project: Project; orgs: Organi
       className="text-left bg-white border border-neutral-200 rounded-xl p-4 hover:shadow-sm hover:border-neutral-300 transition-all"
     >
       <div className="flex items-start justify-between gap-2 mb-2">
-        <ProjectStatusBadge status={project.status} size="sm" />
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <ProjectStatusBadge status={project.status} size="sm" />
+          {project.description?.toLowerCase().includes("proposal") && (
+            <span className="bg-blue-50 text-blue-700 text-[10px] font-['Lexend:SemiBold',_sans-serif] px-1.5 py-0.5 rounded">
+              Proposal
+            </span>
+          )}
+        </div>
         <PriorityPill priority={project.priority} />
       </div>
       <h3 className="text-[14px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900 leading-snug line-clamp-2">
@@ -249,7 +259,7 @@ function ProjectDetail({
   const [newMilestone, setNewMilestone] = useState("");
   const [newMsDate, setNewMsDate] = useState("");
 
-  const pTasks = useMemo(() => tasks.filter((t) => t.linkedProjectId === project.id && !t.archivedAt), [tasks, project.id]);
+  const pTasks = useMemo(() => tasks.filter((t) => (t.linkedProjectId === project.id || t.projectId === project.id) && !t.archivedAt), [tasks, project.id]);
 
   const load = () => {
     fetchMilestones(project.id).then(setMilestones);

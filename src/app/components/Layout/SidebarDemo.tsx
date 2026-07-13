@@ -1198,10 +1198,6 @@ function getSidebarContent(role: string, section: string): SidebarContent {
                 icon: <Analytics size={16} className="text-neutral-900" />,
                 label: "Team Intelligence",
               },
-              {
-                icon: <CloudUpload size={16} className="text-neutral-900" />,
-                label: "Proposal Import",
-              },
             ],
           },
         ],
@@ -1301,207 +1297,239 @@ function IconNavButton({
   );
 }
 
-function IconNavigation({
-  activeSection,
-  onSectionChange,
+function UnifiedSidebar({
   role,
-  onMigrationClick,
+  activeSection,
+  activePage,
+  onPageSelect,
 }: {
-  activeSection: string;
-  onSectionChange: (section: string) => void;
   role: string;
-  onMigrationClick?: () => void;
+  activeSection: string;
+  activePage?: string;
+  onPageSelect: (section: string, page: string) => void;
 }) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set([activeSection]));
   const config = roleNavConfigs[role] || roleNavConfigs.superadmin;
   const { user, userProfile, logout } = useAuth();
 
-  return (
-    <div
-      className="bg-white box-border content-stretch flex flex-col gap-2 h-full items-center justify-start overflow-clip p-4 relative rounded-l-2xl shrink-0 w-16 border-r border-neutral-200"
-      data-name="Icon Navigation"
-    >
-      <div className="mb-2 size-10 flex items-center justify-center">
-        <div className="size-7">
-          <InterfacesLogo1 />
-        </div>
-      </div>
+  useEffect(() => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      next.add(activeSection);
+      return next;
+    });
+  }, [activeSection]);
 
-      <div className="flex flex-col gap-2 w-full items-center">
-        {config.navItems.map((item) => (
-          <IconNavButton
-            key={item.id}
-            isActive={activeSection === item.id}
-            onClick={() => onSectionChange(item.id)}
-          >
-            {item.icon}
-          </IconNavButton>
-        ))}
-      </div>
+  const toggleSectionExpand = (sectionId: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) {
+        next.delete(sectionId);
+      } else {
+        next.add(sectionId);
+      }
+      return next;
+    });
+  };
 
-      <div className="flex-1" />
-      <div className="flex flex-col gap-2 w-full items-center">
-        {role === "superadmin" && onMigrationClick && (
-          <IconNavButton
-            isActive={activeSection === "__migration"}
-            onClick={onMigrationClick}
-          >
-            <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-              <path d="M3.5 2A1.5 1.5 0 0 0 2 3.5v9A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 12.5 2h-9zM3 3.5a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5v-9z" />
-              <path d="M5 5.5A.5.5 0 0 1 5.5 5h5a.5.5 0 0 1 0 1h-5A.5.5 0 0 1 5 5.5zM5 8a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5A.5.5 0 0 1 5 8zm0 2.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5z" />
-            </svg>
-          </IconNavButton>
-        )}
-        {user?.id && <NotificationBell userId={user.id} compact />}
-        {user?.id && (
-          <ChatListDrawer
-            userId={user.id}
-            userName={userProfile?.fullName}
-            userOrgId={userProfile?.departmentId}
-          />
-        )}
-        {user?.id && <IncomingCallListener userId={user.id} />}
-        <IconNavButton
-          isActive={activeSection === "settings"}
-          onClick={() => onSectionChange("settings")}
-        >
-          <Settings size={16} />
-        </IconNavButton>
-        <div className="size-8">
-          <Avatar />
-        </div>
-        <IconNavButton onClick={logout}>
-          <Logout size={16} className="text-red-500" />
-        </IconNavButton>
-      </div>
-    </div>
-  );
-}
-
-function SectionTitle({
-  title,
-  onToggleCollapse,
-  isCollapsed,
-}: {
-  title: string;
-  onToggleCollapse: () => void;
-  isCollapsed: boolean;
-}) {
-  if (isCollapsed) {
-    return (
-      <div
-        className="relative shrink-0 w-full flex justify-center transition-all duration-500"
-        style={{ transitionTimingFunction: softSpringEasing }}
-      >
-        <button
-          onClick={onToggleCollapse}
-          className="box-border content-stretch flex flex-row items-center justify-center overflow-clip p-0 relative rounded-lg shrink-0 cursor-pointer transition-all duration-500 hover:bg-neutral-50 text-neutral-500 hover:text-neutral-700 size-10 min-w-10"
-          style={{ transitionTimingFunction: softSpringEasing }}
-        >
-          <ChevronLeft
-            size={16}
-            className="transition-transform duration-500"
-            style={{
-              transitionTimingFunction: softSpringEasing,
-              transform: "rotate(180deg)",
-            }}
-          />
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="relative shrink-0 w-full overflow-hidden transition-all duration-500"
-      style={{ transitionTimingFunction: softSpringEasing }}
-    >
-      <div className="flex flex-row items-center justify-between relative size-full">
-        <div
-          className="box-border content-stretch flex flex-row items-center justify-start relative h-10 overflow-hidden transition-opacity opacity-100 duration-500"
-          style={{ transitionTimingFunction: softSpringEasing }}
-        >
-          <div className="box-border content-stretch flex flex-col gap-2 items-start justify-center px-2 py-1 relative shrink-0">
-            <div className="font-['Lexend:SemiBold',_sans-serif] font-semibold leading-[0] relative shrink-0 text-[18px] text-left text-neutral-900 text-nowrap">
-              <p className="block leading-[27px] whitespace-pre">{title}</p>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center justify-center pr-1">
-          <button
-            onClick={onToggleCollapse}
-            className="box-border content-stretch flex flex-row items-center justify-center overflow-clip p-0 relative rounded-lg shrink-0 cursor-pointer transition-all duration-500 hover:bg-neutral-50 text-neutral-500 hover:text-neutral-700 size-10 min-w-10"
-            style={{ transitionTimingFunction: softSpringEasing }}
-          >
-            <ChevronLeft
-              size={16}
-              className="transition-transform duration-500"
-              style={{ transitionTimingFunction: softSpringEasing }}
-            />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DetailSidebar({
-  activeSection,
-  role,
-  activePage,
-  onPageChange,
-}: {
-  activeSection: string;
-  role: string;
-  activePage?: string;
-  onPageChange?: (page: string) => void;
-}) {
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const content = getSidebarContent(role, activeSection);
-
-  const toggleExpanded = (itemKey: string) => {
-    const newExpanded = new Set(expandedItems);
-    if (newExpanded.has(itemKey)) {
-      newExpanded.delete(itemKey);
-    } else {
-      newExpanded.add(itemKey);
+  const handleSectionClick = (sectionId: string) => {
+    if (isCollapsed) {
+      setIsCollapsed(false);
+      setExpandedSections((prev) => new Set([...prev, sectionId]));
     }
-    setExpandedItems(newExpanded);
+    const content = getSidebarContent(role, sectionId);
+    let firstPage = undefined;
+    if (content.sections.length > 0 && content.sections[0].items.length > 0) {
+      firstPage = content.sections[0].items[0].label;
+    }
+    onPageSelect(sectionId, sectionId === "settings" ? "Profile" : (firstPage || ""));
   };
 
   return (
     <div
-      className={`bg-white box-border content-stretch flex flex-col gap-4 h-full items-start justify-start overflow-visible p-4 relative shrink-0 transition-all duration-500 border-r border-neutral-200 ${
-        isCollapsed ? "w-16 min-w-16 !px-0 justify-center" : "w-80"
+      className={`bg-white box-border flex flex-col h-full relative shrink-0 transition-all duration-300 border-r border-neutral-200 ${
+        isCollapsed ? "w-16" : "w-64"
       }`}
       style={{ transitionTimingFunction: softSpringEasing }}
     >
-      <SectionTitle
-        title={content.title}
-        onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
-        isCollapsed={isCollapsed}
-      />
-      <SearchContainer isCollapsed={isCollapsed} />
-
-      <div
-        className={`basis-0 box-border content-stretch flex flex-col grow min-h-px min-w-10 p-0 relative shrink-0 w-full overflow-y-auto transition-all duration-500 ${
-          isCollapsed
-            ? "gap-2 items-center justify-start"
-            : "gap-4 items-start justify-start"
-        }`}
-        style={{ transitionTimingFunction: softSpringEasing }}
-      >
-        {content.sections.map((section, index) => (
-          <MenuSectionComponent
-            key={`${activeSection}-${index}`}
-            section={section}
-            expandedItems={expandedItems}
-            onToggleExpanded={toggleExpanded}
-            isCollapsed={isCollapsed}
-            onItemClick={onPageChange}
-            activePage={activePage}
+      {/* Header: Logo & Toggle */}
+      <div className="flex items-center justify-between p-4 h-16 shrink-0 border-b border-neutral-100">
+        {!isCollapsed && (
+          <div className="flex items-center gap-2 overflow-hidden">
+            <div className="size-6 shrink-0">
+              <InterfacesLogo1 />
+            </div>
+            <span className="font-['Lexend:Bold',_sans-serif] font-bold text-[15px] text-neutral-900 truncate">
+              eFlow Console
+            </span>
+          </div>
+        )}
+        {isCollapsed && (
+          <div className="mx-auto size-7 flex items-center justify-center">
+            <InterfacesLogo1 />
+          </div>
+        )}
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className={`hover:bg-neutral-50 rounded-lg text-neutral-500 p-1.5 transition-colors ${
+            isCollapsed ? "mx-auto" : ""
+          }`}
+        >
+          <ChevronLeft
+            size={16}
+            className={`transition-transform duration-300 ${isCollapsed ? "rotate-180" : ""}`}
           />
-        ))}
+        </button>
+      </div>
+
+      {/* Search (only when expanded) */}
+      {!isCollapsed && (
+        <div className="px-4 pt-4 shrink-0">
+          <SearchContainer isCollapsed={false} />
+        </div>
+      )}
+
+      {/* Navigation List */}
+      <div className="flex-1 overflow-y-auto px-3 py-4 flex flex-col gap-1 select-none">
+        {config.navItems.map((item) => {
+          const sectionContent = getSidebarContent(role, item.id);
+          const isCurrentSection = activeSection === item.id;
+          const isExpanded = expandedSections.has(item.id);
+          
+          const pages: { label: string; icon?: React.ReactNode }[] = [];
+          sectionContent.sections.forEach((sec) => {
+            sec.items.forEach((page) => {
+              pages.push({ label: page.label, icon: page.icon });
+            });
+          });
+
+          const hasMultiplePages = pages.length > 1;
+
+          return (
+            <div key={item.id} className="flex flex-col gap-0.5">
+              {/* Section Header Button */}
+              <button
+                onClick={() => {
+                  if (hasMultiplePages) {
+                    toggleSectionExpand(item.id);
+                  }
+                  handleSectionClick(item.id);
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-['Lexend:Medium',_sans-serif] transition-colors ${
+                  isCurrentSection && !hasMultiplePages
+                    ? "bg-neutral-100 text-neutral-900"
+                    : isCurrentSection
+                    ? "text-neutral-900 bg-neutral-50"
+                    : "text-neutral-600 hover:bg-neutral-50"
+                }`}
+                title={isCollapsed ? item.label : undefined}
+              >
+                <div className="shrink-0 size-4 flex items-center justify-center text-neutral-900">
+                  {item.icon}
+                </div>
+                {!isCollapsed && (
+                  <span className="flex-1 text-left truncate">{item.label}</span>
+                )}
+                {!isCollapsed && hasMultiplePages && (
+                  <ChevronLeft
+                    size={12}
+                    className={`text-neutral-400 transition-transform duration-200 ${
+                      isExpanded ? "-rotate-90" : ""
+                    }`}
+                  />
+                )}
+              </button>
+
+              {/* Sub-pages list */}
+              {!isCollapsed && isExpanded && hasMultiplePages && (
+                <div className="pl-6 pr-1 py-0.5 flex flex-col gap-0.5 border-l border-neutral-100 ml-5">
+                  {pages.map((page) => {
+                    const isCurrentPage = activePage === page.label;
+                    return (
+                      <button
+                        key={page.label}
+                        onClick={() => onPageSelect(item.id, page.label)}
+                        className={`w-full text-left px-3 py-1.5 rounded-md text-[12.5px] font-['Lexend:Regular',_sans-serif] truncate transition-colors ${
+                          isCurrentPage
+                            ? "bg-neutral-100 text-neutral-900 font-semibold"
+                            : "text-neutral-600 hover:bg-neutral-50"
+                        }`}
+                      >
+                        {page.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer Area */}
+      <div className="p-3 shrink-0 border-t border-neutral-100 flex flex-col gap-2 bg-white">
+        {/* Quick action buttons (bell, chat) */}
+        {user?.id && (
+          <div className={`flex items-center ${isCollapsed ? "flex-col gap-2 justify-center" : "gap-4 px-2"}`}>
+            <NotificationBell userId={user.id} compact />
+            <ChatListDrawer
+              userId={user.id}
+              userName={userProfile?.fullName}
+              userOrgId={userProfile?.departmentId}
+            />
+            <IncomingCallListener userId={user.id} />
+          </div>
+        )}
+
+        {/* Settings button */}
+        <button
+          onClick={() => handleSectionClick("settings")}
+          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-['Lexend:Medium',_sans-serif] transition-colors ${
+            activeSection === "settings"
+              ? "bg-neutral-100 text-neutral-900"
+              : "text-neutral-600 hover:bg-neutral-50"
+          }`}
+          title={isCollapsed ? "Settings" : undefined}
+        >
+          <Settings size={16} className="shrink-0 text-neutral-900" />
+          {!isCollapsed && <span className="flex-1 text-left truncate">Settings</span>}
+        </button>
+
+        {/* User profile info & Logout */}
+        <div className={`flex items-center gap-2 p-1 rounded-lg ${isCollapsed ? "justify-center" : ""}`}>
+          <div className="size-8 shrink-0">
+            <Avatar />
+          </div>
+          {!isCollapsed && (
+            <div className="flex-1 min-w-0">
+              <p className="text-[12.5px] font-semibold text-neutral-900 truncate">
+                {userProfile?.fullName || "User"}
+              </p>
+              <p className="text-[10px] text-neutral-400 truncate">
+                {userProfile?.role || role}
+              </p>
+            </div>
+          )}
+          {!isCollapsed && (
+            <button
+              onClick={logout}
+              className="p-1.5 hover:bg-red-50 hover:text-red-600 rounded-lg text-neutral-400 transition-colors"
+              title="Log out"
+            >
+              <Logout size={16} />
+            </button>
+          )}
+        </div>
+        {isCollapsed && (
+          <button
+            onClick={logout}
+            className="w-full flex items-center justify-center p-2 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
+            title="Log out"
+          >
+            <Logout size={16} />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1510,59 +1538,51 @@ function DetailSidebar({
 function TwoLevelSidebar({ role }: { role: string }) {
   const config = roleNavConfigs[role] || roleNavConfigs.superadmin;
   const [activeSection, setActiveSection] = useState(config.defaultSection);
-  const [activePage, setActivePage] = useState<string | undefined>(undefined);
-  const [showMigration, setShowMigration] = useState(false);
   const [prevRole, setPrevRole] = useState(role);
+
+  // Helper to get first item in a section
+  const getInitialPage = (sec: string) => {
+    const content = getSidebarContent(role, sec);
+    if (content.sections.length > 0 && content.sections[0].items.length > 0) {
+      return content.sections[0].items[0].label;
+    }
+    return undefined;
+  };
+
+  const [activePage, setActivePage] = useState<string | undefined>(() => getInitialPage(config.defaultSection));
 
   if (prevRole !== role) {
     setPrevRole(role);
     const newConfig = roleNavConfigs[role] || roleNavConfigs.superadmin;
     setActiveSection(newConfig.defaultSection);
-    setActivePage(undefined);
+    // Find first page of new section
+    const content = getSidebarContent(role, newConfig.defaultSection);
+    let firstItemLabel = undefined;
+    if (content.sections.length > 0 && content.sections[0].items.length > 0) {
+      firstItemLabel = content.sections[0].items[0].label;
+    }
+    setActivePage(firstItemLabel);
   }
 
-  const handleSectionChange = (section: string) => {
+  const handlePageSelect = (section: string, page: string) => {
     setActiveSection(section);
-    setActivePage(section === "settings" ? "Profile" : undefined);
-  };
-
-  const handleMigrationClick = () => {
-    setShowMigration(true);
-    setActiveSection("__migration");
-    setActivePage(undefined);
-  };
-
-  const wrappedSectionChange = (section: string) => {
-    setShowMigration(false);
-    handleSectionChange(section);
+    setActivePage(page);
   };
 
   return (
     <div className="flex flex-row h-full min-h-0">
-      <IconNavigation
-        activeSection={activeSection}
-        onSectionChange={wrappedSectionChange}
+      <UnifiedSidebar
         role={role}
-        onMigrationClick={handleMigrationClick}
+        activeSection={activeSection}
+        activePage={activePage}
+        onPageSelect={handlePageSelect}
       />
-      {showMigration ? (
-        <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto rounded-r-2xl">
-          <MigrationTool />
+      {activeSection === "settings" ? (
+        <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto rounded-r-2xl dark:bg-slate-950">
+          <SettingsContent activePage={activePage} />
         </div>
       ) : (
         <>
-          <DetailSidebar
-            activeSection={activeSection}
-            role={role}
-            activePage={activePage}
-            onPageChange={setActivePage}
-          />
-          {activeSection === "settings" ? (
-            <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto rounded-r-2xl dark:bg-slate-950">
-              <SettingsContent activePage={activePage} />
-            </div>
-          ) : (
-            <>
           {/* Main Content Area */}
           {role === "superadmin" && (
             <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">
@@ -1655,10 +1675,8 @@ function TwoLevelSidebar({ role }: { role: string }) {
                 </div>
               </div>
             )}
-            </>
-          )}
-        </>
-      )}
+          </>
+        )}
     </div>
   );
 }

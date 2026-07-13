@@ -43,6 +43,8 @@ import {
 import type { EmployeeNotesMap } from "../../services/employeeNotesService";
 import { useOrgs } from "../../hooks/useSupabaseData";
 import { getDescendantOrgIds } from "../../../lib/supabaseService";
+import { createProject, fetchMilestones } from "../../services/projectService";
+import { supabase } from "../../../lib/supabase";
 import { Organization } from "../../types";
 import {
   Sparkles,
@@ -4412,68 +4414,172 @@ export function MondayBoard({
     const toCreate = draftTasks.filter((t) => t.enabled);
     if (toCreate.length === 0) return;
     setCommitting(true);
+    setCommitMessage("Committing projects and milestones...");
+
     const batchPrefix =
       toCreate[0]?.proposalId ||
       `proposal-${slugifyFragment(pdfFileName.replace(/\.pdf$/i, ""), "imported")}`;
     const importBatchId = `${batchPrefix}-${Date.now()}`;
     let created = 0;
     let failed = 0;
-    for (const dt of toCreate) {
-      try {
-        const selectedTeamMembers = dt.assignedMemberIds
-          .map((id) => employeeById[id])
-          .filter((member): member is Employee => Boolean(member));
-        const leadMember =
-          (dt.leadMemberId ? employeeById[dt.leadMemberId] : undefined) ||
-          selectedTeamMembers[0];
-        const payload: CreateTaskPayload = {
-          title: dt.title,
-          description: dt.description || "No description provided.",
-          deadline: dt.deadline || "",
-          priority: dt.priority,
-          tags: dt.requiredSkills,
-          status: "pending_assignment",
-          department: departmentFilter || "",
-          teamId: departmentFilter || "",
-          teamName:
-            leadMember?.departmentName ||
-            leadMember?.department ||
-            departmentFilter ||
-            "Imported",
-          teamMemberIds: selectedTeamMembers.map((member) => member.id),
-          teamMemberNames: selectedTeamMembers.map((member) => member.name),
-          assigneeId: leadMember?.id,
-          assigneeName: leadMember?.name,
-          recommendedEmployeeIds: dt.assignedMemberIds,
-          recommendationReasoning: dt.reasoning,
-          recommendationSource: "import",
-          recommendationLeadId: dt.leadMemberId || undefined,
-          burnoutWarning: dt.burnoutWarning,
-          proposalId: dt.proposalId,
+
+    // Grouping map: projectTitle -> { projectTitle, activityTitle -> tasks[] }
+    const projectGroups = new Map<
+      string,
+      {
+        projectTitle: string;
+        proposalTitle: string;
+        proposalId: string;
+        programId: string;
+        programTitle: string;
+        projectId: string;
+        activities: Map<string, { activityTitle: string; schedule: string; tasks: typeof toCreate }>;
+      }
+    >();
+
+    toCreate.forEach((dt) => {
+      const projKey = dt.projectTitle.trim();
+      if (!projectGroups.has(projKey)) {
+        projectGroups.set(projKey, {
+          projectTitle: dt.projectTitle,
           proposalTitle: dt.proposalTitle,
+          proposalId: dt.proposalId,
           programId: dt.programId,
           programTitle: dt.programTitle,
           projectId: dt.projectId,
-          projectTitle: dt.projectTitle,
-          activityId: dt.activityId,
-          activityTitle: dt.activityTitle,
-          activitySchedule: dt.activitySchedule,
-          hierarchyPath: [
-            dt.proposalTitle,
-            dt.programTitle,
-            dt.projectTitle,
-            dt.activityTitle,
-          ]
-            .filter(Boolean)
-            .join(" > "),
-          importBatchId,
-        };
-        await onCreateTask(payload);
-        created++;
-      } catch {
-        failed++;
+          activities: new Map(),
+        });
       }
+      const projGroup = projectGroups.get(projKey)!;
+
+      const actKey = dt.activityTitle.trim();
+      if (!projGroup.activities.has(actKey)) {
+        projGroup.activities.set(actKey, {
+          activityTitle: dt.activityTitle,
+          schedule: dt.activitySchedule || "",
+          tasks: [],
+        });
+      }
+      projGroup.activities.get(actKey)!.tasks.push(dt);
+    });
+
+    try {
+      for (const projGroup of projectGroups.values()) {
+        const milestonesInput = Array.from(projGroup.activities.values()).map((act) => ({
+          title: act.activityTitle.trim(),
+          dueDate: act.schedule || null,
+        }));
+
+        let dbProjectId = "";
+        try {
+          // Check for existing project to prevent duplicate imports
+          const { data: existingProjs } = await supabase
+            .from("projects")
+            .select("id")
+            .eq("title", projGroup.projectTitle.trim())
+            .eq("org_id", departmentFilter || "")
+            .is("archived_at", null);
+
+          if (existingProjs && existingProjs.length > 0) {
+            dbProjectId = existingProjs[0].id;
+          } else {
+            const newProj = await createProject({
+              title: projGroup.projectTitle.trim(),
+              description: `Imported via proposal: ${projGroup.proposalTitle}`,
+              orgId: departmentFilter || null,
+              ownerId: currentUserId || null,
+              status: "active",
+              priority: "medium",
+              milestones: milestonesInput,
+            });
+            dbProjectId = newProj.id;
+          }
+        } catch (projErr) {
+          console.error("Failed to create/resolve project:", projGroup.projectTitle, projErr);
+          dbProjectId = projGroup.projectId;
+        }
+
+        // Fetch milestone mapping
+        let milestoneMap = new Map<string, string>();
+        try {
+          const dbMilestones = await fetchMilestones(dbProjectId);
+          milestoneMap = new Map(dbMilestones.map((m) => [m.title.toLowerCase().trim(), m.id]));
+        } catch (mErr) {
+          console.error("Failed to fetch milestones for project:", dbProjectId, mErr);
+        }
+
+        // Create tasks for each activity
+        for (const act of projGroup.activities.values()) {
+          const dbMilestoneId = milestoneMap.get(act.activityTitle.toLowerCase().trim()) || "";
+
+          for (const dt of act.tasks) {
+            try {
+              const selectedTeamMembers = dt.assignedMemberIds
+                .map((id) => employeeById[id])
+                .filter((member): member is Employee => Boolean(member));
+              const leadMember =
+                (dt.leadMemberId ? employeeById[dt.leadMemberId] : undefined) ||
+                selectedTeamMembers[0];
+
+              const payload: CreateTaskPayload = {
+                title: dt.title,
+                description: dt.description || "No description provided.",
+                deadline: dt.deadline || "",
+                priority: dt.priority,
+                tags: dt.requiredSkills,
+                status: "pending_assignment",
+                department: departmentFilter || "",
+                orgId: departmentFilter || undefined,
+                teamId: departmentFilter || "",
+                teamName:
+                  leadMember?.departmentName ||
+                  leadMember?.department ||
+                  departmentFilter ||
+                  "Imported",
+                teamMemberIds: selectedTeamMembers.map((member) => member.id),
+                teamMemberNames: selectedTeamMembers.map((member) => member.name),
+                assigneeId: leadMember?.id,
+                assigneeName: leadMember?.name,
+                recommendedEmployeeIds: dt.assignedMemberIds,
+                recommendationReasoning: dt.reasoning,
+                recommendationSource: "import",
+                recommendationLeadId: dt.leadMemberId || undefined,
+                burnoutWarning: dt.burnoutWarning,
+                proposalId: dt.proposalId,
+                proposalTitle: dt.proposalTitle,
+                programId: dt.programId,
+                programTitle: dt.programTitle,
+                projectId: dt.projectId,
+                projectTitle: dt.projectTitle,
+                activityId: dt.activityId,
+                activityTitle: dt.activityTitle,
+                activitySchedule: dt.activitySchedule,
+                linkedProjectId: dbProjectId,
+                milestoneId: dbMilestoneId,
+                hierarchyPath: [
+                  dt.proposalTitle,
+                  dt.programTitle,
+                  dt.projectTitle,
+                  dt.activityTitle,
+                ]
+                  .filter(Boolean)
+                  .join(" > "),
+                importBatchId,
+              };
+
+              await onCreateTask(payload);
+              created++;
+            } catch (err) {
+              console.error("Failed to commit task from draft:", dt.title, err);
+              failed++;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed during commit transaction:", err);
     }
+
     setCommitting(false);
     if (created > 0) {
       setBoardView("hierarchy");

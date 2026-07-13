@@ -46,7 +46,9 @@ function isArchived(t: Task) {
 }
 function isOverdue(t: Task) {
   const dl = t.deadline || t.dueDate;
-  return !!dl && t.status !== "completed" && new Date(dl).getTime() < Date.now();
+  if (!dl || t.status === "completed") return false;
+  if (typeof dl === "string" && /month|phase|week/i.test(dl)) return false;
+  return new Date(dl).getTime() < Date.now();
 }
 
 // Project health rollup from its tasks.
