@@ -1,1069 +1,1472 @@
-import React, { useState, useRef, useCallback, useMemo } from "react";
+import React, { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import {
-  FileText,
   Upload,
   Loader2,
-  Sparkles,
   AlertCircle,
   Layers,
-  FolderOpen,
+  ChevronRight,
+  ChevronDown,
+  Clock,
+  Plus,
+  Trash2,
+  Edit2,
+  Users,
+  Check,
   Crown,
+  X,
+  Search,
 } from "lucide-react";
-import {
-  useEmployees,
-  useEmployeeNotes,
-  useUsers,
-  useDepartments,
-} from "../../hooks/useFirebaseData";
+import { useEmployees, useEmployeeNotes } from "../../hooks/useFirebaseData";
 import { useOrgs } from "../../hooks/useSupabaseData";
-import { getDescendantOrgIds } from "../../../lib/supabaseService";
 import { useAuth } from "../../contexts/AuthContext";
+import { useToast } from "../ui/Toast";
 import { Employee } from "../../services/employeeService";
-import { createTask, CreateTaskPayload } from "../../services/taskService";
-import { createSubtasksBatch } from "../../services/subtaskService";
+import type { EmployeeNotesMap } from "../../services/employeeNotesService";
+import { Organization } from "../../types";
 import { createProject, fetchMilestones } from "../../services/projectService";
-import { supabase } from "../../../lib/supabase";
+import { createTask, CreateTaskPayload } from "../../services/taskService";
 import {
   decomposeProposal,
   ProposalDecompositionResult,
 } from "../../services/proposalDecompositionService";
+import { supabase } from "../../../lib/supabase";
+import { getDescendantOrgIds } from "../../../lib/supabaseService";
 
-// ─── PDF text extraction (pdfjs-dist) ────────────────────────────
+// ─── PDF Extraction ───────────────────────────────────────────────
 
 async function extractTextFromPdf(file: File): Promise<string> {
   const pdfjsLib = await import("pdfjs-dist");
-  // Use local worker bundled with pdfjs-dist (Vite serves it from node_modules)
   const workerUrl = new URL(
     "pdfjs-dist/build/pdf.worker.min.mjs",
     import.meta.url,
   );
   pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl.href;
-
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-
   const pages: string[] = [];
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
     const text = content.items
-      .map((item: { str?: string }) => item.str || "")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((item: any) => (item.str as string) || "")
       .join(" ");
     pages.push(text);
   }
-
   return pages.join("\n\n");
 }
 
-// ─── Types ───────────────────────────────────────────────────────
+function filterEmployeesByPdfMentions(
+  pdfText: string,
+  allEmployees: Employee[],
+  orgs: Organization[]
+): Employee[] {
+  if (!allEmployees || allEmployees.length === 0) return [];
+  
+  const textUpper = pdfText.toUpperCase();
+  
+  const mentionedOrgs = orgs.filter((org) => {
+    const nameMatch = org.name && textUpper.includes(org.name.toUpperCase());
+    const slugMatch = org.slug && textUpper.includes(org.slug.toUpperCase());
+    
+    let acronymMatch = false;
+    if (org.slug === "ledip" || org.slug === "ledipo") {
+      acronymMatch = textUpper.includes("LEDIP") || textUpper.includes("LEDIPO");
+    } else if (org.slug === "cpdo") {
+      acronymMatch = textUpper.includes("CPDO");
+    } else if (org.slug === "bplo") {
+      acronymMatch = textUpper.includes("BPLO") || textUpper.includes("BUSINESS PERMITS");
+    } else if (org.slug === "ociib") {
+      acronymMatch = textUpper.includes("OCIIB") || textUpper.includes("INCENTIVES BOARD");
+    }
+    
+    return nameMatch || slugMatch || acronymMatch;
+  });
 
-type ImportPhase = "idle" | "extracting" | "decomposing" | "done" | "error";
+  if (mentionedOrgs.length === 0) {
+    console.log("[PDF Scope Filter] No matching proponents found in PDF. Using all employees.");
+    return allEmployees;
+  }
 
-// ─── Component ───────────────────────────────────────────────────
+  const allowedOrgIds = new Set<string>();
+  mentionedOrgs.forEach((org) => {
+    const descendants = getDescendantOrgIds(orgs, org.id);
+    descendants.forEach((id) => allowedOrgIds.add(id));
+  });
 
-export default function ProposalImport() {
+  console.log("[PDF Scope Filter] Mentioned Orgs:", mentionedOrgs.map(o => o.name));
+  console.log("[PDF Scope Filter] Allowed Org IDs:", Array.from(allowedOrgIds));
+
+  const filtered = allEmployees.filter((emp) => {
+    return emp.department && allowedOrgIds.has(emp.department);
+  });
+
+  console.log("[PDF Scope Filter] Filtered Employees:", filtered.map(e => e.name));
+  return filtered;
+}
+
+// ─── Types ────────────────────────────────────────────────────────
+
+type PdfPhase =
+  | "idle"
+  | "extracting"
+  | "decomposing"
+  | "review"
+  | "committing"
+  | "done"
+  | "error";
+
+interface DraftTask {
+  key: string;
+  proposalTitle: string;
+  proposalId: string;
+  programIdx: number;
+  projectIdx: number;
+  activityIdx: number;
+  taskIdx: number;
+  programId: string;
+  programTitle: string;
+  projectId: string;
+  projectTitle: string;
+  activityId: string;
+  activityTitle: string;
+  activitySchedule: string;
+  title: string;
+  description: string;
+  deadline: string;
+  priority: "low" | "medium" | "high";
+  requiredSkills: string[];
+  assignedMemberIds: string[];
+  leadMemberId: string | null;
+  burnoutWarning: boolean;
+  reasoning: string;
+  enabled: boolean;
+}
+
+// ─── Constants & Helpers ──────────────────────────────────────────
+
+const priorityMeta: Record<
+  string,
+  { bar: string; badge: string; label: string }
+> = {
+  high: {
+    bar: "bg-red-500",
+    badge: "bg-red-100 text-red-700",
+    label: "High",
+  },
+  medium: {
+    bar: "bg-amber-400",
+    badge: "bg-amber-100 text-amber-700",
+    label: "Medium",
+  },
+  low: {
+    bar: "bg-emerald-400",
+    badge: "bg-emerald-100 text-emerald-700",
+    label: "Low",
+  },
+};
+
+const getInitials = (name: string) =>
+  name
+    .split(" ")
+    .filter(Boolean)
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+const slugifyFragment = (value: string, fallback: string) => {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return slug || fallback;
+};
+
+const buildHierarchyIds = (
+  proposalTitle: string,
+  programTitle: string,
+  projectTitle: string,
+  activityTitle: string,
+  pi: number,
+  pj: number,
+  ai: number,
+) => {
+  const proposalId = `proposal-${slugifyFragment(proposalTitle, "imported")}`;
+  const programId = `${proposalId}-program-${pi + 1}-${slugifyFragment(programTitle, "program")}`;
+  const projectId = `${programId}-project-${pj + 1}-${slugifyFragment(projectTitle, "project")}`;
+  const activityId = `${projectId}-activity-${ai + 1}-${slugifyFragment(activityTitle, "activity")}`;
+  return { proposalId, programId, projectId, activityId };
+};
+
+// ─── Main Component ───────────────────────────────────────────────
+
+export default function ProposalImport({ onClose }: { onClose?: () => void }) {
   const { employees: allEmployees } = useEmployees();
-  const { users } = useUsers();
-  const { departments } = useDepartments();
   const { notes: employeeNotes } = useEmployeeNotes();
   const { userProfile } = useAuth();
   const { orgs } = useOrgs();
-
-  const departmentNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    departments.forEach((dept) => {
-      if (dept.id) {
-        map.set(dept.id, dept.name);
-      }
-    });
-    return map;
-  }, [departments]);
-
-  const scopedOrgIds = useMemo(() => {
-    if (!userProfile?.departmentId) return new Set<string>();
-    return new Set(getDescendantOrgIds(orgs, userProfile.departmentId));
-  }, [orgs, userProfile?.departmentId]);
-
-  const usersAsEmployees = useMemo<Employee[]>(() => {
-    const initialsFor = (name: string) =>
-      name
-        .split(" ")
-        .filter(Boolean)
-        .map((part) => part[0])
-        .slice(0, 2)
-        .join("")
-        .toUpperCase();
-
-    const titleForRole = (role?: string) =>
-      role
-        ? role
-            .split("_")
-            .map((part) => part[0]?.toUpperCase() + part.slice(1))
-            .join(" ")
-        : "Employee";
-
-    return users.map((user) => {
-      const name = user.fullName || user.email || "Unnamed User";
-      const departmentId = user.org_id || user.departmentId || "";
-      const skills = (user as unknown as Record<string, unknown>).skills as Record<string, boolean> | undefined;
-      const skillList = skills
-        ? Object.keys(skills).filter((k) => skills[k]).join(", ")
-        : "";
-      return {
-        id: user.uid,
-        name,
-        jobTitle: titleForRole(user.role),
-        jobDescription: skillList || titleForRole(user.role),
-        currentWorkload: typeof user.workload === "number" ? user.workload : 0,
-        department: departmentId || undefined,
-        departmentName: departmentId
-          ? departmentNameById.get(departmentId) || departmentId
-          : undefined,
-        initials: initialsFor(name),
-        email: user.email || undefined,
-      };
-    });
-  }, [users, departmentNameById]);
-
-  const userById = useMemo(
-    () => new Map(users.map((user) => [user.uid, user])),
-    [users],
-  );
-
-  const userByEmail = useMemo(() => {
-    const map = new Map<string, (typeof users)[number]>();
-    users.forEach((user) => {
-      if (user.email) {
-        map.set(user.email.toLowerCase(), user);
-      }
-    });
-    return map;
-  }, [users]);
-
-  const headUsers = useMemo(() => {
-    const ids = new Set<string>();
-    const emails = new Set<string>();
-    departments.forEach((dept) => {
-      if (!dept.headUserId) return;
-      ids.add(dept.headUserId);
-      const head = userById.get(dept.headUserId);
-      if (head?.email) {
-        emails.add(head.email.toLowerCase());
-      }
-    });
-    return { ids, emails };
-  }, [departments, userById]);
-
-  const directoryEmployees = useMemo(() => {
-    const merged = new Map<string, Employee>();
-    const emails = new Set<string>();
-
-    allEmployees.forEach((emp) => {
-      merged.set(emp.id, emp);
-      if (emp.email) {
-        emails.add(emp.email.toLowerCase());
-      }
-    });
-
-    usersAsEmployees.forEach((emp) => {
-      const emailKey = emp.email?.toLowerCase();
-      if (emailKey && emails.has(emailKey)) return;
-      if (!merged.has(emp.id)) {
-        merged.set(emp.id, emp);
-      }
-    });
-
-    return Array.from(merged.values());
-  }, [allEmployees, usersAsEmployees]);
+  const { toast } = useToast();
 
   const deptEmployees = useMemo(() => {
-    if (!userProfile?.departmentId) return directoryEmployees;
-    const currentEmail = userProfile.email?.toLowerCase();
-    const departmentId = userProfile.departmentId;
-
-    return directoryEmployees.filter((emp) => {
-      if (!emp.department || !scopedOrgIds.has(emp.department)) return false;
-      if (userProfile.uid && emp.id === userProfile.uid) return false;
-      if (currentEmail && emp.email?.toLowerCase() === currentEmail) {
-        return false;
-      }
-
-      const matchById = userById.get(emp.id);
-      const matchByEmail = emp.email
-        ? userByEmail.get(emp.email.toLowerCase())
-        : undefined;
-      const matchedUser = matchById || matchByEmail;
-
-      if (matchedUser?.role === "department_head" || matchedUser?.role === "dept_head") return false;
-      if (headUsers.ids.has(emp.id)) return false;
-      if (emp.email && headUsers.emails.has(emp.email.toLowerCase())) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [
-    directoryEmployees,
-    headUsers,
-    userByEmail,
-    userById,
-    scopedOrgIds,
-    userProfile?.departmentId,
-    userProfile?.email,
-    userProfile?.uid,
-  ]);
+    return allEmployees || [];
+  }, [allEmployees]);
 
   const deptEmployeesWithNotes = useMemo(
     () => deptEmployees.filter((emp) => Boolean(employeeNotes?.[emp.id])),
     [deptEmployees, employeeNotes],
   );
 
-  const employeeById = useMemo<Record<string, Employee>>(
-    () => Object.fromEntries((deptEmployees || []).map((e) => [e.id, e])),
-    [deptEmployees],
+  const employeesForAi = useMemo(
+    () =>
+      deptEmployeesWithNotes.length > 0
+        ? deptEmployeesWithNotes
+        : deptEmployees,
+    [deptEmployees, deptEmployeesWithNotes],
   );
 
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [phase, setPhase] = useState<ImportPhase>("idle");
-  const [fileName, setFileName] = useState("");
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<ProposalDecompositionResult | null>(
+  const employeeById = useMemo(
+    () => {
+      const candidates = allEmployees && allEmployees.length > 0 ? allEmployees : deptEmployees;
+      return Object.fromEntries(candidates.map((e) => [e.id, e])) as Record<
+        string,
+        Employee
+      >;
+    },
+    [deptEmployees, allEmployees],
+  );
+
+  const departmentFilter = userProfile?.departmentId || "";
+  const currentUserId = userProfile?.uid || "";
+  const currentUserName = userProfile?.fullName || userProfile?.email || "";
+
+  const pdfFileRef = useRef<HTMLInputElement>(null);
+  const [pdfPhase, setPdfPhase] = useState<PdfPhase>("idle");
+  const [pdfFileName, setPdfFileName] = useState("");
+  const [pdfError, setPdfError] = useState("");
+  const [draftTasks, setDraftTasks] = useState<DraftTask[]>([]);
+  const [committing, setCommitting] = useState(false);
+  const [commitMessage, setCommitMessage] = useState("");
+
+  // Assignment modal for PDF drafts
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignModalTaskKey, setAssignModalTaskKey] = useState<string | null>(
     null,
   );
-  const [autoCreateStatus, setAutoCreateStatus] = useState<
-    "idle" | "creating" | "done" | "error"
-  >("idle");
-  const [autoCreateMessage, setAutoCreateMessage] = useState("");
-  const [createdTaskKeys, setCreatedTaskKeys] = useState<Set<string>>(
-    new Set(),
-  );
-  const [failedTaskKeys, setFailedTaskKeys] = useState<Set<string>>(new Set());
-  const [taskPayloads, setTaskPayloads] = useState<
-    Record<string, CreateTaskPayload>
-  >({});
-  const [taskSubtasksByKey, setTaskSubtasksByKey] = useState<
-    Record<string, string[]>
-  >({});
-  const [subtasksCreatedByKey, setSubtasksCreatedByKey] = useState<
-    Record<string, number>
-  >({});
+  const currentDraftTask = assignModalTaskKey
+    ? draftTasks.find((t) => t.key === assignModalTaskKey) || null
+    : null;
 
-  const [progressMsg, setProgressMsg] = useState("");
+  const buildDraftTasks = (
+    result: ProposalDecompositionResult,
+    fallbackProposalTitle?: string,
+  ): DraftTask[] => {
+    const out: DraftTask[] = [];
+    const proposalTitle =
+      result.proposal?.title ||
+      fallbackProposalTitle ||
+      pdfFileName.replace(/\.pdf$/i, "") ||
+      "Imported Proposal";
+    result.programs.forEach((prog, pi) => {
+      prog.projects.forEach((proj, pj) => {
+        proj.activities.forEach((act, ai) => {
+          const hierarchyIds = buildHierarchyIds(
+            proposalTitle,
+            prog.title,
+            proj.title,
+            act.title,
+            pi,
+            pj,
+            ai,
+          );
+          act.tasks.forEach((t, ti) => {
+            out.push({
+              key: `${pi}-${pj}-${ai}-${ti}`,
+              proposalTitle,
+              proposalId: hierarchyIds.proposalId,
+              programIdx: pi,
+              projectIdx: pj,
+              activityIdx: ai,
+              taskIdx: ti,
+              programId: hierarchyIds.programId,
+              programTitle: prog.title,
+              projectId: hierarchyIds.projectId,
+              projectTitle: proj.title,
+              activityId: hierarchyIds.activityId,
+              activityTitle: act.title,
+              activitySchedule: act.schedule || "",
+              title: t.title,
+              description: t.description,
+              deadline: act.schedule || "",
+              priority: t.priority || "medium",
+              requiredSkills: t.requiredSkills || [],
+              assignedMemberIds: t.recommendedEmployeeIds || [],
+              leadMemberId: t.recommendedEmployeeIds?.[0] || null,
+              burnoutWarning: t.burnoutWarning || false,
+              reasoning: t.recommendationReasoning || "",
+              enabled: true,
+            });
+          });
+        });
+      });
+    });
+    return out;
+  };
 
-  const taskKey = (pi: number, pj: number, ai: number, ti: number) =>
-    `${pi}-${pj}-${ai}-${ti}`;
+  const handlePdfFile = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      setPdfError("Please upload a PDF file.");
+      setPdfPhase("error");
+      return;
+    }
+    setPdfFileName(file.name);
+    setPdfError("");
+    setDraftTasks([]);
+    setCommitMessage("");
+    setPdfPhase("extracting");
 
+    let text: string;
+    try {
+      text = await extractTextFromPdf(file);
+      if (!text.trim()) {
+        setPdfError("Could not extract text from PDF. It may be image-based.");
+        setPdfPhase("error");
+        return;
+      }
+    } catch {
+      setPdfError("Failed to read PDF file.");
+      setPdfPhase("error");
+      return;
+    }
 
-  const autoCreateTasks = useCallback(
-    async (decomposed: ProposalDecompositionResult) => {
-      setAutoCreateStatus("creating");
-      setAutoCreateMessage("Creating projects and milestones...");
+    setPdfPhase("decomposing");
+    try {
+      const candidates = allEmployees && allEmployees.length > 0
+        ? filterEmployeesByPdfMentions(text, allEmployees, orgs)
+        : employeesForAi;
+      const result = await decomposeProposal(
+        text,
+        file.name.replace(/\.pdf$/i, ""),
+        candidates,
+        employeeNotes,
+      );
+      setDraftTasks(buildDraftTasks(result, file.name.replace(/\.pdf$/i, "")));
+      setPdfPhase("review");
+    } catch {
+      setPdfError("AI decomposition failed. Please try again.");
+      setPdfPhase("error");
+    }
+  };
 
-      const proposalTitle =
-        decomposed.proposal?.title ||
-        fileName.replace(/\.pdf$/i, "") ||
-        "Imported Proposal";
-      const proposalSlug = proposalTitle
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 48);
-      const proposalId = `proposal-${proposalSlug || "imported"}`;
-      const importBatchId = `${proposalId}-${Date.now()}`;
+  const handleDraftUpdate = (key: string, patch: Partial<DraftTask>) =>
+    setDraftTasks((prev) =>
+      prev.map((task) => (task.key === key ? { ...task, ...patch } : task)),
+    );
 
-      const created = new Set<string>();
-      const failed = new Set<string>();
-      const subtaskCounts: Record<string, number> = {};
-      const subtasksMap: Record<string, string[]> = {};
-      const payloadMap: Record<string, CreateTaskPayload> = {};
+  const handleDraftDelete = (key: string) =>
+    setDraftTasks((prev) => prev.filter((task) => task.key !== key));
 
-      try {
-        for (let pi = 0; pi < decomposed.programs.length; pi++) {
-          const program = decomposed.programs[pi];
-          const programId = `${proposalId}-program-${pi + 1}`;
+  const handleDraftAdd = (
+    programIdx: number,
+    projectIdx: number,
+    activityIdx: number,
+  ) => {
+    const sibling = draftTasks.find(
+      (task) =>
+        task.programIdx === programIdx &&
+        task.projectIdx === projectIdx &&
+        task.activityIdx === activityIdx,
+    );
+    const proposalTitle =
+      sibling?.proposalTitle ||
+      pdfFileName.replace(/\.pdf$/i, "") ||
+      "Imported Proposal";
+    const programTitle = sibling?.programTitle || "Program";
+    const projectTitle = sibling?.projectTitle || "Project";
+    const activityTitle = sibling?.activityTitle || "Activity";
+    const hierarchyIds = buildHierarchyIds(
+      proposalTitle,
+      programTitle,
+      projectTitle,
+      activityTitle,
+      programIdx,
+      projectIdx,
+      activityIdx,
+    );
+    const newKey = `${programIdx}-${projectIdx}-${activityIdx}-${Date.now()}`;
 
-          for (let pj = 0; pj < program.projects.length; pj++) {
-            const project = program.projects[pj];
-            const projectId = `${programId}-project-${pj + 1}`;
+    setDraftTasks((prev) => [
+      ...prev,
+      {
+        key: newKey,
+        proposalTitle,
+        proposalId: sibling?.proposalId || hierarchyIds.proposalId,
+        programIdx,
+        projectIdx,
+        activityIdx,
+        taskIdx: Date.now(),
+        programId: sibling?.programId || hierarchyIds.programId,
+        programTitle,
+        projectId: sibling?.projectId || hierarchyIds.projectId,
+        projectTitle,
+        activityId: sibling?.activityId || hierarchyIds.activityId,
+        activityTitle,
+        activitySchedule: sibling?.activitySchedule || "",
+        title: "New Task",
+        description: "",
+        deadline: "",
+        priority: "medium",
+        requiredSkills: [],
+        assignedMemberIds: [],
+        leadMemberId: null,
+        burnoutWarning: false,
+        reasoning: "",
+        enabled: true,
+      },
+    ]);
+  };
 
-            // Create milestones input for this project
-            const milestonesInput = project.activities.map((activity) => ({
-              title: activity.title.trim(),
-              dueDate: activity.schedule || null,
-            }));
+  const handleCommit = async () => {
+    const toCreate = draftTasks.filter((t) => t.enabled);
+    if (toCreate.length === 0) return;
+    setCommitting(true);
+    setCommitMessage("Committing projects and milestones...");
 
-            let dbProjectId = "";
+    const batchPrefix =
+      toCreate[0]?.proposalId ||
+      `proposal-${slugifyFragment(pdfFileName.replace(/\.pdf$/i, ""), "imported")}`;
+    const importBatchId = `${batchPrefix}-${Date.now()}`;
+    let created = 0;
+    let failed = 0;
+
+    // Grouping map: projectTitle -> { projectTitle, activityTitle -> tasks[] }
+    const projectGroups = new Map<
+      string,
+      {
+        projectTitle: string;
+        proposalTitle: string;
+        proposalId: string;
+        programId: string;
+        programTitle: string;
+        projectId: string;
+        activities: Map<string, { activityTitle: string; schedule: string; tasks: typeof toCreate }>;
+      }
+    >();
+
+    toCreate.forEach((dt) => {
+      const projKey = dt.projectTitle.trim();
+      if (!projectGroups.has(projKey)) {
+        projectGroups.set(projKey, {
+          projectTitle: dt.projectTitle,
+          proposalTitle: dt.proposalTitle,
+          proposalId: dt.proposalId,
+          programId: dt.programId,
+          programTitle: dt.programTitle,
+          projectId: dt.projectId,
+          activities: new Map(),
+        });
+      }
+      const projGroup = projectGroups.get(projKey)!;
+
+      const actKey = dt.activityTitle.trim();
+      if (!projGroup.activities.has(actKey)) {
+        projGroup.activities.set(actKey, {
+          activityTitle: dt.activityTitle,
+          schedule: dt.activitySchedule || "",
+          tasks: [],
+        });
+      }
+      projGroup.activities.get(actKey)!.tasks.push(dt);
+    });
+
+    try {
+      for (const projGroup of projectGroups.values()) {
+        const milestonesInput = Array.from(projGroup.activities.values()).map((act) => ({
+          title: act.activityTitle.trim(),
+          dueDate: act.schedule || null,
+        }));
+
+        let dbProjectId = "";
+        try {
+          // Check for existing project to prevent duplicate imports
+          const { data: existingProjs } = await supabase
+            .from("projects")
+            .select("id")
+            .eq("title", projGroup.projectTitle.trim())
+            .eq("org_id", departmentFilter || "")
+            .is("archived_at", null);
+
+          if (existingProjs && existingProjs.length > 0) {
+            dbProjectId = existingProjs[0].id;
+          } else {
+            const newProj = await createProject({
+              title: projGroup.projectTitle.trim(),
+              description: `Imported via proposal: ${projGroup.proposalTitle}`,
+              orgId: departmentFilter || null,
+              ownerId: currentUserId || null,
+              status: "active",
+              priority: "medium",
+              milestones: milestonesInput,
+            });
+            dbProjectId = newProj.id;
+          }
+        } catch (projErr) {
+          console.error("Failed to create/resolve project:", projGroup.projectTitle, projErr);
+          dbProjectId = projGroup.projectId;
+        }
+
+        // Fetch milestone mapping
+        let milestoneMap = new Map<string, string>();
+        try {
+          const dbMilestones = await fetchMilestones(dbProjectId);
+          milestoneMap = new Map(dbMilestones.map((m) => [m.title.toLowerCase().trim(), m.id]));
+        } catch (mErr) {
+          console.error("Failed to fetch milestones for project:", dbProjectId, mErr);
+        }
+
+        // Create tasks for each activity
+        for (const act of projGroup.activities.values()) {
+          const dbMilestoneId = milestoneMap.get(act.activityTitle.toLowerCase().trim()) || "";
+
+          for (const dt of act.tasks) {
             try {
-              // Check for existing project to prevent duplicates
-              const { data: existingProjs } = await supabase
-                .from("projects")
-                .select("id")
-                .eq("title", project.title.trim())
-                .eq("org_id", userProfile?.departmentId || "")
-                .is("archived_at", null);
+              const selectedTeamMembers = dt.assignedMemberIds
+                .map((id) => employeeById[id])
+                .filter((member): member is Employee => Boolean(member));
+              const leadMember =
+                (dt.leadMemberId ? employeeById[dt.leadMemberId] : undefined) ||
+                selectedTeamMembers[0];
 
-              if (existingProjs && existingProjs.length > 0) {
-                dbProjectId = existingProjs[0].id;
-              } else {
-                const newProj = await createProject({
-                  title: project.title.trim(),
-                  description: `Imported via proposal: ${proposalTitle}`,
-                  orgId: userProfile?.departmentId || null,
-                  ownerId: userProfile?.uid || null,
-                  status: "active",
-                  priority: "medium",
-                  milestones: milestonesInput,
-                });
-                dbProjectId = newProj.id;
-              }
-            } catch (projErr) {
-              console.error("Failed to create/resolve project:", project.title, projErr);
-              dbProjectId = projectId;
-            }
+              const payload: CreateTaskPayload = {
+                title: dt.title,
+                description: dt.description || "No description provided.",
+                deadline: dt.deadline || "",
+                priority: dt.priority,
+                tags: dt.requiredSkills,
+                status: "pending_assignment",
+                department: departmentFilter || "",
+                orgId: departmentFilter || undefined,
+                teamId: departmentFilter || "",
+                teamName:
+                  leadMember?.departmentName ||
+                  leadMember?.department ||
+                  departmentFilter ||
+                  "Imported",
+                teamMemberIds: selectedTeamMembers.map((member) => member.id),
+                teamMemberNames: selectedTeamMembers.map((member) => member.name),
+                assigneeId: leadMember?.id,
+                assigneeName: leadMember?.name,
+                recommendedEmployeeIds: dt.assignedMemberIds,
+                recommendationReasoning: dt.reasoning,
+                recommendationSource: "import",
+                recommendationLeadId: dt.leadMemberId || undefined,
+                burnoutWarning: dt.burnoutWarning,
+                proposalId: dt.proposalId,
+                proposalTitle: dt.proposalTitle,
+                programId: dt.programId,
+                programTitle: dt.programTitle,
+                projectId: dt.projectId,
+                projectTitle: dt.projectTitle,
+                activityId: dt.activityId,
+                activityTitle: dt.activityTitle,
+                activitySchedule: dt.activitySchedule,
+                linkedProjectId: dbProjectId,
+                milestoneId: dbMilestoneId,
+                hierarchyPath: [
+                  dt.proposalTitle,
+                  dt.programTitle,
+                  dt.projectTitle,
+                  dt.activityTitle,
+                ]
+                  .filter(Boolean)
+                  .join(" > "),
+                importBatchId,
+              };
 
-            // Fetch milestone mapping for this project
-            let milestoneMap = new Map<string, string>();
-            try {
-              const dbMilestones = await fetchMilestones(dbProjectId);
-              milestoneMap = new Map(dbMilestones.map((m) => [m.title.toLowerCase().trim(), m.id]));
-            } catch (mErr) {
-              console.error("Failed to fetch milestones for project:", dbProjectId, mErr);
-            }
-
-            for (let ai = 0; ai < project.activities.length; ai++) {
-              const activity = project.activities[ai];
-              const activityId = `${projectId}-activity-${ai + 1}`;
-              const dbMilestoneId = milestoneMap.get(activity.title.toLowerCase().trim()) || "";
-
-              for (let ti = 0; ti < activity.tasks.length; ti++) {
-                const task = activity.tasks[ti];
-                const key = `${pi}-${pj}-${ai}-${ti}`;
-                const subtaskTitles = task.subtasks || [];
-                subtasksMap[key] = subtaskTitles;
-
-                const recommendedIds = task.recommendedEmployeeIds || [];
-                const recommendedMembers = recommendedIds
-                  .map((id) => employeeById[id])
-                  .filter((member): member is Employee => Boolean(member));
-                const leadMember = recommendedMembers[0];
-
-                const payload: CreateTaskPayload = {
-                  title: task.title,
-                  description: [
-                    task.description,
-                    `Context:\nProgram: ${program.title}\nProject: ${project.title}\nActivity: ${activity.title}`,
-                  ]
-                    .filter(Boolean)
-                    .join("\n\n"),
-                  deadline: activity.schedule || "",
-                  priority: task.priority || "medium",
-                  tags: task.requiredSkills || [],
-                  status: "pending_assignment",
-                  department: userProfile?.departmentId || "",
-                  orgId: userProfile?.departmentId || undefined,
-                  teamId: userProfile?.departmentId || "",
-                  teamName:
-                    leadMember?.departmentName ||
-                    leadMember?.department ||
-                    userProfile?.departmentId ||
-                    "Imported",
-                  teamMemberIds: recommendedMembers.map((member) => member.id),
-                  teamMemberNames: recommendedMembers.map((member) => member.name),
-                  assigneeId: leadMember?.id,
-                  assigneeName: leadMember?.name,
-                  recommendedEmployeeIds: recommendedIds,
-                  recommendationReasoning: task.recommendationReasoning,
-                  recommendationSource:
-                    recommendedIds.length > 0 || task.recommendationReasoning
-                      ? "import"
-                      : undefined,
-                  recommendationLeadId: recommendedIds[0],
-                  burnoutWarning: task.burnoutWarning,
-                  proposalId,
-                  proposalTitle,
-                  programId,
-                  programTitle: program.title,
-                  projectId,
-                  projectTitle: project.title,
-                  activityId,
-                  activityTitle: activity.title,
-                  activitySchedule: activity.schedule || "",
-                  linkedProjectId: dbProjectId,
-                  milestoneId: dbMilestoneId,
-                  hierarchyPath: [
-                    proposalTitle,
-                    program.title,
-                    project.title,
-                    activity.title,
-                  ]
-                    .filter(Boolean)
-                    .join(" > "),
-                  importBatchId,
-                };
-
-                payloadMap[key] = payload;
-
-                try {
-                  const createdTask = await createTask(payload);
-                  created.add(key);
-
-                  if (subtaskTitles.length > 0) {
-                    try {
-                      const createdSubtasks = await createSubtasksBatch(
-                        createdTask.id,
-                        subtaskTitles,
-                        "ai_extracted",
-                      );
-                      subtaskCounts[key] = createdSubtasks.length;
-                    } catch (subErr) {
-                      console.error("Failed to create subtasks for task:", key, subErr);
-                    }
-                  }
-                } catch (err) {
-                  console.error("Failed to auto-create task:", err);
-                  failed.add(key);
-                }
-              }
+              await createTask(payload);
+              created++;
+            } catch (err) {
+              console.error("Failed to commit task from draft:", dt.title, err);
+              failed++;
             }
           }
         }
-      } catch (err) {
-        console.error("Failed to run auto-creation process:", err);
       }
+    } catch (err) {
+      console.error("Failed during commit transaction:", err);
+    }
 
-      setTaskPayloads(payloadMap);
-      setTaskSubtasksByKey(subtasksMap);
-      setCreatedTaskKeys(created);
-      setFailedTaskKeys(failed);
-      setSubtasksCreatedByKey(subtaskCounts);
-
-      if (failed.size > 0) {
-        setAutoCreateStatus("error");
-        setAutoCreateMessage(
-          `${failed.size} task${failed.size === 1 ? "" : "s"} failed to create.`,
-        );
-      } else {
-        setAutoCreateStatus("done");
-        setAutoCreateMessage(
-          `Created ${created.size} task${created.size === 1 ? "" : "s"} in the Task Board.`,
-        );
+    setCommitting(false);
+    if (created > 0) {
+      toast("Successfully imported proposal. Created projects and tasks.", "success");
+      if (onClose) {
+        onClose();
       }
-    },
-    [employeeById, fileName, userProfile?.departmentId, userProfile?.uid],
-  );
-
-  const retryFailedTasks = useCallback(async () => {
-    if (failedTaskKeys.size === 0) return;
-
-    setAutoCreateStatus("creating");
-    const created = new Set(createdTaskKeys);
-    const failed: string[] = [];
-
-    await Promise.all(
-      Array.from(failedTaskKeys).map(async (key) => {
-        const payload = taskPayloads[key];
-        if (!payload) {
-          failed.push(key);
-          return;
-        }
-        try {
-          await createTask(payload);
-          created.add(key);
-        } catch (err) {
-          console.error("Retry failed for task:", err);
-          failed.push(key);
-        }
-      }),
-    );
-
-    setCreatedTaskKeys(created);
-    setFailedTaskKeys(new Set(failed));
-
-    if (failed.length > 0) {
-      setAutoCreateStatus("error");
-      setAutoCreateMessage(
-        `${failed.length} task${failed.length === 1 ? "" : "s"} still failed to create.`,
-      );
     } else {
-      setAutoCreateStatus("done");
-      setAutoCreateMessage("All tasks created successfully.");
+      setCommitMessage(
+        `Created ${created} task${created !== 1 ? "s" : ""}; ${failed} failed to save.`,
+      );
     }
-  }, [createdTaskKeys, failedTaskKeys, taskPayloads]);
+  };
 
-  const handleFile = useCallback(
-    async (file: File) => {
-      if (!file.name.toLowerCase().endsWith(".pdf")) {
-        setError("Please upload a PDF file.");
-        setPhase("error");
-        return;
-      }
+  return (
+    <div className="p-6 font-['Lexend:Regular',_sans-serif]">
+      {/* Importer container */}
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between pb-4 border-b border-neutral-100">
+          <div>
+            <h1 className="text-[20px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">
+              PDF Proposal Importer
+            </h1>
+            <p className="text-[12px] text-neutral-500 mt-1">
+              Decompose a government proposal PDF into Programs, Projects, and Tasks with AI recommendation.
+            </p>
+          </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-500 hover:text-neutral-900"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
 
-      setFileName(file.name);
-      setError("");
-      setResult(null);
-      setAutoCreateStatus("idle");
-      setAutoCreateMessage("");
-      setCreatedTaskKeys(new Set());
-      setFailedTaskKeys(new Set());
-      setTaskPayloads({});
-      setTaskSubtasksByKey({});
-      setSubtasksCreatedByKey({});
-      setProgressMsg("");
+        {/* PDF Import Tab content */}
+        <div>
+          {/* Idle — drop zone */}
+          {pdfPhase === "idle" && (
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files[0];
+                if (f) handlePdfFile(f);
+              }}
+              onClick={() => pdfFileRef.current?.click()}
+              className="cursor-pointer rounded-2xl border-2 border-dashed border-neutral-300 bg-neutral-50 p-14 text-center hover:border-violet-400 hover:bg-violet-50/30 transition group"
+            >
+              <Upload
+                size={40}
+                className="mx-auto mb-3 text-neutral-300 group-hover:text-violet-400 transition"
+              />
+              <div className="text-[15px] font-['Lexend:SemiBold',_sans-serif] text-neutral-700">
+                Drop a government proposal PDF here
+              </div>
+              <div className="text-[12px] text-neutral-400 mt-1">
+                or click to browse · AI decomposes it into Programs → Projects → Activities → Tasks
+              </div>
+              <div className="mt-4 text-[11px] text-neutral-400 bg-white border border-neutral-200 rounded-full px-4 py-1.5 inline-block">
+                Results appear here as an editable draft · nothing is saved until you commit
+              </div>
+              <input
+                ref={pdfFileRef}
+                type="file"
+                accept=".pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handlePdfFile(f);
+                }}
+              />
+            </div>
+          )}
 
-      // Phase 1: Extract text
-      setPhase("extracting");
-      let text: string;
-      try {
-        text = await extractTextFromPdf(file);
-        if (!text.trim()) {
-          setError("Could not extract text from PDF. It may be image-based.");
-          setPhase("error");
-          return;
-        }
-      } catch (err) {
-        console.error("PDF extraction error:", err);
-        setError("Failed to read PDF file. Please try a different file.");
-        setPhase("error");
-        return;
-      }
+          {/* Extracting / Decomposing */}
+          {(pdfPhase === "extracting" ||
+            pdfPhase === "decomposing") && (
+            <div className="rounded-2xl border border-neutral-200 bg-white p-14 text-center">
+              <Loader2
+                size={36}
+                className="mx-auto mb-4 text-violet-600 animate-spin"
+              />
+              <div className="text-[16px] font-['Lexend:SemiBold',_sans-serif] text-neutral-800">
+                {pdfPhase === "extracting"
+                  ? "Extracting text from PDF…"
+                  : "AI is decomposing the proposal…"}
+              </div>
+              <div className="text-[12px] text-neutral-400 mt-1">
+                {pdfFileName} ·{" "}
+                {pdfPhase === "extracting"
+                  ? "Reading pages"
+                  : "This may take up to 2 minutes for large proposals"}
+              </div>
+              <div className="flex justify-center gap-3 mt-6">
+                <div
+                  className={`w-2 h-2 rounded-full ${pdfPhase === "extracting" ? "bg-violet-600 animate-pulse" : "bg-emerald-500"}`}
+                />
+                <div
+                  className={`w-2 h-2 rounded-full ${pdfPhase === "decomposing" ? "bg-violet-600 animate-pulse" : "bg-neutral-200"}`}
+                />
+              </div>
+            </div>
+          )}
 
-      // Phase 2: Decompose via LLM
-      setPhase("decomposing");
-      setProgressMsg("");
-      try {
-        console.log("ProposalImport [DEBUG]: Sourced deptEmployees passed to AI:", deptEmployees.map(e => ({ id: e.id, name: e.name, department: e.department, jobTitle: e.jobTitle, skills: e.jobDescription })));
-        const decomposed = await decomposeProposal(
-          text,
-          file.name.replace(/\.pdf$/i, ""),
-          deptEmployees,
-          employeeNotes,
-          (current, total, partTitle) => {
-            setProgressMsg(`Processing part ${current} of ${total}: ${partTitle}`);
-          },
-        );
-        setResult(decomposed);
-        setPhase("done");
-        setAutoCreateStatus("creating");
-        await autoCreateTasks(decomposed);
-      } catch (err) {
-        console.error("Decomposition error:", err);
-        setError("AI decomposition failed. Please try again.");
-        setPhase("error");
-      }
-    },
-    [deptEmployees, employeeNotes, autoCreateTasks],
+          {/* Error */}
+          {pdfPhase === "error" && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-10 text-center">
+              <AlertCircle
+                size={32}
+                className="mx-auto mb-3 text-red-500"
+              />
+              <div className="text-[14px] font-['Lexend:SemiBold',_sans-serif] text-red-800">
+                Import Failed
+              </div>
+              <div className="text-[12px] text-red-600 mt-1">
+                {pdfError}
+              </div>
+              <button
+                onClick={() => {
+                  setPdfPhase("idle");
+                  setPdfError("");
+                }}
+                className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-red-600 text-white text-[12px] font-['Lexend:Medium',_sans-serif] rounded-xl hover:bg-red-700 transition"
+              >
+                Try Again
+              </button>
+            </div>
+          )}
+
+          {/* Review Draft */}
+          {pdfPhase === "review" && draftTasks.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-[12px] text-neutral-500 font-['Lexend:Regular',_sans-serif]">
+                  AI draft loaded from{" "}
+                  <span className="text-neutral-800 font-['Lexend:Medium',_sans-serif]">
+                    {pdfFileName}
+                  </span>{" "}
+                  · Review and edit each task before committing.
+                </div>
+                <button
+                  onClick={() => {
+                    setPdfPhase("idle");
+                    setPdfFileName("");
+                    setCommitMessage("");
+                    setDraftTasks([]);
+                  }}
+                  className="text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-500 hover:text-neutral-800"
+                >
+                  Import Another
+                </button>
+              </div>
+
+              <DraftCockpit
+                draftTasks={draftTasks}
+                employees={deptEmployees}
+                allEmployees={allEmployees}
+                employeeNotes={employeeNotes}
+                onUpdate={handleDraftUpdate}
+                onDelete={handleDraftDelete}
+                onAdd={handleDraftAdd}
+                onOpenModal={(key) => {
+                  setAssignModalTaskKey(key);
+                  setAssignModalOpen(true);
+                }}
+                onCommit={handleCommit}
+                committing={committing}
+                commitMessage={commitMessage}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      <AssignmentModal
+        open={assignModalOpen}
+        onClose={() => {
+          setAssignModalOpen(false);
+          setAssignModalTaskKey(null);
+        }}
+        employees={allEmployees && allEmployees.length > 0 ? allEmployees : deptEmployees}
+        employeeNotes={employeeNotes}
+        selectedIds={currentDraftTask?.assignedMemberIds || []}
+        leadId={currentDraftTask?.leadMemberId || null}
+        onConfirm={(memberIds, leadId) => {
+          if (assignModalTaskKey) {
+            handleDraftUpdate(assignModalTaskKey, {
+              assignedMemberIds: memberIds,
+              leadMemberId: leadId,
+            });
+          }
+        }}
+      />
+    </div>
   );
+}
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      const file = e.dataTransfer.files[0];
-      if (file) handleFile(file);
-    },
-    [handleFile],
-  );
+// ─── Draft Task Row Component ─────────────────────────────────────
 
-  const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) handleFile(file);
-    },
-    [handleFile],
-  );
-
-  const getInitials = (name: string) =>
-    name
-      .split(" ")
-      .filter(Boolean)
-      .map((p) => p[0])
-      .slice(0, 2)
-      .join("")
-      .toUpperCase();
-
-  const summaryCounts = useMemo(() => {
-    if (!result) {
-      return { programs: 0, projects: 0, activities: 0, tasks: 0 };
-    }
-    const programs = result.programs.length;
-    const projects = result.programs.reduce(
-      (sum, program) => sum + program.projects.length,
-      0,
-    );
-    const activities = result.programs.reduce(
-      (sum, program) =>
-        sum +
-        program.projects.reduce(
-          (acc, project) => acc + project.activities.length,
-          0,
-        ),
-      0,
-    );
-    const tasks = result.programs.reduce(
-      (sum, program) =>
-        sum +
-        program.projects.reduce(
-          (acc, project) =>
-            acc +
-            project.activities.reduce(
-              (taskSum, activity) => taskSum + activity.tasks.length,
-              0,
-            ),
-          0,
-        ),
-      0,
-    );
-
-    return { programs, projects, activities, tasks };
-  }, [result]);
-
-  const boardStyles = useMemo(
-    () =>
-      ({
-        "--board-bg": "#f7f4ee",
-        "--board-panel": "#ffffff",
-        "--board-accent": "#0f766e",
-        "--board-accent-soft": "#e6f4f1",
-        "--board-border": "#e6e1d7",
-        "--board-shadow": "rgba(15, 118, 110, 0.12)",
-      }) as React.CSSProperties,
-    [],
-  );
-
-  // ─── Render ────────────────────────────────────────────────────
+function DraftTaskRow({
+  dt,
+  employees,
+  employeeNotes: _employeeNotes,
+  onUpdate,
+  onDelete,
+  onOpenModal,
+}: {
+  dt: DraftTask;
+  employees: Employee[];
+  employeeNotes?: EmployeeNotesMap;
+  onUpdate: (key: string, patch: Partial<DraftTask>) => void;
+  onDelete: (key: string) => void;
+  onOpenModal: (key: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const assignedEmps = dt.assignedMemberIds
+    .map((id) => employees.find((e) => e.id === id))
+    .filter((emp): emp is Employee => Boolean(emp));
+  const pm = priorityMeta[dt.priority] || priorityMeta.medium;
 
   return (
     <div
-      className="p-8 min-h-full font-['Lexend:Regular',_sans-serif] bg-[var(--board-bg)]"
-      style={boardStyles}
+      className={`px-6 py-3 flex items-start gap-3 group transition-all ${
+        dt.enabled ? "" : "opacity-40"
+      } hover:bg-neutral-50/60`}
     >
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <div className="flex items-center gap-2 text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-400 uppercase tracking-wider mb-1">
-            <FileText size={12} /> Programs & Activities · Proposal Import
+      {/* Enable checkbox */}
+      <button
+        onClick={() => onUpdate(dt.key, { enabled: !dt.enabled })}
+        className="shrink-0 mt-0.5"
+      >
+        {dt.enabled ? (
+          <div className="w-4 h-4 rounded bg-neutral-900 border border-neutral-900 flex items-center justify-center">
+            <Check size={10} className="text-white" strokeWidth={2.5} />
           </div>
-          <h1 className="text-[22px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">
-            PDF Proposal Import
-          </h1>
-          <p className="text-[13px] text-neutral-500 mt-0.5">
-            Upload a government proposal PDF → AI decomposes it into Programs →
-            Projects → Activities → Tasks with employee suggestions.
-          </p>
-        </div>
-        {result && (
-          <button
-            onClick={() => {
-              setResult(null);
-              setPhase("idle");
-              setFileName("");
-              setAutoCreateStatus("idle");
-              setAutoCreateMessage("");
-              setCreatedTaskKeys(new Set());
-              setFailedTaskKeys(new Set());
-              setTaskPayloads({});
-              setTaskSubtasksByKey({});
-              setSubtasksCreatedByKey({});
-              setProgressMsg("");
-            }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-['Lexend:Medium',_sans-serif] bg-white text-neutral-700 border border-neutral-200 hover:bg-neutral-50"
-          >
-            <Upload size={13} /> Import Another
-          </button>
+        ) : (
+          <div className="w-4 h-4 rounded border-2 border-neutral-300" />
+        )}
+      </button>
+
+      {/* Priority bar */}
+      <div className={`w-1 h-10 rounded-full shrink-0 mt-0.5 ${pm.bar}`} />
+
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        {editing ? (
+          <div className="space-y-2">
+            <input
+              autoFocus
+              value={dt.title}
+              onChange={(e) => onUpdate(dt.key, { title: e.target.value })}
+              className="w-full text-[13px] font-['Lexend:Medium',_sans-serif] text-neutral-900 border border-neutral-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-neutral-500"
+            />
+            <textarea
+              rows={2}
+              value={dt.description}
+              onChange={(e) =>
+                onUpdate(dt.key, { description: e.target.value })
+              }
+              className="w-full text-[12px] text-neutral-600 border border-neutral-200 rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:border-neutral-400"
+            />
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                type="date"
+                value={dt.deadline}
+                onChange={(e) => onUpdate(dt.key, { deadline: e.target.value })}
+                className="text-[12px] border border-neutral-200 rounded-lg px-2.5 py-1 focus:outline-none focus:border-neutral-400"
+              />
+              <select
+                value={dt.priority}
+                onChange={(e) =>
+                  onUpdate(dt.key, {
+                    priority: e.target.value as "low" | "medium" | "high",
+                  })
+                }
+                className="text-[12px] border border-neutral-200 rounded-lg px-2.5 py-1 focus:outline-none bg-white"
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+              <button
+                onClick={() => setEditing(false)}
+                className="text-[11px] font-['Lexend:Medium',_sans-serif] text-white bg-neutral-800 border border-neutral-200 rounded-lg px-3 py-1 hover:bg-neutral-900 transition"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="text-[13px] font-['Lexend:Medium',_sans-serif] text-neutral-900">
+              {dt.title}
+            </div>
+            {dt.description && (
+              <div className="text-[11px] text-neutral-500 mt-0.5 line-clamp-1">
+                {dt.description}
+              </div>
+            )}
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              {dt.deadline && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-neutral-500 bg-neutral-100 rounded-full px-2 py-0.5">
+                  <Clock size={9} />
+                  {dt.deadline}
+                </span>
+              )}
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded-full ${pm.badge}`}
+              >
+                {pm.label}
+              </span>
+              {dt.requiredSkills.slice(0, 2).map((s) => (
+                <span
+                  key={s}
+                  className="text-[10px] bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded-full"
+                >
+                  {s}
+                </span>
+              ))}
+              {dt.burnoutWarning && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 bg-amber-100 border border-amber-200 rounded-full px-2 py-0.5">
+                  <AlertCircle size={9} />
+                  Burnout risk
+                </span>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Team assignment button */}
+        <button
+          onClick={() => onOpenModal(dt.key)}
+          className="mt-2 flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-dashed border-neutral-300 hover:border-violet-400 hover:bg-violet-50/40 transition group/assign w-full max-w-xs text-left"
+        >
+          <Users
+            size={12}
+            className="text-neutral-400 group-hover/assign:text-violet-600 shrink-0"
+          />
+          {assignedEmps.length === 0 ? (
+            <span className="text-[11px] text-neutral-400 group-hover/assign:text-violet-600">
+              Assign team members…
+            </span>
+          ) : (
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              {assignedEmps.slice(0, 5).map((emp) => (
+                <span
+                  key={emp.id}
+                  title={emp.name}
+                  className={`w-5 h-5 rounded-full text-[9px] text-white flex items-center justify-center font-['Lexend:SemiBold',_sans-serif] shrink-0 ${
+                    emp.id === dt.leadMemberId
+                      ? "ring-2 ring-amber-400 ring-offset-1"
+                      : ""
+                  } ${
+                    emp.currentWorkload >= 80
+                      ? "bg-red-500"
+                      : emp.currentWorkload >= 60
+                        ? "bg-amber-500"
+                        : "bg-neutral-800"
+                  }`}
+                >
+                  {getInitials(emp.name)}
+                </span>
+              ))}
+              {assignedEmps.length > 5 && (
+                <span className="text-[10px] text-neutral-400">
+                  +{assignedEmps.length - 5}
+                </span>
+              )}
+              <span className="text-[10px] text-neutral-500 ml-1 truncate">
+                Lead:{" "}
+                {assignedEmps
+                  .find((e) => e.id === dt.leadMemberId)
+                  ?.name?.split(" ")[0] ||
+                  assignedEmps[0]?.name?.split(" ")[0] ||
+                  "TBD"}
+              </span>
+            </div>
+          )}
+          <ChevronRight
+            size={11}
+            className="text-neutral-300 ml-auto group-hover/assign:text-violet-400 shrink-0"
+          />
+        </button>
+
+        {dt.reasoning && !editing && (
+          <div className="mt-1.5 text-[10px] text-violet-600 italic line-clamp-1">
+            {dt.reasoning}
+          </div>
         )}
       </div>
 
-      {/* Upload Zone */}
-      {phase === "idle" && (
-        <div
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={handleDrop}
-          onClick={() => fileRef.current?.click()}
-          className="cursor-pointer rounded-2xl border-2 border-dashed border-neutral-300 bg-neutral-50 p-16 text-center transition hover:border-violet-400 hover:bg-violet-50/30"
+      {/* Action buttons */}
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition shrink-0 mt-0.5">
+        <button
+          onClick={() => setEditing(!editing)}
+          className="p-1.5 rounded-lg hover:bg-neutral-100 text-neutral-400 hover:text-neutral-700 transition"
+          title="Edit task"
         >
-          <Upload size={40} className="mx-auto mb-4 text-neutral-400" />
-          <div className="text-[16px] font-['Lexend:SemiBold',_sans-serif] text-neutral-700">
-            Drop a PDF proposal here
-          </div>
-          <div className="text-[13px] text-neutral-500 mt-1">
-            or click to browse · Supports government proposal PDFs
-          </div>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf"
-            className="hidden"
-            onChange={handleInputChange}
-          />
-        </div>
-      )}
+          <Edit2 size={12} />
+        </button>
+        <button
+          onClick={() => onDelete(dt.key)}
+          className="p-1.5 rounded-lg hover:bg-red-50 text-neutral-400 hover:text-red-600 transition"
+          title="Delete task"
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+    </div>
+  );
+}
 
-      {/* Processing */}
-      {(phase === "extracting" || phase === "decomposing") && (
-        <div className="rounded-2xl border border-neutral-200 bg-white p-16 text-center">
-          <Loader2
-            size={36}
-            className="mx-auto mb-4 text-violet-600 animate-spin"
-          />
-          <div className="text-[16px] font-['Lexend:SemiBold',_sans-serif] text-neutral-800">
-            {phase === "extracting"
-              ? "Extracting text from PDF…"
-              : progressMsg || "AI is decomposing the proposal…"}
+// ─── Draft Cockpit Component ──────────────────────────────────────
+
+function DraftCockpit({
+  draftTasks,
+  employees,
+  allEmployees,
+  employeeNotes,
+  onUpdate,
+  onDelete,
+  onAdd,
+  onOpenModal,
+  onCommit,
+  committing,
+  commitMessage,
+}: {
+  draftTasks: DraftTask[];
+  employees: Employee[];
+  allEmployees?: Employee[];
+  employeeNotes?: EmployeeNotesMap;
+  onUpdate: (key: string, patch: Partial<DraftTask>) => void;
+  onDelete: (key: string) => void;
+  onAdd: (programIdx: number, projectIdx: number, activityIdx: number) => void;
+  onOpenModal: (key: string) => void;
+  onCommit: () => void;
+  committing: boolean;
+  commitMessage: string;
+}) {
+  type ActivityGroup = {
+    title: string;
+    schedule: string;
+    ai: number;
+    tasks: DraftTask[];
+  };
+  type ProjectGroup = {
+    title: string;
+    pj: number;
+    activities: ActivityGroup[];
+  };
+  type ProgramGroup = {
+    title: string;
+    pi: number;
+    projects: ProjectGroup[];
+  };
+
+  const grouped = useMemo(() => {
+    const programs: ProgramGroup[] = [];
+    draftTasks.forEach((dt) => {
+      let program = programs.find((p) => p.pi === dt.programIdx);
+      if (!program) {
+        program = { title: dt.programTitle, pi: dt.programIdx, projects: [] };
+        programs.push(program);
+      }
+      let project = program.projects.find((p) => p.pj === dt.projectIdx);
+      if (!project) {
+        project = {
+          title: dt.projectTitle,
+          pj: dt.projectIdx,
+          activities: [],
+        };
+        program.projects.push(project);
+      }
+      let activity = project.activities.find((a) => a.ai === dt.activityIdx);
+      if (!activity) {
+        activity = {
+          title: dt.activityTitle,
+          schedule: dt.activitySchedule,
+          ai: dt.activityIdx,
+          tasks: [],
+        };
+        project.activities.push(activity);
+      }
+      activity.tasks.push(dt);
+    });
+    return programs;
+  }, [draftTasks]);
+
+  const enabledCount = draftTasks.filter((t) => t.enabled).length;
+  const proposalTitle = draftTasks[0]?.proposalTitle || "Imported Proposal";
+
+  return (
+    <div className="space-y-4">
+      {/* Summary bar */}
+      <div className="flex items-center justify-between bg-gradient-to-br from-neutral-900 to-neutral-800 rounded-2xl p-4">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-['Lexend:Medium',_sans-serif]">
+            AI Draft — Local State
           </div>
-          <div className="text-[13px] text-neutral-500 mt-1">
-            {fileName} ·{" "}
-            {phase === "extracting"
-              ? "Reading pages"
-              : progressMsg
-                ? "Each part is processed individually for better recommendations"
-                : "This may take up to 5 minutes for multi-part proposals"}
+          <div className="text-[15px] font-['Lexend:SemiBold',_sans-serif] text-white mt-0.5">
+            Review & edit before committing
           </div>
-          <div className="mt-6 flex justify-center gap-3">
-            <div
-              className={`h-2 w-2 rounded-full ${phase === "extracting" ? "bg-violet-600 animate-pulse" : "bg-emerald-500"}`}
-            />
-            <div
-              className={`h-2 w-2 rounded-full ${phase === "decomposing" ? "bg-violet-600 animate-pulse" : "bg-neutral-300"}`}
-            />
+          <div className="text-[11px] text-violet-200 mt-1">
+            Proposal: {proposalTitle}
+          </div>
+          <div className="text-[12px] text-neutral-400 mt-0.5">
+            {enabledCount} of {draftTasks.length} tasks selected · not yet saved
           </div>
         </div>
-      )}
-
-      {/* Error */}
-      {phase === "error" && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
-          <AlertCircle size={32} className="mx-auto mb-3 text-red-500" />
-          <div className="text-[15px] font-['Lexend:SemiBold',_sans-serif] text-red-800">
-            Import Failed
-          </div>
-          <div className="text-[13px] text-red-700 mt-1">{error}</div>
+        <div className="flex items-center gap-3">
+          {commitMessage && (
+            <div className="text-[12px] text-emerald-400 font-['Lexend:Medium',_sans-serif]">
+              {commitMessage}
+            </div>
+          )}
           <button
-            onClick={() => {
-              setPhase("idle");
-              setError("");
-            }}
-            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 text-white text-[12px] font-['Lexend:Medium',_sans-serif] hover:bg-red-700"
+            onClick={onCommit}
+            disabled={committing || enabledCount === 0}
+            className="flex items-center gap-2 px-5 py-2.5 bg-white text-neutral-900 text-[13px] font-['Lexend:SemiBold',_sans-serif] rounded-xl hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
           >
-            Try Again
+            {committing ? (
+              <>
+                <Loader2 size={13} className="animate-spin" /> Committing…
+              </>
+            ) : (
+              <>
+                <Check size={13} /> Commit {enabledCount} Tasks & Projects
+              </>
+            )}
           </button>
         </div>
-      )}
+      </div>
 
-      {/* Results Board */}
-      {phase === "done" && result && (
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-[var(--board-border)] bg-[var(--board-panel)] p-4 shadow-[0_16px_40px_-28px_var(--board-shadow)]">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="text-[10px] uppercase tracking-[0.3em] text-[color:var(--board-accent)]">
-                  Auto-created tasks
-                </div>
-                <div className="mt-1 text-[14px] text-neutral-700">
-                  Suggestions are ready. Assignments stay flexible for manual
-                  edits in the Task Board.
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="rounded-full border border-[var(--board-border)] bg-white px-3 py-1 text-[11px] text-neutral-600">
-                  {createdTaskKeys.size}/{summaryCounts.tasks} created
-                </div>
-                {autoCreateStatus === "creating" && (
-                  <div className="inline-flex items-center gap-2 text-[11px] text-neutral-600">
-                    <Loader2 size={12} className="animate-spin" /> Creating
-                    tasks
-                  </div>
-                )}
-                {autoCreateStatus === "error" && failedTaskKeys.size > 0 && (
-                  <button
-                    onClick={retryFailedTasks}
-                    className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-[11px] font-['Lexend:Medium',_sans-serif] text-red-700 hover:bg-red-100"
-                  >
-                    <AlertCircle size={12} /> Retry failed
-                  </button>
-                )}
-              </div>
+      {/* Programs tree */}
+      {grouped.map((program) => (
+        <div
+          key={program.pi}
+          className="rounded-2xl border border-neutral-200 bg-white overflow-hidden shadow-sm"
+        >
+          {/* Program header */}
+          <div className="flex items-center gap-3 px-5 py-3.5 bg-gradient-to-r from-violet-600 to-violet-500">
+            <Layers size={14} className="text-violet-200 shrink-0" />
+            <div className="text-[13px] font-['Lexend:SemiBold',_sans-serif] text-white">
+              {program.title}
             </div>
-            {autoCreateMessage && (
-              <div className="mt-2 text-[11px] text-neutral-500">
-                {autoCreateMessage}
+            <span className="ml-auto text-[10px] text-violet-200 uppercase tracking-[0.15em]">
+              Program
+            </span>
+          </div>
+
+          <div className="divide-y divide-neutral-100">
+            {program.projects.map((project) => (
+              <div key={project.pj}>
+                {/* Project header */}
+                <div className="flex items-center gap-2 px-5 py-2.5 bg-neutral-50 border-b border-neutral-100">
+                  <ChevronRight size={12} className="text-neutral-400" />
+                  <div className="text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-700">
+                    {project.title}
+                  </div>
+                  <span className="ml-auto text-[10px] text-neutral-400 uppercase tracking-wide">
+                    Project
+                  </span>
+                </div>
+
+                {project.activities.map((activity) => (
+                  <div key={activity.ai}>
+                    {/* Activity header */}
+                    <div className="flex items-center gap-2 px-6 py-2 bg-neutral-50/70">
+                      <div className="w-1.5 h-1.5 rounded-full bg-violet-400 shrink-0" />
+                      <div className="text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-600">
+                        {activity.title}
+                      </div>
+                      {activity.schedule && (
+                        <span className="inline-flex items-center gap-1 ml-2 text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+                          <Clock size={9} />
+                          {activity.schedule}
+                        </span>
+                      )}
+                      <button
+                        onClick={() =>
+                          onAdd(program.pi, project.pj, activity.ai)
+                        }
+                        className="ml-auto flex items-center gap-1 text-[10px] font-['Lexend:Medium',_sans-serif] text-neutral-400 hover:text-neutral-700 transition"
+                      >
+                        <Plus size={11} />
+                        Add Task
+                      </button>
+                    </div>
+
+                    {/* Tasks list */}
+                    <div className="divide-y divide-neutral-100">
+                      {activity.tasks.map((dt) => (
+                        <DraftTaskRow
+                          key={dt.key}
+                          dt={dt}
+                          employees={employees}
+                          employeeNotes={employeeNotes}
+                          onUpdate={onUpdate}
+                          onDelete={onDelete}
+                          onOpenModal={onOpenModal}
+                        />
+                      ))}
+                      {activity.tasks.length === 0 && (
+                        <div className="text-[11px] text-neutral-400 text-center py-6 italic rounded-xl border border-dashed border-neutral-100 m-4">
+                          No tasks inside this activity.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Assignment Modal Component ──────────────────────────────────
+
+function AssignmentModal({
+  open,
+  onClose,
+  employees,
+  employeeNotes,
+  selectedIds,
+  leadId,
+  onConfirm,
+}: {
+  open: boolean;
+  onClose: () => void;
+  employees: Employee[];
+  employeeNotes?: EmployeeNotesMap;
+  selectedIds: string[];
+  leadId: string | null;
+  onConfirm: (memberIds: string[], leadId: string | null) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [draft, setDraft] = useState<string[]>(selectedIds);
+  const [draftLead, setDraftLead] = useState<string | null>(leadId);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setDraft(selectedIds);
+      setDraftLead(leadId);
+      setSearch("");
+      setTimeout(() => searchRef.current?.focus(), 50);
+    }
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    if (!q) return employees;
+    return employees.filter(
+      (e) =>
+        e.name.toLowerCase().includes(q) ||
+        (e.jobTitle || "").toLowerCase().includes(q) ||
+        (e.departmentName || "").toLowerCase().includes(q),
+    );
+  }, [employees, search]);
+
+  const toggle = (id: string) => {
+    setDraft((prev) => {
+      const next = prev.includes(id)
+        ? prev.filter((x) => x !== id)
+        : [...prev, id];
+      if (draftLead && !next.includes(draftLead)) setDraftLead(next[0] || null);
+      return next;
+    });
+  };
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-[540px] max-h-[82vh] flex flex-col overflow-hidden border border-neutral-200"
+        onClick={(e) => e.stopPropagation()}
+        style={{ animation: "modalIn 0.18s ease" }}
+      >
+        <style>{`@keyframes modalIn{from{opacity:0;transform:scale(0.96) translateY(6px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
+
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-neutral-100 flex items-center justify-between shrink-0">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-400 font-['Lexend:Medium',_sans-serif]">
+              Team Assignment
+            </div>
+            <div className="text-[16px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900 mt-0.5">
+              Select Team Members
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-neutral-400 hover:text-neutral-700 p-1.5 rounded-lg hover:bg-neutral-100 transition"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="px-4 pt-3 pb-2 border-b border-neutral-100 shrink-0">
+          <div className="relative flex items-center bg-neutral-50 border border-neutral-200 rounded-xl h-[38px] focus-within:border-neutral-400 focus-within:bg-white transition">
+            <Search size={14} className="text-neutral-400 ml-3 shrink-0" />
+            <input
+              ref={searchRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name, role, or department…"
+              className="flex-1 bg-transparent px-2 text-[12px] font-['Lexend:Regular',_sans-serif] text-neutral-800 placeholder:text-neutral-400 focus:outline-none"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="pr-2.5 text-neutral-400 hover:text-neutral-700"
+              >
+                <X size={12} />
+              </button>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <div className="rounded-2xl border border-[var(--board-border)] bg-white p-4">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">
-                Programs
-              </div>
-              <div className="mt-2 text-[22px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">
-                {summaryCounts.programs}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-[var(--board-border)] bg-white p-4">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">
-                Projects
-              </div>
-              <div className="mt-2 text-[22px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">
-                {summaryCounts.projects}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-[var(--board-border)] bg-white p-4">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">
-                Activities
-              </div>
-              <div className="mt-2 text-[22px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">
-                {summaryCounts.activities}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-[var(--board-border)] bg-white p-4">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">
-                Tasks
-              </div>
-              <div className="mt-2 text-[22px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">
-                {summaryCounts.tasks}
-              </div>
-            </div>
-          </div>
-
-          {result.programs.map((program, pi) => (
-            <section
-              key={pi}
-              className="rounded-3xl border border-[var(--board-border)] bg-[var(--board-panel)] shadow-[0_20px_60px_-40px_var(--board-shadow)]"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--board-border)] bg-gradient-to-r from-[var(--board-accent-soft)] to-white px-5 py-4">
-                <div className="flex items-start gap-3">
-                  <div className="rounded-2xl border border-[var(--board-border)] bg-white p-2">
-                    <Layers
-                      size={16}
-                      className="text-[color:var(--board-accent)]"
-                    />
-                  </div>
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.3em] text-[color:var(--board-accent)]">
-                      Program
-                    </div>
-                    <div className="mt-1 text-[18px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">
-                      {program.title}
-                    </div>
-                    {program.description && (
-                      <div className="mt-1 text-[12px] text-neutral-600">
-                        {program.description}
-                      </div>
+          {/* Selected chips */}
+          {draft.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2.5">
+              {draft.map((id) => {
+                const emp = employees.find((e) => e.id === id);
+                if (!emp) return null;
+                return (
+                  <span
+                    key={id}
+                    className="inline-flex items-center gap-1 bg-violet-50 border border-violet-200 text-violet-700 text-[11px] font-['Lexend:Medium',_sans-serif] px-2 py-1 rounded-full"
+                  >
+                    {draftLead === id && (
+                      <Crown size={10} className="text-amber-500" />
                     )}
-                  </div>
-                </div>
-                <span className="rounded-full border border-[var(--board-border)] bg-white px-3 py-1 text-[10px] uppercase tracking-wider text-neutral-500">
-                  {program.projects.length} projects
-                </span>
-              </div>
-
-              <div className="px-5 pb-5 pt-4">
-                <div className="flex gap-4 overflow-x-auto pb-2">
-                  {program.projects.map((project, pj) => (
-                    <div
-                      key={pj}
-                      className="min-w-[320px] max-w-[360px] flex-shrink-0 rounded-2xl border border-[var(--board-border)] bg-white shadow-[0_14px_30px_-24px_var(--board-shadow)]"
+                    {getInitials(emp.name)} · {emp.name.split(" ")[0]}
+                    <button
+                      onClick={() => toggle(id)}
+                      className="text-violet-400 hover:text-violet-700 ml-0.5"
                     >
-                      <div className="border-b border-[var(--board-border)] bg-neutral-50 px-4 py-3">
-                        <div className="flex items-start gap-2">
-                          <FolderOpen size={14} className="text-amber-600" />
-                          <div className="min-w-0">
-                            <div className="text-[13px] font-['Lexend:Medium',_sans-serif] text-neutral-800 truncate">
-                              {project.title}
-                            </div>
-                            {project.description && (
-                              <div className="mt-1 text-[10px] text-neutral-500 line-clamp-2">
-                                {project.description}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="mt-2 text-[9px] uppercase tracking-wider text-neutral-400">
-                          {project.activities.length} activities
-                        </div>
-                      </div>
+                      <X size={10} />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
-                      <div className="p-3 space-y-3">
-                        {project.activities.map((activity, ai) => (
-                          <div
-                            key={ai}
-                            className="rounded-xl border border-neutral-200 bg-neutral-50/70"
+        {/* Employee list */}
+        <div className="flex-1 overflow-y-auto px-4 py-2">
+          {filtered.length === 0 ? (
+            <div className="text-center text-[12px] text-neutral-400 py-10">
+              No employees match "{search}"
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {filtered.map((emp) => {
+                const selected = draft.includes(emp.id);
+                const isLead = draftLead === emp.id;
+                const notes = employeeNotes?.[emp.id];
+                const tags = notes?.tags?.slice(0, 3) || [];
+                const load = emp.currentWorkload;
+                return (
+                  <div
+                    key={emp.id}
+                    onClick={() => toggle(emp.id)}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all border ${
+                      selected
+                        ? "bg-violet-50 border-violet-200"
+                        : "bg-white border-transparent hover:border-neutral-200 hover:bg-neutral-50"
+                    }`}
+                  >
+                    {/* Avatar */}
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-['Lexend:SemiBold',_sans-serif] text-white shrink-0 ${
+                        load >= 80
+                          ? "bg-red-500"
+                          : load >= 60
+                            ? "bg-amber-500"
+                            : "bg-neutral-800"
+                      }`}
+                    >
+                      {getInitials(emp.name)}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[13px] font-['Lexend:Medium',_sans-serif] text-neutral-900 truncate">
+                          {emp.name}
+                        </span>
+                        {selected && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDraftLead(isLead ? null : emp.id);
+                            }}
+                            className={`p-1 rounded-lg transition shrink-0 ${
+                              isLead
+                                ? "text-amber-500 hover:text-neutral-400"
+                                : "text-neutral-300 hover:text-amber-500"
+                            }`}
+                            title={isLead ? "Demote from lead" : "Promote to lead"}
                           >
-                            <div className="flex items-start justify-between gap-2 border-b border-neutral-200 bg-white px-3 py-2.5">
-                              <div className="min-w-0">
-                                <div className="text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-700 truncate">
-                                  {activity.title}
-                                </div>
-                                {activity.description && (
-                                  <div className="mt-1 text-[10px] text-neutral-500 line-clamp-2">
-                                    {activity.description}
-                                  </div>
-                                )}
-                              </div>
-                              {activity.schedule && (
-                                <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] text-emerald-700">
-                                  {activity.schedule}
-                                </span>
-                              )}
-                            </div>
+                            <Crown size={12} />
+                          </button>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-neutral-400 truncate">
+                        {emp.jobTitle} · {emp.departmentName || emp.department || "No Department"}
+                      </div>
+                      {tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {tags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="text-[9px] bg-neutral-100 text-neutral-600 px-2 py-0.5 rounded-full"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
-                            {activity.methodology &&
-                              activity.methodology.length > 0 && (
-                                <div className="px-3 pt-2 flex flex-wrap gap-1.5">
-                                  {activity.methodology.map((method) => (
-                                    <span
-                                      key={method}
-                                      className="rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[9px] uppercase tracking-wider text-neutral-500"
-                                    >
-                                      {method}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-
-                            <div className="px-3 pb-3 pt-2 space-y-2">
-                              {activity.tasks.map((task, ti) => {
-                                const key = taskKey(pi, pj, ai, ti);
-                                const recMembers = (
-                                  task.recommendedEmployeeIds || []
-                                )
-                                  .map((id) => employeeById[id])
-                                  .filter((e): e is Employee => Boolean(e));
-                                const isCreated = createdTaskKeys.has(key);
-                                const isFailed = failedTaskKeys.has(key);
-
-                                return (
-                                  <div
-                                    key={ti}
-                                    className={`rounded-xl border bg-white p-3 ${
-                                      isCreated
-                                        ? "border-emerald-200"
-                                        : isFailed
-                                          ? "border-red-200"
-                                          : "border-neutral-200"
-                                    }`}
-                                  >
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div className="min-w-0">
-                                        <div className="text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-800">
-                                          {task.title}
-                                        </div>
-                                        {task.description && (
-                                          <div className="mt-1 text-[10px] text-neutral-500 line-clamp-2">
-                                            {task.description}
-                                          </div>
-                                        )}
-                                      </div>
-                                      {task.priority && (
-                                        <span
-                                          className={`rounded-full px-2 py-0.5 text-[9px] uppercase ${
-                                            task.priority === "high"
-                                              ? "bg-red-100 text-red-700"
-                                              : task.priority === "medium"
-                                                ? "bg-amber-100 text-amber-700"
-                                                : "bg-emerald-100 text-emerald-700"
-                                          }`}
-                                        >
-                                          {task.priority}
-                                        </span>
-                                      )}
-                                      {task.subtasks && task.subtasks.length > 0 && (
-                                        <span className="rounded-full px-2 py-0.5 text-[9px] bg-violet-100 text-violet-700 inline-flex items-center gap-1">
-                                          <Layers size={9} /> {task.subtasks.length} steps
-                                        </span>
-                                      )}
-                                    </div>
-
-                                    {(task.requiredSkills || []).length > 0 && (
-                                      <div className="mt-2 flex flex-wrap gap-1.5">
-                                        {(task.requiredSkills || []).map(
-                                          (skill) => (
-                                            <span
-                                              key={skill}
-                                              className="rounded-full border border-[var(--board-border)] bg-[var(--board-accent-soft)] px-2 py-0.5 text-[9px] uppercase tracking-wider text-[color:var(--board-accent)]"
-                                            >
-                                              {skill}
-                                            </span>
-                                          ),
-                                        )}
-                                      </div>
-                                    )}
-
-                                    <div className="mt-2 rounded-lg border border-[var(--board-border)] bg-[var(--board-accent-soft)]/50 p-2">
-                                      <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-wider text-[color:var(--board-accent)]">
-                                        <Sparkles size={10} /> Suggested team
-                                        {task.burnoutWarning && (
-                                          <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[9px] text-amber-700">
-                                            <AlertCircle size={9} /> Burnout
-                                            risk
-                                          </span>
-                                        )}
-                                      </div>
-                                      {recMembers.length > 0 ? (
-                                        <div className="mt-2 flex flex-wrap gap-1.5">
-                                          {recMembers.map((member, mi) => (
-                                            <span
-                                              key={member.id}
-                                              className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] text-neutral-700"
-                                            >
-                                              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-neutral-900 text-[8px] font-['Lexend:Medium',_sans-serif] text-white">
-                                                {getInitials(member.name)}
-                                              </span>
-                                              {member.name}
-                                              {mi === 0 && (
-                                                <Crown
-                                                  size={9}
-                                                  className="text-amber-500 ml-0.5"
-                                                />
-                                              )}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      ) : (
-                                        <div className="mt-2 text-[10px] text-neutral-500">
-                                          No recommendation provided.
-                                        </div>
-                                      )}
-                                      {task.recommendationReasoning && (
-                                        <div className="mt-2 text-[10px] text-neutral-600">
-                                          {task.recommendationReasoning}
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    <div className="mt-2 flex items-center justify-between text-[9px] uppercase tracking-wider text-neutral-400">
-                                      <span>
-                                        {isCreated
-                                          ? "Created"
-                                          : isFailed
-                                            ? "Failed to create"
-                                            : autoCreateStatus === "creating"
-                                              ? "Creating"
-                                              : "Queued"}
-                                      </span>
-                                      {isFailed && (
-                                        <button
-                                          onClick={retryFailedTasks}
-                                          className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[9px] text-red-700"
-                                        >
-                                          Retry
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
+                    {/* Right column: workload */}
+                    <div className="text-right shrink-0">
+                      <div className="text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-800">
+                        {load}% Load
+                      </div>
+                      <div className="text-[9px] text-neutral-400 mt-0.5">
+                        {notes?.weeklyHoursLimit || 40}h limit
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </section>
-          ))}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Footer */}
+        <div className="px-5 py-3.5 bg-neutral-50 border-t border-neutral-100 flex items-center justify-between shrink-0">
+          <div className="text-[11px] text-neutral-400">
+            {draft.length} member{draft.length !== 1 ? "s" : ""} selected
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-500 hover:text-neutral-700 transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => onConfirm(draft, draftLead)}
+              className="px-4 py-2 bg-neutral-900 text-white text-[12px] font-['Lexend:SemiBold',_sans-serif] rounded-xl hover:bg-neutral-800 transition"
+            >
+              Confirm
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

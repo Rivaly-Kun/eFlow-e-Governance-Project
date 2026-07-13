@@ -10,7 +10,7 @@ import {
   Plus,
   Archive,
   ArchiveRestore,
-  Search as SearchIcon,
+
   ChevronLeft,
   Calendar,
   Users,
@@ -22,7 +22,10 @@ import {
   Building2,
   CheckCircle2,
   ListTodo,
+  ChevronDown,
+  FileText,
 } from "lucide-react";
+import ProposalImport from "../DeptHead/ProposalImport";
 import {
   createProject,
   archiveProject,
@@ -40,7 +43,6 @@ import {
 import { useProjectsData } from "../../hooks/useSupabaseData";
 import { useTasks, useUsers } from "../../hooks/useFirebaseData";
 import { useOrgs } from "../../hooks/useSupabaseData";
-import { getDescendantOrgIds } from "../../../lib/supabaseService";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../ui/Toast";
 import type { Task } from "../../services/taskService";
@@ -79,11 +81,13 @@ const MILESTONE_STATUS_META: Record<string, { label: string; tone: string }> = {
 // ─── Main ProjectsWorkspace ───────────────────────────────────────
 export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eyebrow: string }) {
   const { projects: dbProjects, loading: projectsLoading } = useProjectsData();
-  const { tasks, loading: tasksLoading } = useTasks();
+  const { loading: tasksLoading } = useTasks();
   const { orgs } = useOrgs();
   const { can } = useAuth();
   const [detailId, setDetailId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("active");
   const [orgFilter, setOrgFilter] = useState("all");
@@ -126,9 +130,43 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
         subtitle="Create, track, and manage all your projects and proposal programmes."
         actions={
           can("projects.create") ? (
-            <WButton icon={<Plus size={14} />} variant="primary" onClick={() => setComposerOpen(true)}>
-              New project
-            </WButton>
+            <div className="relative inline-flex items-center">
+              {/* Primary Action: New project */}
+              <button
+                onClick={() => setComposerOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-l-lg text-[12px] font-['Lexend:Medium',_sans-serif] bg-neutral-900 text-white hover:bg-neutral-800 transition-colors cursor-pointer border-r border-neutral-700 h-[34px]"
+              >
+                <Plus size={14} />
+                New project
+              </button>
+
+              {/* Dropdown Toggle */}
+              <button
+                onClick={() => setDropdownOpen(!dropdownOpen)}
+                className="inline-flex items-center justify-center px-2 py-2 rounded-r-lg bg-neutral-900 text-white hover:bg-neutral-800 transition-colors cursor-pointer h-[34px]"
+              >
+                <ChevronDown size={14} />
+              </button>
+
+              {/* Dropdown Menu */}
+              {dropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setDropdownOpen(false)} />
+                  <div className="absolute right-0 top-[38px] z-20 w-[180px] bg-white border border-neutral-200 rounded-lg shadow-lg py-1 mt-1 origin-top-right transition-all">
+                    <button
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        setImportOpen(true);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-neutral-700 hover:bg-neutral-50 transition-colors text-left font-['Lexend:Regular',_sans-serif]"
+                    >
+                      <FileText size={14} className="text-neutral-400" />
+                      Import Proposal PDF
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           ) : undefined
         }
       />
@@ -165,7 +203,14 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
             description={query ? "Try a different search." : "Create your first project to organize milestones and tasks."}
             action={
               can("projects.create") && !query ? (
-                <WButton icon={<Plus size={14} />} variant="primary" onClick={() => setComposerOpen(true)}>New project</WButton>
+                <div className="flex items-center gap-2">
+                  <WButton icon={<Plus size={14} />} variant="primary" onClick={() => setComposerOpen(true)}>
+                    New project
+                  </WButton>
+                  <WButton icon={<FileText size={14} />} variant="secondary" onClick={() => setImportOpen(true)}>
+                    Import Proposal PDF
+                  </WButton>
+                </div>
               ) : undefined
             }
           />
@@ -180,6 +225,26 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
 
       {composerOpen && (
         <ProjectComposer scope={scope} orgs={orgs} onClose={() => setComposerOpen(false)} onCreated={(id) => { setComposerOpen(false); setDetailId(id); }} />
+      )}
+
+      {importOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-neutral-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="relative bg-white w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Close button in top right of modal */}
+            <button
+              onClick={() => setImportOpen(false)}
+              className="absolute top-4 right-4 z-10 p-2 rounded-full hover:bg-neutral-100 text-neutral-500 hover:text-neutral-700 transition"
+              aria-label="Close"
+            >
+              <X size={16} />
+            </button>
+
+            {/* Importer View */}
+            <div className="flex-1 overflow-y-auto">
+              <ProposalImport onClose={() => setImportOpen(false)} />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -250,7 +315,6 @@ function ProjectDetail({
 }) {
   const { tasks } = useTasks();
   const { users } = useUsers();
-  const { userProfile } = useAuth();
   const { toast } = useToast();
   const [tab, setTab] = useState<"overview" | "milestones" | "tasks" | "members">("overview");
   const [milestones, setMilestones] = useState<Milestone[]>([]);
@@ -486,7 +550,6 @@ function ProjectDetail({
           ) : (
             <div className="divide-y divide-neutral-100">
               {pTasks.map((t) => {
-                const rel = relativeDays(t.deadline || t.dueDate);
                 const rejected = !!t.rejectionNote && t.status === "in_progress";
                 return (
                   <button key={t.id} onClick={() => setOpenTask(t)} className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-neutral-50">

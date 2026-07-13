@@ -169,6 +169,14 @@ export interface Task {
   importBatchId?: string;
   createdAt: number;
   updatedAt: number;
+  linkedProjectId?: string;
+  milestoneId?: string;
+  percentComplete?: number;
+  estimatedHours?: number;
+  budgetImpact?: number;
+  subtaskCount?: number;
+  subtaskCompletedCount?: number;
+  archivedAt?: number;
 }
 
 export interface TaskSubmission {
