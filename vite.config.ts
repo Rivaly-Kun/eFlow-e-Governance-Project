@@ -70,6 +70,18 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
+        '/controlpanelEflow': {
+          target: 'http://localhost:8322',
+          changeOrigin: true,
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              const existingAuth = proxyReq.getHeader('authorization');
+              if (!existingAuth && _proxyAuthKey) {
+                proxyReq.setHeader('Authorization', `Bearer ${_proxyAuthKey}`);
+              }
+            });
+          },
+        },
         '/api/admin': {
           target: 'http://localhost:8322',
           changeOrigin: true,

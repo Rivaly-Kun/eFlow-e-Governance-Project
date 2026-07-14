@@ -508,7 +508,7 @@ function ProjectDetail({
                           )}
                         </div>
                         <div className="text-[11px] font-['Lexend:Regular',_sans-serif] text-neutral-400 mt-0.5">
-                          {m.dueDate ? `Due ${formatDate(m.dueDate)} · ` : ""}{msDone}/{msTasks.length} tasks
+                          {m.dueDate ? `Due ${formatDate(m.dueDate)}` : m.description || ""} · {msDone}/{msTasks.length} tasks
                         </div>
                       </div>
                       {!isArchived && (

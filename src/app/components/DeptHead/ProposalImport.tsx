@@ -482,10 +482,14 @@ export default function ProposalImport({ onClose }: { onClose?: () => void }) {
 
     try {
       for (const projGroup of projectGroups.values()) {
-        const milestonesInput = Array.from(projGroup.activities.values()).map((act) => ({
-          title: act.activityTitle.trim(),
-          dueDate: act.schedule || null,
-        }));
+        const milestonesInput = Array.from(projGroup.activities.values()).map((act) => {
+          const isDate = act.schedule && !/month|phase|week/i.test(act.schedule) && !isNaN(Date.parse(act.schedule));
+          return {
+            title: act.activityTitle.trim(),
+            dueDate: isDate ? act.schedule : null,
+            description: act.schedule && !isDate ? `Schedule: ${act.schedule}` : "",
+          };
+        });
 
         let dbProjectId = "";
         try {
