@@ -10,6 +10,8 @@ import {
   getDescendantOrgIds,
 } from '../../lib/supabaseService';
 import { subscribeToProjects, type Project } from '../services/projectService';
+import { subscribeToTasks, type Task } from '../services/taskService';
+import { operationalMetrics } from '../services/taskSelectors';
 import { useAuth } from '../contexts/AuthContext';
 import type { Organization, UserProfile, DashboardMetrics } from '../types';
 
@@ -77,12 +79,37 @@ export function useProfiles() {
   return { profiles, loading };
 }
 
+// ─── useTasksData ────────────────────────────────────────────────
+// Realtime operational tasks (deleted rows already excluded server-side).
+export function useTasksData() {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const unsub = subscribeToTasks((data) => {
+      if (cancelled) return;
+      setTasks(data);
+      setLoading(false);
+    });
+    return () => { cancelled = true; unsub(); };
+  }, []);
+
+  return { tasks, loading, error, setError };
+}
+
 // ─── useDashboardMetrics ─────────────────────────────────────────
+// System-wide metrics. Project/task counts are now derived from LIVE data via
+// the shared selectors (previously hard-coded to 0, which showed false zeroes
+// on the Super Admin dashboard even when data existed).
 export function useDashboardMetrics(): { metrics: DashboardMetrics; loading: boolean } {
   const { profiles, loading: profilesLoading } = useProfiles();
   const { orgs, loading: orgsLoading } = useOrgs();
+  const { projects, loading: projectsLoading } = useProjectsData();
+  const { tasks, loading: tasksLoading } = useTasksData();
 
-  const loading = profilesLoading || orgsLoading;
+  const loading = profilesLoading || orgsLoading || projectsLoading || tasksLoading;
 
   const metrics: DashboardMetrics = useMemo(() => {
     const activeProfiles = profiles.filter((p) => p.is_active && p.role !== 'super_admin');
@@ -92,18 +119,21 @@ export function useDashboardMetrics(): { metrics: DashboardMetrics; loading: boo
     const avgWorkload = activeProfiles.length > 0 ? Math.round(totalWorkload / activeProfiles.length) : 0;
     const deptHeads = activeProfiles.filter((p) => p.role === 'dept_head');
 
+    // Shared selectors — same definitions every other dashboard uses.
+    const op = operationalMetrics(tasks, projects);
+
     return {
       totalUsers: activeProfiles.length,
       totalDepartments: activeOrgs.length,
-      activeProjects: 0,
-      activeTasks: 0,
-      pendingTasks: 0,
-      completedTasks: 0,
+      activeProjects: op.activeProjects,
+      activeTasks: op.activeTasks,
+      pendingTasks: op.unassignedTasks + op.inProgressTasks,
+      completedTasks: op.completedTasks,
       departmentHeads: deptHeads.length,
       overloadedEmployees: overloaded.length,
       averageWorkload: avgWorkload,
     };
-  }, [profiles, orgs]);
+  }, [profiles, orgs, projects, tasks]);
 
   return { metrics, loading };
 }

@@ -6402,6 +6402,7 @@ function SubordinateManager({
     pending_assignment: "Awaiting assignment",
     todo: "To do",
     in_progress: "In progress",
+    changes_requested: "Changes requested",
     for_review: "For review",
     completed: "Completed",
   };

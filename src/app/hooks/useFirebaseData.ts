@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { subscribeToTasks } from '../services/taskService';
+import { subscribeToProjects, type Project as OperationalProject } from '../services/projectService';
 import { subscribeToEmployees } from '../services/employeeService';
 import { subscribeToEmployeeNotes, EmployeeNotesMap } from '../services/employeeNotesService';
 import { fetchAllProfiles, subscribeToProfiles, fetchAllOrgs, subscribeToOrgs } from '../../lib/supabaseService';
@@ -69,7 +70,20 @@ export function useDepartments() {
 
 // ─── useProjects ─────────────────────────────────────────────────
 export function useProjects() {
-  return { projects: [] as Project[], loading: false };
+  const [projects, setProjects] = useState<OperationalProject[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const unsub = subscribeToProjects((data) => {
+      if (cancelled) return;
+      setProjects(data);
+      setLoading(false);
+    });
+    return () => { cancelled = true; unsub(); };
+  }, []);
+
+  return { projects, loading };
 }
 
 // ─── useTasks ────────────────────────────────────────────────────

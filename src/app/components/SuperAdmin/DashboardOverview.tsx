@@ -4,6 +4,7 @@ import { useDashboardMetrics } from "../../hooks/useSupabaseData";
 import { useOrgs } from "../../hooks/useSupabaseData";
 import { useProfiles } from "../../hooks/useSupabaseData";
 import { MetricCard, MetricCardWide } from "../ui/MetricCard";
+import { DataHealthPanel } from "./DataHealthPanel";
 import type { UserProfile } from "../../types";
 
 // ─── Pure CSS Gauge ──────────────────────────────────────────────
@@ -281,10 +282,13 @@ export function DashboardOverview() {
       </div>
 
       {/* Bottom Row */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-4 mb-4">
         <RecentList title="Latest Users" items={latestUsers} emptyText="No users yet" />
         <WorkloadHeatmap users={profiles} />
       </div>
+
+      {/* Operational data integrity (plan §5) */}
+      <DataHealthPanel />
     </div>
   );
 }

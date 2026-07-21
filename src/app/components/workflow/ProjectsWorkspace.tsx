@@ -550,14 +550,13 @@ function ProjectDetail({
           ) : (
             <div className="divide-y divide-neutral-100">
               {pTasks.map((t) => {
-                const rejected = !!t.rejectionNote && t.status === "in_progress";
                 return (
                   <button key={t.id} onClick={() => setOpenTask(t)} className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-neutral-50">
                     <div className="flex-1 min-w-0">
                       <div className="text-[12.5px] font-['Lexend:Medium',_sans-serif] text-neutral-900 truncate">{t.title}</div>
-                      <div className="text-[10.5px] text-neutral-400 mt-0.5">{t.assigneeName || "Unassigned"} · {formatDate(t.deadline || t.dueDate)}</div>
+                      <div className="text-[10.5px] text-neutral-400 mt-0.5">{t.assigneeName || "Unassigned"}{t.teamMemberNames && t.teamMemberNames.length > 1 ? ` + ${t.teamMemberNames.length - 1}` : ""} · {formatDate(t.deadline || t.dueDate)}</div>
                     </div>
-                    <TaskStatusBadge status={t.status} rejected={rejected} size="sm" />
+                    <TaskStatusBadge status={t.status} size="sm" />
                   </button>
                 );
               })}

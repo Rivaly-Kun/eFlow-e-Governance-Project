@@ -84,7 +84,10 @@ export function EmployeeMyTasks() {
     });
   }, [active, statusFilter, query]);
 
-  const rejected = active.filter((t) => t.rejectionNote && t.status === "in_progress");
+  // "Needs changes" is now the first-class changes_requested state (not an
+  // in_progress task carrying a note), so history/reports separate rework from
+  // ordinary work.
+  const rejected = active.filter((t) => t.status === "changes_requested");
 
   if (loading) return <div className="p-8"><LoadingState label="Loading your tasks…" /></div>;
 
@@ -108,6 +111,7 @@ export function EmployeeMyTasks() {
             { value: "active", label: "Active" },
             { value: "todo", label: "To Do" },
             { value: "in_progress", label: "In Progress" },
+            { value: "changes_requested", label: "Needs Changes" },
             { value: "for_review", label: "In Review" },
             { value: "all", label: "All" },
           ]}
@@ -121,7 +125,6 @@ export function EmployeeMyTasks() {
           <div className="divide-y divide-neutral-100">
             {filtered.map((t) => {
               const rel = relativeDays(t.deadline || t.dueDate);
-              const rej = !!t.rejectionNote && t.status === "in_progress";
               const pct = t.percentComplete ?? 0;
               return (
                 <button key={t.id} onClick={() => setOpen(t)} className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-neutral-50">
@@ -136,7 +139,7 @@ export function EmployeeMyTasks() {
                       <span className={`text-[10.5px] ${rel.overdue ? "text-red-600" : "text-neutral-400"}`}>{rel.label}</span>
                     </div>
                   </div>
-                  <TaskStatusBadge status={t.status} rejected={rej} size="sm" />
+                  <TaskStatusBadge status={t.status} size="sm" />
                 </button>
               );
             })}
@@ -226,7 +229,7 @@ export function EmployeeTaskHistory() {
 
   const buckets = useMemo(() => ({
     completed: mine.filter((t) => t.status === "completed" && !t.archivedAt),
-    rejected: mine.filter((t) => t.rejectionNote && t.status === "in_progress" && !t.archivedAt),
+    rejected: mine.filter((t) => t.status === "changes_requested" && !t.archivedAt),
     reopened: mine.filter((t) => t.reopenReason && !t.archivedAt),
     archived: mine.filter((t) => !!t.archivedAt),
   }), [mine]);
@@ -273,7 +276,7 @@ export function EmployeeTaskHistory() {
                      `Archived ${formatDate(t.archivedAt)}`}
                   </div>
                 </div>
-                <TaskStatusBadge status={t.archivedAt ? "archived" : t.status} rejected={tab === "rejected"} size="sm" />
+                <TaskStatusBadge status={t.archivedAt ? "archived" : t.status} size="sm" />
               </button>
             ))}
           </div>

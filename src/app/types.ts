@@ -198,4 +198,7 @@ export interface DashboardMetrics {
   departmentHeads: number;
   overloadedEmployees: number;
   averageWorkload: number;
+  // Operational counts (present from the Supabase dashboard metric hook).
+  pendingReview?: number;
+  overdueTasks?: number;
 }

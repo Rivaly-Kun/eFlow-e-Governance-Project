@@ -504,6 +504,15 @@ export default function ProposalImport({ onClose }: { onClose?: () => void }) {
           if (existingProjs && existingProjs.length > 0) {
             dbProjectId = existingProjs[0].id;
           } else {
+            const allMemberIds = new Set<string>();
+            for (const act of projGroup.activities.values()) {
+              for (const dt of act.tasks) {
+                dt.assignedMemberIds.forEach((id) => {
+                  if (id) allMemberIds.add(id);
+                });
+              }
+            }
+
             const newProj = await createProject({
               title: projGroup.projectTitle.trim(),
               description: `Imported via proposal: ${projGroup.proposalTitle}`,
@@ -512,6 +521,7 @@ export default function ProposalImport({ onClose }: { onClose?: () => void }) {
               status: "active",
               priority: "medium",
               milestones: milestonesInput,
+              memberIds: Array.from(allMemberIds),
             });
             dbProjectId = newProj.id;
           }
@@ -548,7 +558,7 @@ export default function ProposalImport({ onClose }: { onClose?: () => void }) {
                 deadline: dt.deadline || "",
                 priority: dt.priority,
                 tags: dt.requiredSkills,
-                status: "pending_assignment",
+                status: leadMember?.id ? "todo" : "pending_assignment",
                 department: departmentFilter || "",
                 orgId: departmentFilter || undefined,
                 teamId: departmentFilter || "",

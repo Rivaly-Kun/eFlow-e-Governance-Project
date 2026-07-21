@@ -149,7 +149,7 @@ export function ForReviewInbox() {
                           <PriorityPill priority={t.priority} />
                         </div>
                         <div className="text-[11px] font-['Lexend:Regular',_sans-serif] text-neutral-500 truncate mt-0.5">
-                          {t.assigneeName || "Unassigned"}
+                          {t.assigneeName || "Unassigned"}{t.teamMemberNames && t.teamMemberNames.length > 1 ? ` + ${t.teamMemberNames.length - 1}` : ""}
                           {t.projectTitle ? ` · ${t.projectTitle}` : ""}
                         </div>
                         <div className="flex items-center gap-1 text-[10.5px] text-neutral-400 mt-0.5">
@@ -176,7 +176,7 @@ export function ForReviewInbox() {
                     <div className="min-w-0">
                       <h2 className="text-[17px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">{selected.title}</h2>
                       <div className="flex items-center gap-3 mt-1 text-[11.5px] font-['Lexend:Regular',_sans-serif] text-neutral-500 flex-wrap">
-                        <span className="flex items-center gap-1"><InitialsAvatar name={selected.assigneeName} size={18} /> {selected.assigneeName || "Unassigned"}</span>
+                        <span className="flex items-center gap-1"><InitialsAvatar name={selected.assigneeName} size={18} /> {selected.teamMemberNames && selected.teamMemberNames.length > 0 ? selected.teamMemberNames.join(", ") : selected.assigneeName || "Unassigned"}</span>
                         {selected.teamName && <span className="flex items-center gap-1"><Building2 size={12} /> {selected.teamName}</span>}
                         {selected.projectTitle && <span className="flex items-center gap-1"><Layers size={12} /> {selected.projectTitle}</span>}
                         <span className="flex items-center gap-1"><Clock size={12} /> {formatDate(selected.latestSubmission?.submittedAt || selected.updatedAt)}</span>

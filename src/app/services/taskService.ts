@@ -11,6 +11,7 @@ export type TaskStatus =
   | 'todo'
   | 'in_progress'
   | 'for_review'
+  | 'changes_requested'
   | 'completed';
 
 export interface TaskAssignmentDetails {
@@ -308,11 +309,12 @@ function taskToRow(task: Partial<Task>): Record<string, unknown> {
   return row;
 }
 
-const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   pending_assignment: 'Pending Assignment',
   todo: 'To Do',
   in_progress: 'In Progress',
   for_review: 'For Review',
+  changes_requested: 'Changes Requested',
   completed: 'Completed',
 };
 
@@ -438,7 +440,7 @@ export const createTask = async (
       title: p.title,
       description: p.description,
       deadline: p.deadline,
-      status: p.status || 'pending_assignment',
+      status: p.status || (p.assigneeId ? 'todo' : 'pending_assignment'),
       priority: p.priority || 'medium',
       tags: p.tags || [],
       department: p.department || p.teamId || '',
@@ -525,91 +527,92 @@ export const createTask = async (
 
 // â”€â”€â”€ assignTask â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+// Assignment goes through the assign_task RPC: it validates the assignee is an
+// active profile, advances pending_assignment → todo, and writes history +
+// activity + audit + the assignee notification in one transaction. Team/detail
+// columns (not status) are still a plain update — the guard trigger only blocks
+// status writes, so this is allowed.
 export const assignTask = async (
   taskId: string,
   assigneeId: string,
   assigneeName: string,
   assignment?: TaskAssignmentDetails,
 ) => {
-  const update: Record<string, unknown> = {
-    assigned_to: assigneeId || null,
-    assignee_name: assigneeName,
-    status: 'todo',
-  };
-  if (assignment?.teamId) update.team_id = assignment.teamId;
-  if (assignment?.teamName) update.team_name = assignment.teamName;
-  if (assignment?.teamMemberIds) update.team_member_ids = assignment.teamMemberIds;
-  if (assignment?.teamMemberNames) update.team_member_names = assignment.teamMemberNames;
-
-  await supabase.from('tasks').update(update).eq('id', taskId);
-
-  const { data: task } = await supabase.from('tasks').select('title').eq('id', taskId).single();
-  const taskTitle = (task?.title as string) || 'Task';
-
-  if (assigneeId) {
-    await createNotification(assigneeId, {
-      type: 'assignment',
-      title: 'New Task Assigned',
-      message: `You have been assigned to "${taskTitle}".`,
-      taskId,
-      taskTitle,
-      actorName: assigneeName,
-      statusTo: 'todo',
-    });
+  const details: Record<string, unknown> = {};
+  if (assignment?.teamId) details.team_id = assignment.teamId;
+  if (assignment?.teamName) details.team_name = assignment.teamName;
+  if (assignment?.teamMemberIds) details.team_member_ids = assignment.teamMemberIds;
+  if (assignment?.teamMemberNames) details.team_member_names = assignment.teamMemberNames;
+  if (Object.keys(details).length > 0) {
+    const { error: detailError } = await supabase.from('tasks').update(details).eq('id', taskId);
+    if (detailError) throw detailError;
   }
+
+  const { error } = await supabase.rpc('assign_task', {
+    p_task_id: taskId,
+    p_assignee: assigneeId || null,
+    p_assignee_name: assigneeName || null,
+  });
+  if (error) throw new Error(error.message);
 
   await notifyTaskListeners();
 };
 
 // â”€â”€â”€ updateTask â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+// Generic field update. Status can NO LONGER be written here — the guard
+// trigger rejects any direct status change. If a caller still passes `status`
+// (e.g. the task editor advancing pending_assignment → todo on assignment), we
+// route that part through the authoritative RPC and strip it from the plain
+// column update, so one call keeps working without bypassing the lifecycle.
 export const updateTask = async (
   taskId: string,
   payload: UpdateTaskPayload,
 ) => {
-  const row = taskToRow(payload as Partial<Task>);
-  await supabase.from('tasks').update(row).eq('id', taskId);
+  const { status, ...rest } = payload;
+
+  const row = taskToRow(rest as Partial<Task>);
+  if (Object.keys(row).length > 0) {
+    const { error } = await supabase.from('tasks').update(row).eq('id', taskId);
+    if (error) throw error;
+  }
+
+  if (status) {
+    const current = await fetchTaskById(taskId);
+    if (current && current.status !== status) {
+      const { error } = await supabase.rpc('transition_task_status', {
+        p_task_id: taskId,
+        p_to_status: status,
+        p_feedback: null,
+        p_reason: null,
+      });
+      if (error) throw new Error(error.message);
+    }
+  }
+
   await notifyTaskListeners();
 };
 
 // â”€â”€â”€ updateTaskStatus â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+// The single client entry point for a lifecycle move (board drag, "Start work",
+// reopen, etc.). It delegates to the transition_task_status RPC, which validates
+// the transition table + actor authorization and writes history/activity/audit/
+// notification atomically. `reason` carries a reopen reason or feedback when the
+// transition requires one (completed → in_progress, → changes_requested).
 export const updateTaskStatus = async (
   taskId: string,
   status: TaskStatus,
   actor?: TaskActor,
+  reason?: string,
 ) => {
-  const current = await fetchTaskById(taskId);
-  if (!current) throw new Error('Task not found.');
-
-  const previousStatus = current.status as TaskStatus;
-  if (previousStatus === status) return;
-  if (previousStatus === 'completed' && status !== 'completed') {
-    throw new Error('Completed tasks can only be reopened with undo.');
-  }
-
-  await supabase.from('tasks').update({ status }).eq('id', taskId);
-
-  const actorName = actor?.name || 'Someone';
-  await supabase.from('task_status_history').insert({
-    task_id: taskId,
-    from_status: previousStatus,
-    to_status: status,
-    actor_id: actor?.id || null,
-    actor_name: actorName,
+  const { error } = await supabase.rpc('transition_task_status', {
+    p_task_id: taskId,
+    p_to_status: status,
+    p_feedback: status === 'changes_requested' ? (reason || null) : null,
+    p_reason: reason || null,
   });
-
-  await createNotification(actor?.id || '', {
-    type: status === 'completed' ? 'completed' : 'status_change',
-    title: status === 'completed' ? 'Task Completed' : `Task Moved to ${TASK_STATUS_LABELS[status]}`,
-    message: `${actorName} moved "${current.title || 'task'}" to ${TASK_STATUS_LABELS[status]}.`,
-    taskId,
-    taskTitle: (current.title as string) || '',
-    actorName,
-    statusFrom: previousStatus,
-    statusTo: status,
-  });
-
+  if (error) throw new Error(error.message);
   await notifyTaskListeners();
 };
 
@@ -671,149 +674,77 @@ export const submitTaskForReview = async (
     attachments: uploadedUrls,
   };
 
-  await supabase
+  // The submission payload (attachments + note) is stored on non-status
+  // columns, which the guard trigger allows. Clearing any prior rejection here
+  // keeps the review card clean for the reviewer.
+  const { error: metaError } = await supabase
     .from("tasks")
     .update({
-      status: "for_review",
       latest_submission: latestSubmission,
       rejection_note: null,
       rejected_at: null,
       feedback: null,
     })
     .eq("id", taskId);
+  if (metaError) throw metaError;
 
-  await supabase.from("task_status_history").insert({
-    task_id: taskId,
-    from_status: "in_progress",
-    to_status: "for_review",
-    actor_id: submission.submitterId,
-    actor_name: submission.submitterName,
-    note: trimmedNote,
+  // The status move itself goes through the authoritative RPC. It writes
+  // history + activity + audit and notifies the task creator/reviewer (never
+  // just the submitter). The submission note is passed so it lands on the
+  // history/activity record.
+  const { error: transitionError } = await supabase.rpc("transition_task_status", {
+    p_task_id: taskId,
+    p_to_status: "for_review",
+    p_feedback: null,
+    p_reason: trimmedNote,
   });
-
-  await logTaskActivity(
-    taskId,
-    "submitted",
-    `Submitted for review by ${submission.submitterName}`,
-    submission.submitterId,
-    submission.submitterName,
-  );
-
-  // Notify the task's dept head / assigner
-  const { data: taskRow } = await supabase
-    .from("tasks")
-    .select("created_by, title")
-    .eq("id", taskId)
-    .single();
-  if (taskRow?.created_by) {
-    await createNotification(taskRow.created_by, {
-      type: "approval_needed",
-      title: "Task Submitted for Review",
-      message: `${submission.submitterName} submitted "${taskRow.title}" for review.`,
-      taskId,
-      taskTitle: taskRow.title,
-      actorId: submission.submitterId,
-      actorName: submission.submitterName,
-      statusFrom: "in_progress",
-      statusTo: "for_review",
-    });
-  }
+  if (transitionError) throw new Error(transitionError.message);
 
   await notifyTaskListeners();
 };
 
 // â”€â”€â”€ verifyTask â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+// The actor is derived server-side from auth.uid() inside the RPC, so the
+// `_actor` argument is retained only for call-site compatibility.
 export const verifyTask = async (
   taskId: string,
   approve: boolean,
   feedback?: string,
-  actor?: TaskActor,
+  _actor?: TaskActor,
 ) => {
   const current = await fetchTaskById(taskId);
   if (!current) throw new Error('Task not found.');
 
-  const actorName = actor?.name || (approve ? 'Department head' : 'Reviewer');
+  // A rejection is now the first-class `changes_requested` state (plan §2.1),
+  // no longer an `in_progress` task carrying a rejection note — so history and
+  // reports can tell ordinary work apart from rework. The RPC requires feedback
+  // for that transition, so validate before we do any write.
+  const reason = (feedback || '').trim();
+  if (!approve && !reason) {
+    throw new Error('Feedback is required when requesting changes.');
+  }
 
+  // Approval stamps a tamper-evident audit hash on a non-status column first
+  // (the guard trigger permits non-status writes); the status move itself is
+  // authoritative and atomic through the RPC, which owns history/activity/
+  // audit/notification to the assignee.
   if (approve) {
     const hash = await generateAuditHash({ ...current, approvedAt: Date.now() });
-    await supabase.from('tasks').update({
-      status: 'completed',
-      audit_hash: hash,
-      feedback: feedback || null,
-      rejection_note: null,
-      rejected_at: null,
-    }).eq('id', taskId);
-
-    await supabase.from('task_status_history').insert({
-      task_id: taskId,
-      from_status: current.status,
-      to_status: 'completed',
-      actor_id: actor?.id || null,
-      actor_name: actorName,
-      note: 'Task verified and completed',
-    });
-
-    await createNotification(actor?.id || '', {
-      type: 'completed',
-      title: 'Task Completed',
-      message: `${actorName} approved and completed "${current.title || 'task'}".`,
-      taskId,
-      taskTitle: (current.title as string) || '',
-      actorName,
-      statusFrom: current.status as string,
-      statusTo: 'completed',
-    });
-
-    await recordAudit({
-      entityType: 'task',
-      entityId: taskId,
-      action: 'task.approved',
-      beforeData: { status: current.status },
-      afterData: { status: 'completed' },
-      metadata: { feedback: feedback || null },
-      orgId: (current.org_id as string) || null,
-    });
-  } else {
-    const reason = feedback || 'Needs rework';
-    await supabase.from('tasks').update({
-      status: 'in_progress',
-      feedback: feedback || null,
-      rejection_note: reason,
-      rejected_at: new Date().toISOString(),
-    }).eq('id', taskId);
-
-    await supabase.from('task_status_history').insert({
-      task_id: taskId,
-      from_status: current.status,
-      to_status: 'in_progress',
-      actor_id: actor?.id || null,
-      actor_name: actorName,
-      note: reason,
-    });
-
-    await createNotification(actor?.id || '', {
-      type: 'status_change',
-      title: 'Task Returned for Rework',
-      message: `${actorName} returned "${current.title || 'task'}" for rework.`,
-      taskId,
-      taskTitle: (current.title as string) || '',
-      actorName,
-      statusFrom: current.status as string,
-      statusTo: 'in_progress',
-      reason,
-    });
-
-    await recordAudit({
-      entityType: 'task',
-      entityId: taskId,
-      action: 'task.rejected',
-      reason,
-      beforeData: { status: current.status },
-      afterData: { status: 'in_progress' },
-      orgId: (current.org_id as string) || null,
-    });
+    const { error: hashError } = await supabase
+      .from('tasks')
+      .update({ audit_hash: hash })
+      .eq('id', taskId);
+    if (hashError) throw hashError;
   }
+
+  const { error } = await supabase.rpc('transition_task_status', {
+    p_task_id: taskId,
+    p_to_status: approve ? 'completed' : 'changes_requested',
+    p_feedback: reason || null,
+    p_reason: null,
+  });
+  if (error) throw new Error(error.message);
 
   await notifyTaskListeners();
 };
@@ -834,6 +765,10 @@ export const deleteTask = async (taskId: string): Promise<void> => {
 
 // â”€â”€â”€ reassignTask â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+// Reassignment reuses the assign_task RPC (active-profile validation + history/
+// activity/audit + assignee notification), then writes any team-detail columns.
+// We add a reassignment-flavored notification on top of the RPC's generic
+// assignment one so the new owner sees it framed as a handover.
 export const reassignTask = async (
   taskId: string,
   newAssigneeId: string,
@@ -841,16 +776,22 @@ export const reassignTask = async (
   newTeam?: TaskAssignmentDetails,
   _oldAssigneeName?: string,
 ) => {
-  const update: Record<string, unknown> = {
-    assigned_to: newAssigneeId || null,
-    assignee_name: newAssigneeName,
-  };
-  if (newTeam?.teamId) update.team_id = newTeam.teamId;
-  if (newTeam?.teamName) update.team_name = newTeam.teamName;
-  if (newTeam?.teamMemberIds) update.team_member_ids = newTeam.teamMemberIds;
-  if (newTeam?.teamMemberNames) update.team_member_names = newTeam.teamMemberNames;
+  const teamUpdate: Record<string, unknown> = {};
+  if (newTeam?.teamId) teamUpdate.team_id = newTeam.teamId;
+  if (newTeam?.teamName) teamUpdate.team_name = newTeam.teamName;
+  if (newTeam?.teamMemberIds) teamUpdate.team_member_ids = newTeam.teamMemberIds;
+  if (newTeam?.teamMemberNames) teamUpdate.team_member_names = newTeam.teamMemberNames;
+  if (Object.keys(teamUpdate).length > 0) {
+    const { error: teamErr } = await supabase.from('tasks').update(teamUpdate).eq('id', taskId);
+    if (teamErr) throw new Error(teamErr.message);
+  }
 
-  await supabase.from('tasks').update(update).eq('id', taskId);
+  const { error } = await supabase.rpc('assign_task', {
+    p_task_id: taskId,
+    p_assignee: newAssigneeId || null,
+    p_assignee_name: newAssigneeName || null,
+  });
+  if (error) throw new Error(error.message);
 
   const { data: task } = await supabase.from('tasks').select('title').eq('id', taskId).single();
   const taskTitle = (task?.title as string) || 'Task';
@@ -859,7 +800,7 @@ export const reassignTask = async (
     await createNotification(newAssigneeId, {
       type: 'reassignment',
       title: 'Task Reassigned to You',
-      message: `A task has been reassigned to you.`,
+      message: `"${taskTitle}" has been reassigned to you.`,
       taskId,
       taskTitle,
       actorName: newAssigneeName,
@@ -878,51 +819,16 @@ export const undoCompletedTask = async (
   const reason = undoInput.reason.trim();
   if (!reason) throw new Error('Undo reason is required.');
 
-  const current = await fetchTaskById(taskId);
-  if (!current) throw new Error('Task not found.');
-  if (current.status !== 'completed') throw new Error('Only completed tasks can be reopened.');
-
-  const actor = undoInput.actor;
-  const actorName = actor?.name || 'Department head';
-
-  await supabase.from('tasks').update({
-    status: 'in_progress',
-    reopen_reason: reason,
-    reopened_at: new Date().toISOString(),
-    reopened_by_id: actor?.id || null,
-    reopened_by_name: actor?.name || '',
-  }).eq('id', taskId);
-
-  await supabase.from('task_status_history').insert({
-    task_id: taskId,
-    from_status: 'completed',
-    to_status: 'in_progress',
-    actor_id: actor?.id || null,
-    actor_name: actorName,
-    note: reason,
+  // Reopen is the completed → in_progress transition. The RPC enforces the
+  // mandatory reason, stamps reopen_reason/reopened_at/reopened_by_id, and
+  // writes history/activity/audit + notifies the assignee — all atomically.
+  const { error } = await supabase.rpc('transition_task_status', {
+    p_task_id: taskId,
+    p_to_status: 'in_progress',
+    p_feedback: null,
+    p_reason: reason,
   });
-
-  await createNotification(actor?.id || '', {
-    type: 'undo',
-    title: 'Task Reopened',
-    message: `${actorName} reopened "${current.title || 'task'}" for additional work.`,
-    taskId,
-    taskTitle: (current.title as string) || '',
-    actorName,
-    statusFrom: 'completed',
-    statusTo: 'in_progress',
-    reason,
-  });
-
-  await recordAudit({
-    entityType: 'task',
-    entityId: taskId,
-    action: 'task.reopened',
-    reason,
-    beforeData: { status: 'completed' },
-    afterData: { status: 'in_progress' },
-    orgId: (current.org_id as string) || null,
-  });
+  if (error) throw new Error(error.message);
 
   await notifyTaskListeners();
 };

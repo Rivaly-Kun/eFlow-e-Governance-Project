@@ -125,6 +125,7 @@ const STATUS_ORDER: TaskStatus[] = [
   "pending_assignment",
   "todo",
   "in_progress",
+  "changes_requested",
   "for_review",
   "completed",
 ];
@@ -150,6 +151,12 @@ const statusMeta: Record<
     color: "bg-amber-50 text-amber-700 border-amber-200",
     dot: "bg-amber-500",
     colBg: "bg-amber-50/40",
+  },
+  changes_requested: {
+    label: "Changes Requested",
+    color: "bg-rose-50 text-rose-700 border-rose-200",
+    dot: "bg-rose-500",
+    colBg: "bg-rose-50/40",
   },
   for_review: {
     label: "For Review",
@@ -1888,7 +1895,12 @@ function ListBoardView({
         : undefined;
       try {
         await updateTaskStatus(taskId, newStatus, actor);
-      } catch {}
+      } catch (err) {
+        // The backend now owns the transition table, so an illegal move
+        // (e.g. To do → Completed) is rejected. Explain it rather than
+        // silently snapping the card back.
+        alert(err instanceof Error ? err.message : "That status change isn't allowed.");
+      }
     },
     [tasks, currentUserId, currentUserName],
   );
@@ -2387,7 +2399,9 @@ function KanbanBoardView({
       : undefined;
     try {
       await updateTaskStatus(taskId, newStatus, actor);
-    } catch {}
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "That status change isn't allowed.");
+    }
   };
 
   return (

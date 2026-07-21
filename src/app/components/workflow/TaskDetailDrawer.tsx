@@ -6,7 +6,8 @@
 
 import React, { useState } from "react";
 import { X, Info, Activity, MessageSquare, ClipboardCheck, Calendar, User, Building2, Layers } from "lucide-react";
-import type { Task } from "../../services/taskService";
+import { updateTaskStatus, type Task } from "../../services/taskService";
+import { useAuth } from "../../contexts/AuthContext";
 import { TaskStatusBadge, PriorityPill, InitialsAvatar, ProjectStatusBadge } from "./StatusBadges";
 import { formatDate, relativeDays, ProgressBar } from "./primitives";
 import { TaskActivityTimeline } from "./TaskActivityTimeline";
@@ -32,10 +33,33 @@ export function TaskDetailDrawer({
   onChanged?: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("overview");
+  const [resuming, setResuming] = useState(false);
+  const { user, userProfile } = useAuth();
 
   if (!task) return null;
 
-  const rejected = !!task.rejectionNote && task.status === "in_progress";
+  // Rework is now the first-class `changes_requested` state (plan §2.1).
+  const rejected = task.status === "changes_requested";
+
+  // The assignee resumes rework by transitioning changes_requested → in_progress.
+  // Only offered to whoever can post progress (the owner surface).
+  const canResume = rejected && canPostProgress;
+  const handleResume = async () => {
+    setResuming(true);
+    try {
+      await updateTaskStatus(
+        task.id,
+        "in_progress",
+        user?.id ? { id: user.id, name: userProfile?.full_name || "" } : undefined,
+      );
+      onChanged?.();
+      onClose();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Couldn't resume this task.");
+    } finally {
+      setResuming(false);
+    }
+  };
   const rel = relativeDays(task.deadline || task.dueDate);
   const percent = task.percentComplete ?? 0;
 
@@ -102,18 +126,29 @@ export function TaskDetailDrawer({
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <Field icon={<User size={13} />} label="Assignee" value={task.assigneeName || "Unassigned"} />
+                <Field icon={<User size={13} />} label="Assignee" value={task.teamMemberNames && task.teamMemberNames.length > 0 ? task.teamMemberNames.join(", ") : task.assigneeName || "Unassigned"} />
                 <Field icon={<Calendar size={13} />} label="Deadline" value={formatDate(task.deadline || task.dueDate)} hint={rel.label} hintTone={rel.overdue ? "bad" : undefined} />
                 {task.teamName && <Field icon={<Building2 size={13} />} label="Team" value={task.teamName} />}
                 {task.projectTitle && <Field icon={<Layers size={13} />} label="Program" value={task.projectTitle} />}
               </div>
 
-              {rejected && task.rejectionNote && (
+              {rejected && (
                 <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
                   <div className="text-[11px] font-['Lexend:Medium',_sans-serif] text-rose-700 uppercase tracking-wide mb-0.5">
                     Changes requested
                   </div>
-                  <div className="text-[12.5px] font-['Lexend:Regular',_sans-serif] text-rose-900">{task.rejectionNote}</div>
+                  {task.rejectionNote && (
+                    <div className="text-[12.5px] font-['Lexend:Regular',_sans-serif] text-rose-900">{task.rejectionNote}</div>
+                  )}
+                  {canResume && (
+                    <button
+                      onClick={handleResume}
+                      disabled={resuming}
+                      className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 text-white text-[11.5px] font-['Lexend:Medium',_sans-serif] hover:bg-rose-700 disabled:opacity-60"
+                    >
+                      {resuming ? "Resuming…" : "Resume work"}
+                    </button>
+                  )}
                 </div>
               )}
 
