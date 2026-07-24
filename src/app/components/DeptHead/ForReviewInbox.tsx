@@ -50,10 +50,17 @@ export function ForReviewInbox() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressUpdate[]>([]);
 
+  const { user } = useAuth();
   const queue = useMemo(() => {
     let rows = tasks.filter((t) => t.status === "for_review" && !t.archivedAt);
     if (!isSuperAdmin && scopedOrgIds.length > 0) {
-      rows = rows.filter((t) => !t.orgId || scopedOrgIds.includes(t.orgId));
+      rows = rows.filter((t) =>
+        !t.orgId ||
+        scopedOrgIds.includes(t.orgId) ||
+        t.assigneeId === user?.id ||
+        t.recommendationLeadId === user?.id ||
+        (t.teamMemberIds || []).includes(user?.id || '')
+      );
     }
     if (query.trim()) {
       const q = query.toLowerCase();

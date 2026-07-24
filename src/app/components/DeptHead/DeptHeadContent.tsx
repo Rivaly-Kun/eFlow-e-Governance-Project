@@ -6957,6 +6957,8 @@ function DeptHeadReports() {
   return <ReportsWorkspace scope={{ isSuperAdmin, scopedOrgIds }} eyebrow="Dept. Head · Reports" />;
 }
 
+import { YouAreLeadingView } from "../workflow/YouAreLeadingView";
+
 export const deptheadPages: Record<
   string,
   Record<string, React.ComponentType>
@@ -6964,9 +6966,15 @@ export const deptheadPages: Record<
   command: {
     Dashboard: DeptHeadDashboard,
     Projects: DeptHeadProjects,
+    "Pinned — You're Leading": YouAreLeadingView,
     "For Review": ForReviewInbox,
     Reports: DeptHeadReports,
     Announcements: () => <AnnouncementCenter eyebrow="Dept. Head · Updates" />,
+  },
+  leader: {
+    "Pinned — You're Leading": YouAreLeadingView,
+    "For Review": ForReviewInbox,
+    "Team Workload": TeamSupervision,
   },
   deptportfolio: {
     "Task Board & Composer": DeptHeadTaskBoard,
@@ -6977,6 +6985,7 @@ export const deptheadPages: Record<
 
 export const deptheadDefaultPages: Record<string, string> = {
   command: "Dashboard",
+  leader: "Pinned — You're Leading",
   deptportfolio: "Task Board & Composer",
 };
 

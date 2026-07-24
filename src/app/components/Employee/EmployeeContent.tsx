@@ -2324,27 +2324,36 @@ import {
 } from "./EmployeeCoreWork";
 import { AnnouncementCenter } from "../workflow/AnnouncementCenter";
 
+import { YouAreLeadingView } from "../workflow/YouAreLeadingView";
+import { ForReviewInbox } from "../DeptHead/ForReviewInbox";
+
 export const employeePages: Record<
   string,
   Record<string, React.ComponentType>
 > = {
   mywork: {
     "My Tasks": EmployeeMyTasks,
+    "Pinned — You're Leading": YouAreLeadingView,
     "My Projects": EmployeeMyProjects,
     Deadlines: EmployeeDeadlines,
     "Task History": EmployeeTaskHistory,
     Announcements: () => <AnnouncementCenter />,
     "My Work Report": EmployeeWorkReport,
   },
+  leader: {
+    "Pinned — You're Leading": YouAreLeadingView,
+    "For Review": ForReviewInbox,
+    "Team Workload": EmployeePerformanceView,
+  },
   workspace: {
     "My Task Workspace": EmployeeTaskBoard,
     "My Performance Overview": EmployeePerformanceView,
-    "Profile & Settings": () => <SettingsContent activePage="Profile" />,
   },
 };
 
 export const employeeDefaultPages: Record<string, string> = {
   mywork: "My Tasks",
+  leader: "Pinned — You're Leading",
   workspace: "My Task Workspace",
 };
 

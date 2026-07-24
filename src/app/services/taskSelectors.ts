@@ -36,9 +36,9 @@ export function isCompleted(t: Task): boolean {
   return t.status === 'completed';
 }
 
-/** Active = not archived and not completed. (Deleted rows never reach the client.) */
+/** Active = not archived, not completed, and not 100% complete. */
 export function isActive(t: Task): boolean {
-  return !isArchived(t) && !isCompleted(t);
+  return !isArchived(t) && !isCompleted(t) && (t.percentComplete ?? 0) < 100;
 }
 
 export function isForReview(t: Task): boolean {

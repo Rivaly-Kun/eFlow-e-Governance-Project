@@ -50,9 +50,11 @@ const STATUS_COLORS: Record<string, string> = {
 
 function isOverdue(t: Task) {
   const dl = t.deadline || t.dueDate;
-  if (!dl || t.status === "completed") return false;
-  if (typeof dl === "string" && /month|phase|week/i.test(dl)) return false;
-  return new Date(dl).getTime() < Date.now();
+  if (!dl || t.status === "completed" || t.status === "for_review" || (t.percentComplete ?? 0) >= 100) return false;
+  if (typeof dl === "string" && /month|phase|week|quarter|ongoing|tbd|q[1-4]/i.test(dl)) return false;
+  const d = new Date(dl);
+  if (isNaN(d.getTime())) return false;
+  return d.getTime() < Date.now();
 }
 
 type ReportView = "status" | "productivity" | "workload" | "overdue";

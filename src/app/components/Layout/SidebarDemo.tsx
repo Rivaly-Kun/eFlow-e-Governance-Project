@@ -500,6 +500,11 @@ const roleNavConfigs: Record<
         label: "Command Center",
       },
       {
+        id: "leader",
+        icon: <UserMultiple size={16} />,
+        label: "Leader Workspace",
+      },
+      {
         id: "deptportfolio",
         icon: <Folder size={16} />,
         label: "Department Workspace",
@@ -507,8 +512,18 @@ const roleNavConfigs: Record<
     ],
   },
   teamleader: {
-    defaultSection: "deptportfolio",
+    defaultSection: "command",
     navItems: [
+      {
+        id: "command",
+        icon: <Home size={16} />,
+        label: "Leader Command Center",
+      },
+      {
+        id: "leader",
+        icon: <UserMultiple size={16} />,
+        label: "Leader Workspace",
+      },
       {
         id: "deptportfolio",
         icon: <Folder size={16} />,
@@ -520,6 +535,7 @@ const roleNavConfigs: Record<
     defaultSection: "mywork",
     navItems: [
       { id: "mywork", icon: <Home size={16} />, label: "My Work" },
+      { id: "leader", icon: <UserMultiple size={16} />, label: "Leader Workspace" },
       { id: "workspace", icon: <Folder size={16} />, label: "Department Workspace" },
     ],
   },
@@ -1164,6 +1180,10 @@ function getSidebarContent(role: string, section: string): SidebarContent {
                 label: "Projects",
               },
               {
+                icon: <StarFilled size={16} className="text-neutral-900" />,
+                label: "Pinned — You're Leading",
+              },
+              {
                 icon: <CheckmarkOutline size={16} className="text-neutral-900" />,
                 label: "For Review",
               },
@@ -1179,8 +1199,114 @@ function getSidebarContent(role: string, section: string): SidebarContent {
           },
         ],
       },
+      leader: {
+        title: "Leader Workspace",
+        sections: [
+          {
+            title: "Team Leadership",
+            items: [
+              {
+                icon: <StarFilled size={16} className="text-neutral-900" />,
+                label: "Pinned — You're Leading",
+                isActive: true,
+              },
+              {
+                icon: <CheckmarkOutline size={16} className="text-neutral-900" />,
+                label: "For Review",
+              },
+              {
+                icon: <Group size={16} className="text-neutral-900" />,
+                label: "Team Workload",
+              },
+            ],
+          },
+        ],
+      },
       deptportfolio: {
         title: "Department Workspace",
+        sections: [
+          {
+            title: "Core Workflows",
+            items: [
+              {
+                icon: <Folder size={16} className="text-neutral-900" />,
+                label: "Task Board & Composer",
+                isActive: true,
+              },
+              {
+                icon: <Group size={16} className="text-neutral-900" />,
+                label: "Team Supervision",
+              },
+              {
+                icon: <Analytics size={16} className="text-neutral-900" />,
+                label: "Team Intelligence",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    teamleader: {
+      command: {
+        title: "Leader Command Center",
+        sections: [
+          {
+            title: "Overview",
+            items: [
+              {
+                icon: <Home size={16} className="text-neutral-900" />,
+                label: "Dashboard",
+                isActive: true,
+              },
+              {
+                icon: <FolderOpen size={16} className="text-neutral-900" />,
+                label: "Projects",
+              },
+              {
+                icon: <StarFilled size={16} className="text-neutral-900" />,
+                label: "Pinned — You're Leading",
+              },
+              {
+                icon: <CheckmarkOutline size={16} className="text-neutral-900" />,
+                label: "For Review",
+              },
+              {
+                icon: <ChartBar size={16} className="text-neutral-900" />,
+                label: "Reports",
+              },
+              {
+                icon: <Notification size={16} className="text-neutral-900" />,
+                label: "Announcements",
+              },
+            ],
+          },
+        ],
+      },
+      leader: {
+        title: "Leader Workspace",
+        sections: [
+          {
+            title: "Team Leadership",
+            items: [
+              {
+                icon: <StarFilled size={16} className="text-neutral-900" />,
+                label: "Pinned — You're Leading",
+                isActive: true,
+              },
+              {
+                icon: <CheckmarkOutline size={16} className="text-neutral-900" />,
+                label: "For Review",
+              },
+              {
+                icon: <Group size={16} className="text-neutral-900" />,
+                label: "Team Workload",
+              },
+            ],
+          },
+        ],
+      },
+      deptportfolio: {
+        title: "Section Workspace",
         sections: [
           {
             title: "Core Workflows",
@@ -1211,11 +1337,35 @@ function getSidebarContent(role: string, section: string): SidebarContent {
             title: "Daily work",
             items: [
               { icon: <Task size={16} className="text-neutral-900" />, label: "My Tasks", isActive: true },
+              { icon: <StarFilled size={16} className="text-neutral-900" />, label: "Pinned — You're Leading" },
               { icon: <FolderOpen size={16} className="text-neutral-900" />, label: "My Projects" },
               { icon: <CalendarIcon size={16} className="text-neutral-900" />, label: "Deadlines" },
               { icon: <Time size={16} className="text-neutral-900" />, label: "Task History" },
               { icon: <Notification size={16} className="text-neutral-900" />, label: "Announcements" },
               { icon: <Report size={16} className="text-neutral-900" />, label: "My Work Report" },
+            ],
+          },
+        ],
+      },
+      leader: {
+        title: "Leader Workspace",
+        sections: [
+          {
+            title: "Team Leadership",
+            items: [
+              {
+                icon: <StarFilled size={16} className="text-neutral-900" />,
+                label: "Pinned — You're Leading",
+                isActive: true,
+              },
+              {
+                icon: <CheckmarkOutline size={16} className="text-neutral-900" />,
+                label: "For Review",
+              },
+              {
+                icon: <Group size={16} className="text-neutral-900" />,
+                label: "Team Workload",
+              },
             ],
           },
         ],
@@ -1234,10 +1384,6 @@ function getSidebarContent(role: string, section: string): SidebarContent {
               {
                 icon: <ChartBar size={16} className="text-neutral-900" />,
                 label: "My Performance Overview",
-              },
-              {
-                icon: <Settings size={16} className="text-neutral-900" />,
-                label: "Profile & Settings",
               },
             ],
           },

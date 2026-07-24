@@ -55,9 +55,11 @@ function useMyTasks() {
 
 function isOverdue(t: Task) {
   const dl = t.deadline || t.dueDate;
-  if (!dl || t.status === "completed") return false;
-  if (typeof dl === "string" && /month|phase|week/i.test(dl)) return false;
-  return new Date(dl).getTime() < Date.now();
+  if (!dl || t.status === "completed" || t.status === "for_review" || (t.percentComplete ?? 0) >= 100) return false;
+  if (typeof dl === "string" && /month|phase|week|quarter|ongoing|tbd|q[1-4]/i.test(dl)) return false;
+  const d = new Date(dl);
+  if (isNaN(d.getTime())) return false;
+  return d.getTime() < Date.now();
 }
 
 // ══════════════════════ My Tasks ══════════════════════════════════
@@ -293,7 +295,7 @@ export function EmployeeDeadlines() {
   const { mine, loading } = useMyTasks();
   const [open, setOpen] = useState<Task | null>(null);
 
-  const active = useMemo(() => mine.filter((t) => !t.archivedAt && t.status !== "completed"), [mine]);
+  const active = useMemo(() => mine.filter((t) => !t.archivedAt && t.status !== "completed" && (t.percentComplete ?? 0) < 100), [mine]);
 
   const groups = useMemo(() => {
     const now = new Date();
@@ -303,8 +305,10 @@ export function EmployeeDeadlines() {
     active.forEach((t) => {
       if (t.status === "for_review") { awaiting.push(t); return; }
       const dl = t.deadline || t.dueDate;
-      if (!dl) { upcoming.push(t); return; }
-      const time = new Date(dl).getTime();
+      if (!dl || (typeof dl === "string" && /month|phase|week|quarter|ongoing|tbd|q[1-4]/i.test(dl))) { upcoming.push(t); return; }
+      const d = new Date(dl);
+      if (isNaN(d.getTime())) { upcoming.push(t); return; }
+      const time = d.getTime();
       if (time < startToday) overdue.push(t);
       else if (time < endToday) today.push(t);
       else upcoming.push(t);

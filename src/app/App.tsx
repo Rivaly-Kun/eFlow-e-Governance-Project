@@ -2,9 +2,47 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { UserPreferencesProvider, useUserPreferences } from "./contexts/UserPreferencesContext";
 import { LoginPage } from "./components/Auth/LoginPage";
 import { Frame760 } from "./components/Layout/SidebarDemo";
-import { ToastProvider } from "./components/ui/Toast";
+import { useEffect } from "react";
+import { ToastProvider, useToast } from "./components/ui/Toast";
 
-// ─── Role mapping: user role → SidebarDemo role key ──────────────
+const QUICK_ACCOUNTS: Record<string, { email: string; pass: string; label: string }> = {
+  "1": { email: "admin@gmail.com", pass: "admin123", label: "Super Admin (admin@gmail.com)" },
+  "2": { email: "bplo.head@gmail.com", pass: "123456", label: "Dept Head (bplo.head@gmail.com)" },
+  "3": { email: "tdfro.staff1@gmail.com", pass: "123456", label: "Employee (tdfro.staff1@gmail.com)" },
+  "4": { email: "gabzcah@gmail.com", pass: "123456", label: "Gabriel (gabzcah@gmail.com)" },
+};
+
+function QuickLoginListener() {
+  const { login, logout } = useAuth();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && ["1", "2", "3", "4"].includes(e.key)) {
+        const acc = QUICK_ACCOUNTS[e.key];
+        if (!acc) return;
+
+        e.preventDefault();
+        toast(`Quick switching to ${acc.label}…`, "info");
+
+        try {
+          await logout();
+          await login(acc.email, acc.pass);
+          toast(`Logged in as ${acc.label}`, "success");
+        } catch (err: any) {
+          toast(err?.message || `Failed to switch to ${acc.email}`, "error");
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [login, logout, toast]);
+
+  return null;
+}
+
+// ─── App wrapper with AuthProvider + ToastProvider ────────────────
 function mapRoleToPanel(role: string): string {
   switch (role) {
     case 'super_admin':
@@ -12,6 +50,9 @@ function mapRoleToPanel(role: string): string {
     case 'dept_head':
     case 'department_head':
       return 'depthead';
+    case 'team_leader':
+    case 'teamleader':
+      return 'teamleader';
     case 'employee':
       return 'employee';
     default:
@@ -80,6 +121,7 @@ export default function App() {
     <AuthProvider>
       <UserPreferencesProvider>
         <ToastProvider>
+          <QuickLoginListener />
           <AppContent />
         </ToastProvider>
       </UserPreferencesProvider>

@@ -14,6 +14,7 @@ import { TaskActivityTimeline } from "./TaskActivityTimeline";
 import { TaskDiscussion } from "./TaskDiscussion";
 import { TaskReviewPanel } from "./TaskReviewPanel";
 import { ProgressUpdateForm } from "./ProgressUpdateForm";
+import { TaskSubtasksWidget } from "./TaskSubtasksWidget";
 
 type Tab = "overview" | "activity" | "discussion" | "review";
 
@@ -130,6 +131,16 @@ export function TaskDetailDrawer({
                 <Field icon={<Calendar size={13} />} label="Deadline" value={formatDate(task.deadline || task.dueDate)} hint={rel.label} hintTone={rel.overdue ? "bad" : undefined} />
                 {task.teamName && <Field icon={<Building2 size={13} />} label="Team" value={task.teamName} />}
                 {task.projectTitle && <Field icon={<Layers size={13} />} label="Program" value={task.projectTitle} />}
+              </div>
+
+              <div className="border-t border-neutral-100 pt-3">
+                <TaskSubtasksWidget
+                  taskId={task.id}
+                  allowedAssignees={(task.teamMemberIds || []).map((id, idx) => ({
+                    id,
+                    name: (task.teamMemberNames || [])[idx] || "Team Member",
+                  }))}
+                />
               </div>
 
               {rejected && (
