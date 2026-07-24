@@ -6946,6 +6946,10 @@ import { ProjectsWorkspace } from "../workflow/ProjectsWorkspace";
 import { ReportsWorkspace } from "../workflow/ReportsWorkspace";
 import { AnnouncementCenter } from "../workflow/AnnouncementCenter";
 import { useScopedOrgIds } from "../../hooks/useSupabaseData";
+import {
+  RolePageRouter,
+  type RolePageSections,
+} from "../Layout/RolePageRouter";
 
 // Dept Head scope wrappers — limit projects/reports to the head's own subtree.
 function DeptHeadProjects() {
@@ -6959,10 +6963,38 @@ function DeptHeadReports() {
 
 import { YouAreLeadingView } from "../workflow/YouAreLeadingView";
 
-export const deptheadPages: Record<
-  string,
-  Record<string, React.ComponentType>
-> = {
+export const deptheadPages: RolePageSections = {
+  dashboard: {
+    Dashboard: DeptHeadDashboard,
+  },
+  projects: {
+    Projects: DeptHeadProjects,
+  },
+  tasks: {
+    "Task Board": DeptHeadTaskBoard,
+  },
+  reviews: {
+    "For Review": ForReviewInbox,
+  },
+  team: {
+    "Team Supervision": TeamSupervision,
+  },
+  intelligence: {
+    "Team Intelligence": EmployeeInsights,
+  },
+  leading: {
+    "Leading Work": YouAreLeadingView,
+  },
+  reports: {
+    Reports: DeptHeadReports,
+  },
+  announcements: {
+    Announcements: () => (
+      <AnnouncementCenter eyebrow="Dept. Head · Updates" />
+    ),
+  },
+
+  // Compatibility aliases for sessions opened before this navigation cleanup.
   command: {
     Dashboard: DeptHeadDashboard,
     Projects: DeptHeadProjects,
@@ -6984,6 +7016,15 @@ export const deptheadPages: Record<
 };
 
 export const deptheadDefaultPages: Record<string, string> = {
+  dashboard: "Dashboard",
+  projects: "Projects",
+  tasks: "Task Board",
+  reviews: "For Review",
+  team: "Team Supervision",
+  intelligence: "Team Intelligence",
+  leading: "Leading Work",
+  reports: "Reports",
+  announcements: "Announcements",
   command: "Dashboard",
   leader: "Pinned — You're Leading",
   deptportfolio: "Task Board & Composer",
@@ -6996,24 +7037,23 @@ export function DeptHeadContent({
   activeSection: string;
   activePage?: string;
 }) {
-  const section = deptheadPages[activeSection];
-  if (!section) {
-    return (
-      <div className="flex items-center justify-center h-full text-neutral-400">
-        <div className="text-center">
-          <Settings size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="text-[14px] font-['Lexend:Regular',_sans-serif]">
-            Section coming soon
-          </p>
-          <p className="text-[12px] mt-1">Section: {activeSection}</p>
+  return (
+    <RolePageRouter
+      sections={deptheadPages}
+      defaults={deptheadDefaultPages}
+      activeSection={activeSection}
+      activePage={activePage}
+      fallback={(section) => (
+        <div className="flex h-full items-center justify-center text-neutral-400">
+          <div className="text-center">
+            <Settings size={40} className="mx-auto mb-3 opacity-30" />
+            <p className="text-[14px] font-['Lexend:Regular',_sans-serif]">
+              Section unavailable
+            </p>
+            <p className="mt-1 text-[12px]">Section: {section}</p>
+          </div>
         </div>
-      </div>
-    );
-  }
-  const pageName =
-    activePage ||
-    deptheadDefaultPages[activeSection] ||
-    Object.keys(section)[0];
-  const Page = section[pageName] || section[Object.keys(section)[0]];
-  return <Page />;
+      )}
+    />
+  );
 }

@@ -159,7 +159,7 @@ export function useDashboardMetrics() {
   const metrics: DashboardMetrics = useMemo(() => {
     const activeUsers = users.filter((u: any) => u.status === 'active' || u.is_active);
     const activeDepts = departments.filter((d) => d.status === 'active');
-    const activeProjects = projects.filter((p) => p.status !== 'completed' && p.status !== 'Completed');
+    const activeProjects = projects.filter((p) => p.status !== 'archived');
     const activeTasks = tasks.filter((t) => t.status !== 'completed');
     const pendingTasks = tasks.filter((t) => t.status === 'pending_assignment' || t.status === 'todo');
     const completedTasks = tasks.filter((t) => t.status === 'completed');

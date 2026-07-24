@@ -15,6 +15,7 @@ import { TaskDiscussion } from "./TaskDiscussion";
 import { TaskReviewPanel } from "./TaskReviewPanel";
 import { ProgressUpdateForm } from "./ProgressUpdateForm";
 import { TaskSubtasksWidget } from "./TaskSubtasksWidget";
+import { SubmitForReviewForm } from "./SubmitForReviewForm";
 
 type Tab = "overview" | "activity" | "discussion" | "review";
 
@@ -35,16 +36,42 @@ export function TaskDetailDrawer({
 }) {
   const [tab, setTab] = useState<Tab>("overview");
   const [resuming, setResuming] = useState(false);
+  const [starting, setStarting] = useState(false);
   const { user, userProfile } = useAuth();
 
   if (!task) return null;
+  const effectiveCanReview =
+    canReview && Boolean(user?.id) && task.assigneeId !== user?.id;
 
   // Rework is now the first-class `changes_requested` state (plan §2.1).
   const rejected = task.status === "changes_requested";
+  const isOwnerOrLead =
+    task.assigneeId === user?.id || task.recommendationLeadId === user?.id;
 
   // The assignee resumes rework by transitioning changes_requested → in_progress.
   // Only offered to whoever can post progress (the owner surface).
-  const canResume = rejected && canPostProgress;
+  const canResume = rejected && canPostProgress && isOwnerOrLead;
+  const canStart = canPostProgress && task.status === "todo";
+  const canSubmit =
+    canPostProgress && isOwnerOrLead && task.status === "in_progress";
+  const handleStart = async () => {
+    setStarting(true);
+    try {
+      await updateTaskStatus(
+        task.id,
+        "in_progress",
+        user?.id
+          ? { id: user.id, name: userProfile?.full_name || "" }
+          : undefined,
+      );
+      onChanged?.();
+      onClose();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Couldn't start this task.");
+    } finally {
+      setStarting(false);
+    }
+  };
   const handleResume = async () => {
     setResuming(true);
     try {
@@ -68,7 +95,7 @@ export function TaskDetailDrawer({
     { id: "overview", label: "Overview", icon: <Info size={13} />, show: true },
     { id: "activity", label: "Activity", icon: <Activity size={13} />, show: true },
     { id: "discussion", label: "Discussion", icon: <MessageSquare size={13} />, show: true },
-    { id: "review", label: "Review", icon: <ClipboardCheck size={13} />, show: canReview && task.status === "for_review" },
+    { id: "review", label: "Review", icon: <ClipboardCheck size={13} />, show: effectiveCanReview && task.status === "for_review" },
   ];
 
   return (
@@ -126,6 +153,24 @@ export function TaskDetailDrawer({
                 <ProgressBar value={percent} tone={percent === 100 ? "good" : rel.overdue ? "bad" : "neutral"} />
               </div>
 
+              {canStart && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+                  <div className="text-[12px] font-['Lexend:Medium',_sans-serif] text-blue-900">
+                    This task is ready to begin.
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-blue-700">
+                    Starting it updates every board view to In Progress.
+                  </p>
+                  <button
+                    onClick={handleStart}
+                    disabled={starting}
+                    className="mt-2 rounded-lg bg-blue-700 px-3 py-1.5 text-[11.5px] font-['Lexend:Medium',_sans-serif] text-white hover:bg-blue-800 disabled:opacity-50"
+                  >
+                    {starting ? "Starting…" : "Start work"}
+                  </button>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <Field icon={<User size={13} />} label="Assignee" value={task.teamMemberNames && task.teamMemberNames.length > 0 ? task.teamMemberNames.join(", ") : task.assigneeName || "Unassigned"} />
                 <Field icon={<Calendar size={13} />} label="Deadline" value={formatDate(task.deadline || task.dueDate)} hint={rel.label} hintTone={rel.overdue ? "bad" : undefined} />
@@ -181,13 +226,23 @@ export function TaskDetailDrawer({
               {canPostProgress && (
                 <ProgressUpdateForm taskId={task.id} initialPercent={percent} onSaved={onChanged} />
               )}
+
+              {canSubmit && (
+                <SubmitForReviewForm
+                  task={task}
+                  onSubmitted={() => {
+                    onChanged?.();
+                    onClose();
+                  }}
+                />
+              )}
             </div>
           )}
 
           {tab === "activity" && <TaskActivityTimeline taskId={task.id} />}
           {tab === "discussion" && <TaskDiscussion taskId={task.id} canParticipate={canDiscuss} />}
-          {tab === "review" && canReview && (
-            <TaskReviewPanel task={task} onDone={() => { onChanged?.(); onClose(); }} />
+          {tab === "review" && effectiveCanReview && (
+            <TaskReviewPanel task={task} canReview={effectiveCanReview} onDone={() => { onChanged?.(); onClose(); }} />
           )}
         </div>
       </div>

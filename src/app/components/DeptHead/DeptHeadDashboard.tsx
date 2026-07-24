@@ -22,6 +22,13 @@ import { useProjectsData, useScopedOrgIds } from "../../hooks/useSupabaseData";
 import { useAuth } from "../../contexts/AuthContext";
 import type { Task } from "../../services/taskService";
 import {
+  isArchived,
+  isOverdue,
+  isUnassigned,
+  parseDueDate,
+  projectStats,
+} from "../../services/taskSelectors";
+import {
   PageHeader,
   StatCard,
   Card,
@@ -40,33 +47,6 @@ import {
   InitialsAvatar,
 } from "../workflow/StatusBadges";
 import { TaskDetailDrawer } from "../workflow/TaskDetailDrawer";
-
-function isArchived(t: Task) {
-  return !!t.archivedAt;
-}
-function isOverdue(t: Task) {
-  const dl = t.deadline || t.dueDate;
-  if (!dl || t.status === "completed" || t.status === "for_review" || (t.percentComplete ?? 0) >= 100) return false;
-  if (typeof dl === "string" && /month|phase|week|quarter|ongoing|tbd|q[1-4]/i.test(dl)) return false;
-  const d = new Date(dl);
-  if (isNaN(d.getTime())) return false;
-  return d.getTime() < Date.now();
-}
-
-// Project health rollup from its tasks.
-function projectHealth(tasks: Task[]): Health {
-  if (tasks.length === 0) return "on_track";
-  const done = tasks.filter((t) => t.status === "completed").length;
-  if (done === tasks.length) return "complete";
-  if (tasks.some(isOverdue)) return "delayed";
-  const nearDue = tasks.some((t) => {
-    const dl = t.deadline || t.dueDate;
-    if (!dl || t.status === "completed") return false;
-    const days = (new Date(dl).getTime() - Date.now()) / 86400000;
-    return days >= 0 && days <= 3;
-  });
-  return nearDue ? "at_risk" : "on_track";
-}
 
 type FocusList = null | "overdue" | "review" | "unassigned" | "completed";
 
@@ -99,7 +79,7 @@ export function DeptHeadDashboard() {
   const overdue = useMemo(() => scoped.filter(isOverdue), [scoped]);
   const forReview = useMemo(() => scoped.filter((t) => t.status === "for_review"), [scoped]);
   const unassigned = useMemo(
-    () => scoped.filter((t) => t.status === "pending_assignment" || !t.assigneeId),
+    () => scoped.filter(isUnassigned),
     [scoped],
   );
 
@@ -120,12 +100,16 @@ export function DeptHeadDashboard() {
   // Project health buckets (derive per-project from linked tasks + fall back to
   // proposal-hierarchy grouping when there are no operational project rows yet).
   const healthBuckets = useMemo(() => {
-    const buckets: Record<Health, number> = { on_track: 0, at_risk: 0, delayed: 0, complete: 0 };
+    const buckets: Record<Health, number> = {
+      on_track: 0,
+      at_risk: 0,
+      delayed: 0,
+      complete: 0,
+      no_data: 0,
+    };
     if (scopedProjects.length > 0) {
       scopedProjects.forEach((p) => {
-        const pTasks = scoped.filter((t) => t.linkedProjectId === p.id);
-        const h = p.status === "completed" ? "complete" : projectHealth(pTasks);
-        buckets[h]++;
+        buckets[projectStats(p, scoped).health]++;
       });
     }
     return buckets;
@@ -156,16 +140,16 @@ export function DeptHeadDashboard() {
     const until = Date.now() + days * 86400000;
     return scoped
       .filter((t) => {
-        const dl = t.deadline || t.dueDate;
-        return dl && t.status !== "completed" && new Date(dl).getTime() <= until;
+        const due = parseDueDate(t);
+        return due !== null && t.status !== "completed" && due <= until;
       })
-      .sort((a, b) => new Date(a.deadline || a.dueDate!).getTime() - new Date(b.deadline || b.dueDate!).getTime());
+      .sort((a, b) => (parseDueDate(a) ?? 0) - (parseDueDate(b) ?? 0));
   }, [scoped, horizon]);
 
   const urgentFive = useMemo(
     () => [...scoped]
-      .filter((t) => t.status !== "completed" && (t.deadline || t.dueDate))
-      .sort((a, b) => new Date(a.deadline || a.dueDate!).getTime() - new Date(b.deadline || b.dueDate!).getTime())
+      .filter((t) => t.status !== "completed" && parseDueDate(t) !== null)
+      .sort((a, b) => (parseDueDate(a) ?? 0) - (parseDueDate(b) ?? 0))
       .slice(0, 5),
     [scoped],
   );

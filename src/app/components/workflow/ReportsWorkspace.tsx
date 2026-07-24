@@ -26,6 +26,7 @@ import {
 import { useTasks, useUsers } from "../../hooks/useFirebaseData";
 import { useOrgs } from "../../hooks/useSupabaseData";
 import type { Task } from "../../services/taskService";
+import { isOverdue } from "../../services/taskSelectors";
 import { exportCsv, exportPdf, type ReportColumn } from "../../services/reportService";
 import {
   PageHeader,
@@ -47,15 +48,6 @@ const STATUS_COLORS: Record<string, string> = {
   for_review: "#f59e0b",
   completed: "#10b981",
 };
-
-function isOverdue(t: Task) {
-  const dl = t.deadline || t.dueDate;
-  if (!dl || t.status === "completed" || t.status === "for_review" || (t.percentComplete ?? 0) >= 100) return false;
-  if (typeof dl === "string" && /month|phase|week|quarter|ongoing|tbd|q[1-4]/i.test(dl)) return false;
-  const d = new Date(dl);
-  if (isNaN(d.getTime())) return false;
-  return d.getTime() < Date.now();
-}
 
 type ReportView = "status" | "productivity" | "workload" | "overdue";
 

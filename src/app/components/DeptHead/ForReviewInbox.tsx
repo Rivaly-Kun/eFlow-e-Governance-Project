@@ -15,9 +15,11 @@ import {
   ChevronRight,
   Gauge,
 } from "lucide-react";
+import { useAuth } from "../../contexts/AuthContext";
 import { useTasks } from "../../hooks/useFirebaseData";
 import { useScopedOrgIds } from "../../hooks/useSupabaseData";
 import type { Task } from "../../services/taskService";
+import { isTaskLead } from "../../services/taskSelectors";
 import {
   fetchProgressUpdates,
   type ProgressUpdate,
@@ -42,7 +44,26 @@ function timeAgo(ts: number): string {
   return `${d}d ago`;
 }
 
-export function ForReviewInbox() {
+export type ReviewInboxScope = "department" | "leading";
+
+export interface ForReviewInboxProps {
+  scope?: ReviewInboxScope;
+}
+
+function isDepartmentReviewTask(
+  task: Task,
+  role: string | undefined,
+  scopedOrgIds: string[],
+): boolean {
+  if (role === "super_admin") return true;
+  if (
+    !["dept_head", "department_head"].includes(role || "") ||
+    !task.orgId
+  ) return false;
+  return scopedOrgIds.includes(task.orgId);
+}
+
+export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
   const { tasks, loading } = useTasks();
   const { scopedOrgIds, isSuperAdmin } = useScopedOrgIds();
   const [query, setQuery] = useState("");
@@ -50,18 +71,17 @@ export function ForReviewInbox() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressUpdate[]>([]);
 
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
   const queue = useMemo(() => {
-    let rows = tasks.filter((t) => t.status === "for_review" && !t.archivedAt);
-    if (!isSuperAdmin && scopedOrgIds.length > 0) {
-      rows = rows.filter((t) =>
-        !t.orgId ||
-        scopedOrgIds.includes(t.orgId) ||
-        t.assigneeId === user?.id ||
-        t.recommendationLeadId === user?.id ||
-        (t.teamMemberIds || []).includes(user?.id || '')
-      );
-    }
+    let rows = tasks.filter(
+      (t) =>
+        t.status === "for_review" &&
+        !t.archivedAt &&
+        t.assigneeId !== user?.id &&
+        (scope === "leading"
+          ? isTaskLead(t, user?.id)
+          : isDepartmentReviewTask(t, userProfile?.role, scopedOrgIds)),
+    );
     if (query.trim()) {
       const q = query.toLowerCase();
       rows = rows.filter(
@@ -76,7 +96,15 @@ export function ForReviewInbox() {
       sort === "oldest" ? submitAt(a) - submitAt(b) : submitAt(b) - submitAt(a),
     );
     return rows;
-  }, [tasks, scopedOrgIds, isSuperAdmin, query, sort]);
+  }, [
+    tasks,
+    scope,
+    user?.id,
+    userProfile?.role,
+    scopedOrgIds,
+    query,
+    sort,
+  ]);
 
   // Keep a valid selection.
   useEffect(() => {
@@ -88,6 +116,17 @@ export function ForReviewInbox() {
   }, [queue, selectedId]);
 
   const selected = queue.find((t) => t.id === selectedId) || null;
+  const canReviewSelected = Boolean(
+    selected &&
+      selected.assigneeId !== user?.id &&
+      (scope === "leading"
+        ? isTaskLead(selected, user?.id)
+        : isDepartmentReviewTask(
+            selected,
+            userProfile?.role,
+            scopedOrgIds,
+          )),
+  );
 
   useEffect(() => {
     if (!selected) { setProgress([]); return; }
@@ -101,7 +140,13 @@ export function ForReviewInbox() {
   return (
     <div className="p-6 sm:p-8 min-h-full">
       <PageHeader
-        eyebrow={isSuperAdmin ? "Administration · Reviews" : "Dept. Head · Reviews"}
+        eyebrow={
+          scope === "leading"
+            ? "Leader Workspace · Reviews"
+            : isSuperAdmin
+              ? "Administration · Reviews"
+              : "Dept. Head · Reviews"
+        }
         title="For Review"
         subtitle="Validate submitted work and keep the pipeline moving."
         actions={
@@ -212,7 +257,12 @@ export function ForReviewInbox() {
                     </div>
                   )}
 
-                  <TaskReviewPanel task={selected} compact onDone={() => { /* realtime removes it from queue */ }} />
+                  <TaskReviewPanel
+                    task={selected}
+                    compact
+                    canReview={canReviewSelected}
+                    onDone={() => { /* realtime removes it from queue */ }}
+                  />
                 </div>
 
                 <div className="bg-white border border-neutral-200 rounded-xl p-4">
@@ -230,4 +280,8 @@ export function ForReviewInbox() {
       )}
     </div>
   );
+}
+
+export function LeaderReviewInbox() {
+  return <ForReviewInbox scope="leading" />;
 }

@@ -3,7 +3,7 @@
 // Deadlines, and My Work Report. All scoped to the signed-in employee's own
 // assigned / team tasks — they never see other employees' private outputs.
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   FolderKanban,
   ListTodo,
@@ -17,12 +17,12 @@ import {
   Clock,
   AlertTriangle,
   Inbox,
-  Building2,
 } from "lucide-react";
-import { useTasks } from "../../hooks/useFirebaseData";
 import { useProjectsData } from "../../hooks/useSupabaseData";
+import { useCurrentUserTasks } from "../../hooks/useCurrentUserTasks";
 import { useAuth } from "../../contexts/AuthContext";
 import type { Task } from "../../services/taskService";
+import { isActive } from "../../services/taskSelectors";
 import { exportCsv, exportPdf, type ReportColumn } from "../../services/reportService";
 import {
   PageHeader,
@@ -42,24 +42,8 @@ import { TaskDetailDrawer } from "../workflow/TaskDetailDrawer";
 
 // Shared: is this task "mine" (assignee or team member)?
 function useMyTasks() {
-  const { user } = useAuth();
-  const { tasks, loading } = useTasks();
-  const mine = useMemo(() => {
-    if (!user?.id) return [];
-    return tasks.filter(
-      (t) => t.assigneeId === user.id || (t.teamMemberIds || []).includes(user.id),
-    );
-  }, [tasks, user?.id]);
-  return { mine, loading };
-}
-
-function isOverdue(t: Task) {
-  const dl = t.deadline || t.dueDate;
-  if (!dl || t.status === "completed" || t.status === "for_review" || (t.percentComplete ?? 0) >= 100) return false;
-  if (typeof dl === "string" && /month|phase|week|quarter|ongoing|tbd|q[1-4]/i.test(dl)) return false;
-  const d = new Date(dl);
-  if (isNaN(d.getTime())) return false;
-  return d.getTime() < Date.now();
+  const { tasks, loading } = useCurrentUserTasks();
+  return { mine: tasks, loading };
 }
 
 // ══════════════════════ My Tasks ══════════════════════════════════
@@ -156,7 +140,6 @@ export function EmployeeMyTasks() {
 
 // ══════════════════════ My Projects ═══════════════════════════════
 export function EmployeeMyProjects() {
-  const { user } = useAuth();
   const { mine } = useMyTasks();
   const { projects, loading } = useProjectsData();
   const [open, setOpen] = useState<Task | null>(null);
@@ -295,7 +278,7 @@ export function EmployeeDeadlines() {
   const { mine, loading } = useMyTasks();
   const [open, setOpen] = useState<Task | null>(null);
 
-  const active = useMemo(() => mine.filter((t) => !t.archivedAt && t.status !== "completed" && (t.percentComplete ?? 0) < 100), [mine]);
+  const active = useMemo(() => mine.filter(isActive), [mine]);
 
   const groups = useMemo(() => {
     const now = new Date();
@@ -319,7 +302,7 @@ export function EmployeeDeadlines() {
 
   if (loading) return <div className="p-8"><LoadingState label="Loading deadlines…" /></div>;
 
-  const section = (title: string, tasks: Task[], tone: "bad" | "warn" | "neutral" | "info", icon: React.ReactNode) => (
+  const section = (title: string, tasks: Task[], tone: "bad" | "warn" | "neutral" | "info", _icon: React.ReactNode) => (
     <Card title={`${title} (${tasks.length})`} bodyClassName="p-0" className="mb-3">
       {tasks.length === 0 ? (
         <div className="px-4 py-5 text-[12px] text-neutral-400 text-center">Nothing here.</div>

@@ -263,6 +263,54 @@ const getTaskMemberIds = (task: Task) =>
     ...(task.recommendedEmployeeIds || []),
   ]);
 
+const getDirectBoardTransitionError = (
+  task: Task,
+  newStatus: TaskStatus,
+  role: MondayBoardProps["role"],
+  currentUserId?: string,
+): string | null => {
+  if (task.status === newStatus) return null;
+  const isParticipant = Boolean(
+    currentUserId &&
+      (task.assigneeId === currentUserId ||
+        task.recommendationLeadId === currentUserId ||
+        getTaskMemberIds(task).includes(currentUserId)),
+  );
+  if (role !== "depthead" && !isParticipant) {
+    return "Only a task participant can start or resume this work.";
+  }
+  if (
+    newStatus === "in_progress" &&
+    (task.status === "todo" || task.status === "changes_requested")
+  ) {
+    return null;
+  }
+  if (newStatus === "for_review") {
+    return "Use Submit for Review so the required completion note and evidence are recorded.";
+  }
+  if (newStatus === "completed" || newStatus === "changes_requested") {
+    return "Review decisions must be made from the Reviews workspace.";
+  }
+  if (newStatus === "todo" || newStatus === "pending_assignment") {
+    return "Use Edit Team to assign or reassign this task.";
+  }
+  return "That lifecycle change is not available from the board.";
+};
+
+const canDragTask = (
+  task: Task,
+  role: MondayBoardProps["role"],
+  currentUserId?: string,
+) =>
+  (task.status === "todo" || task.status === "changes_requested") &&
+  (role === "depthead" ||
+    Boolean(
+      currentUserId &&
+        (task.assigneeId === currentUserId ||
+          task.recommendationLeadId === currentUserId ||
+          getTaskMemberIds(task).includes(currentUserId)),
+    ));
+
 const getTaskMemberNames = (
   task: Task,
   employeeById: Record<string, Employee>,
@@ -288,19 +336,15 @@ const buildTaskEditorDraft = (task: Task): TaskEditorDraft => ({
   leadMemberId: task.assigneeId || getTaskMemberIds(task)[0] || null,
 });
 
-const parseTaskDeadline = (raw: string, projectStart?: Date): Date | null => {
+const parseTaskDeadline = (raw: string): Date | null => {
   const value = raw.trim();
   if (!value) return null;
 
-  // Match month or phase patterns like "Month 1", "Month 1-2", "Month 1 -2"
+  // A proposal-relative schedule is not a calendar deadline. Showing it on a
+  // date axis would invent a date and make Timeline disagree with reports.
   const monthMatch = value.match(/^(?:month|phase)\s*(\d+)(?:\s*-\s*(\d+))?/i);
   if (monthMatch) {
-    const startMonth = parseInt(monthMatch[1], 10);
-    const endMonth = monthMatch[2] ? parseInt(monthMatch[2], 10) : startMonth;
-    const baseDate = projectStart || new Date();
-    const d = new Date(baseDate);
-    d.setMonth(d.getMonth() + endMonth);
-    return d;
+    return null;
   }
 
   const parsed = new Date(value);
@@ -308,13 +352,10 @@ const parseTaskDeadline = (raw: string, projectStart?: Date): Date | null => {
   return parsed;
 };
 
-const getDeadlineInfo = (task: Task, projectStart?: Date) => {
+const getDeadlineInfo = (task: Task) => {
   const dl = task.deadline || task.dueDate;
   if (!dl) return null;
-  const parsedDeadline = parseTaskDeadline(
-    dl,
-    projectStart || (task.createdAt ? new Date(task.createdAt) : undefined)
-  );
+  const parsedDeadline = parseTaskDeadline(dl);
   if (!parsedDeadline) return null;
 
   const diff = parsedDeadline.getTime() - Date.now();
@@ -1890,6 +1931,16 @@ function ListBoardView({
       const task = tasks.find((t) => t.id === taskId);
       if (!task || task.status === newStatus || task.status === "completed")
         return;
+      const transitionError = getDirectBoardTransitionError(
+        task,
+        newStatus,
+        role,
+        currentUserId,
+      );
+      if (transitionError) {
+        alert(transitionError);
+        return;
+      }
       const actor = currentUserId
         ? { id: currentUserId, name: currentUserName }
         : undefined;
@@ -1902,7 +1953,7 @@ function ListBoardView({
         alert(err instanceof Error ? err.message : "That status change isn't allowed.");
       }
     },
-    [tasks, currentUserId, currentUserName],
+    [tasks, role, currentUserId, currentUserName],
   );
 
   return (
@@ -2002,7 +2053,11 @@ function ListBoardView({
                     task.status === "in_progress" &&
                     currentUserId &&
                     task.assigneeId === currentUserId;
-                  const isDraggable = task.status !== "completed";
+                  const isDraggable = canDragTask(
+                    task,
+                    role,
+                    currentUserId,
+                  );
                   return (
                     <div
                       key={task.id}
@@ -2394,6 +2449,16 @@ function KanbanBoardView({
     const task = tasks.find((t) => t.id === taskId);
     if (!task || task.status === newStatus || task.status === "completed")
       return;
+    const transitionError = getDirectBoardTransitionError(
+      task,
+      newStatus,
+      role,
+      currentUserId,
+    );
+    if (transitionError) {
+      alert(transitionError);
+      return;
+    }
     const actor = currentUserId
       ? { id: currentUserId, name: currentUserName }
       : undefined;
@@ -2450,7 +2515,11 @@ function KanbanBoardView({
                   task.status === "in_progress" &&
                   currentUserId &&
                   task.assigneeId === currentUserId;
-                const isDraggable = task.status !== "completed";
+                const isDraggable = canDragTask(
+                  task,
+                  role,
+                  currentUserId,
+                );
                 return (
                   <div
                     key={task.id}
@@ -3071,13 +3140,14 @@ function TimelineView({
     .map((task) => {
       const parsedDeadline = parseTaskDeadline(
         task.deadline || task.dueDate || "",
-        projectStart,
       );
       return parsedDeadline ? { task, parsedDeadline } : null;
     })
     .filter(
       (item): item is { task: Task; parsedDeadline: Date } => item !== null,
     );
+  const datedTaskIds = new Set(parsedItems.map(({ task }) => task.id));
+  const undatedTasks = tasks.filter((task) => !datedTaskIds.has(task.id));
 
   // Find window boundaries based on task dates
   let latestTime = today.getTime() + 12 * 7 * 86400000; // default 12 weeks out
@@ -3170,7 +3240,7 @@ function TimelineView({
           const pm =
             priorityMeta[task.priority || "medium"] || priorityMeta.medium;
           const sm = statusMeta[task.status];
-          const dlInfo = getDeadlineInfo(task, projectStart);
+          const dlInfo = getDeadlineInfo(task);
           const isOverdue = dlInfo?.label.includes("overdue");
           const isDueToday = dlInfo?.label === "Due today";
 
@@ -3264,6 +3334,46 @@ function TimelineView({
           );
         })}
       </div>
+
+      {undatedTasks.length > 0 && (
+        <div className="border-t border-neutral-200 bg-neutral-50/70 px-4 py-3">
+          <div className="text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-700">
+            Relative or unscheduled work ({undatedTasks.length})
+          </div>
+          <div className="mt-0.5 text-[10px] text-neutral-400">
+            Month/phase schedules stay visible here until a real calendar due date is assigned.
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {undatedTasks.map((task) => {
+              const sm = statusMeta[task.status];
+              const label = task.deadline || task.dueDate || "No due date";
+              const content = (
+                <>
+                  <span className={`h-1.5 w-1.5 rounded-full ${sm.dot}`} />
+                  <span className="max-w-[220px] truncate">{task.title}</span>
+                  <span className="text-neutral-400">{label}</span>
+                </>
+              );
+              return role === "depthead" && onOpenTaskEditor ? (
+                <button
+                  key={task.id}
+                  onClick={() => onOpenTaskEditor(task)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[10px] text-neutral-600 hover:border-violet-200 hover:text-violet-700"
+                >
+                  {content}
+                </button>
+              ) : (
+                <div
+                  key={task.id}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[10px] text-neutral-600"
+                >
+                  {content}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Legend */}
       <div className="flex items-center gap-4 px-4 py-2.5 border-t border-neutral-100 bg-neutral-50">

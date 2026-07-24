@@ -14,6 +14,7 @@ import {
 import { useTasks } from "../../hooks/useFirebaseData";
 import { useOrgs } from "../../hooks/useSupabaseData";
 import type { Task } from "../../services/taskService";
+import { isOverdue, isUnassigned } from "../../services/taskSelectors";
 import {
   PageHeader,
   StatCard,
@@ -27,15 +28,6 @@ import {
 } from "../workflow/primitives";
 import { TaskStatusBadge, PriorityPill } from "../workflow/StatusBadges";
 import { TaskDetailDrawer } from "../workflow/TaskDetailDrawer";
-
-function isOverdue(t: Task) {
-  const dl = t.deadline || t.dueDate;
-  if (!dl || t.status === "completed" || t.status === "for_review" || (t.percentComplete ?? 0) >= 100) return false;
-  if (typeof dl === "string" && /month|phase|week|quarter|ongoing|tbd|q[1-4]/i.test(dl)) return false;
-  const d = new Date(dl);
-  if (isNaN(d.getTime())) return false;
-  return d.getTime() < Date.now();
-}
 
 export function AdminTasks() {
   const { tasks, loading } = useTasks();
@@ -53,7 +45,7 @@ export function AdminTasks() {
     let rows = active;
     if (orgFilter !== "all") rows = rows.filter((t) => t.orgId === orgFilter);
     if (statusFilter !== "all") rows = rows.filter((t) => t.status === statusFilter);
-    if (special === "unassigned") rows = rows.filter((t) => !t.assigneeId || t.status === "pending_assignment");
+    if (special === "unassigned") rows = rows.filter(isUnassigned);
     if (special === "overdue") rows = rows.filter(isOverdue);
     if (special === "orphaned") rows = rows.filter((t) => t.orgId && !orgIds.has(t.orgId));
     if (special === "review") rows = rows.filter((t) => t.status === "for_review");

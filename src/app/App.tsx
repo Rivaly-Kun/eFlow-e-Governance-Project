@@ -52,7 +52,9 @@ function mapRoleToPanel(role: string): string {
       return 'depthead';
     case 'team_leader':
     case 'teamleader':
-      return 'teamleader';
+      // Leadership is a task capability layered onto the employee workspace.
+      // It must never inherit Department Head creation/approval privileges.
+      return 'employee';
     case 'employee':
       return 'employee';
     default:

@@ -80,6 +80,7 @@ export interface Task extends TaskHierarchy {
   percentComplete?: number;
   archivedAt?: number;
   lastActivityAt?: number;
+  createdBy?: string;
 }
 
 export interface TaskSubmissionMetadata {
@@ -255,6 +256,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     percentComplete: row.percent_complete == null ? undefined : (row.percent_complete as number),
     archivedAt: row.archived_at ? new Date(row.archived_at as string).getTime() : undefined,
     lastActivityAt: row.last_activity_at ? new Date(row.last_activity_at as string).getTime() : undefined,
+    createdBy: readString(row.created_by),
   };
 }
 
@@ -436,11 +438,16 @@ export const createTask = async (
 
   if (typeof titleOrPayload === 'object') {
     const p = titleOrPayload;
+    const initialStatus: TaskStatus = p.assigneeId
+      ? p.status === 'pending_assignment'
+        ? 'todo'
+        : p.status || 'todo'
+      : 'pending_assignment';
     const row = taskToRow({
       title: p.title,
       description: p.description,
       deadline: p.deadline,
-      status: p.status || (p.assigneeId ? 'todo' : 'pending_assignment'),
+      status: initialStatus,
       priority: p.priority || 'medium',
       tags: p.tags || [],
       department: p.department || p.teamId || '',
@@ -470,6 +477,9 @@ export const createTask = async (
       recommendationSource: p.recommendationSource,
       recommendationLeadId: p.recommendationLeadId,
       burnoutWarning: p.burnoutWarning,
+      linkedProjectId: p.linkedProjectId,
+      milestoneId: p.milestoneId,
+      percentComplete: p.percentComplete ?? 0,
     });
     newTask = row;
   } else {
@@ -502,13 +512,6 @@ export const createTask = async (
   const task = rowToTask(data);
 
   const taskTitle = (newTask.title as string) || 'Task';
-  await supabase.from('task_status_history').insert({
-    task_id: task.id,
-    from_status: null,
-    to_status: task.status,
-    note: 'Task created',
-  });
-
   // Notify assignee if assigned at creation
   const assigneeId = readString(newTask.assigned_to);
   if (assigneeId) {
@@ -569,7 +572,14 @@ export const updateTask = async (
   taskId: string,
   payload: UpdateTaskPayload,
 ) => {
-  const { status, ...rest } = payload;
+  const {
+    status,
+    assigneeId,
+    assigneeName: _assigneeName,
+    ...rest
+  } = payload;
+  const current = await fetchTaskById(taskId);
+  if (!current) throw new Error('Task not found.');
 
   const row = taskToRow(rest as Partial<Task>);
   if (Object.keys(row).length > 0) {
@@ -577,9 +587,23 @@ export const updateTask = async (
     if (error) throw error;
   }
 
+  if (assigneeId !== undefined) {
+    const currentAssignee = readString(current.assigned_to);
+    const nextAssignee = assigneeId || undefined;
+    if (currentAssignee !== nextAssignee) {
+      const { error } = await supabase.rpc('assign_task', {
+        p_task_id: taskId,
+        p_assignee: nextAssignee || null,
+        // The database resolves the display name from the profile row.
+        p_assignee_name: null,
+      });
+      if (error) throw new Error(error.message);
+    }
+  }
+
   if (status) {
-    const current = await fetchTaskById(taskId);
-    if (current && current.status !== status) {
+    const refreshed = await fetchTaskById(taskId);
+    if (refreshed && refreshed.status !== status) {
       const { error } = await supabase.rpc('transition_task_status', {
         p_task_id: taskId,
         p_to_status: status,
@@ -603,7 +627,7 @@ export const updateTask = async (
 export const updateTaskStatus = async (
   taskId: string,
   status: TaskStatus,
-  actor?: TaskActor,
+  _actor?: TaskActor,
   reason?: string,
 ) => {
   const { error } = await supabase.rpc('transition_task_status', {
@@ -624,7 +648,6 @@ export const submitTaskForReview = async (
 ): Promise<void> => {
   const trimmedNote = submission.note.trim();
   if (!trimmedNote) throw new Error("Submission note is required.");
-  if (!submission.submitterId) throw new Error("Submitter ID is required.");
 
   const attachments = submission.attachments || [];
 
@@ -633,8 +656,10 @@ export const submitTaskForReview = async (
   // Also insert a relational row per file into task_attachments so a
   // fresh signed URL can always be regenerated later from file_path,
   // even after this one expires.
-  const uploadedUrls = await Promise.all(
-    attachments.map(async (file, idx) => {
+  const uploadedPaths: string[] = [];
+  const uploadedUrls: string[] = [];
+  try {
+    for (const [idx, file] of attachments.entries()) {
       const safeName =
         typeof file.name === "string" && file.name.trim().length > 0
           ? file.name
@@ -645,13 +670,14 @@ export const submitTaskForReview = async (
         .from("task-attachments")
         .upload(path, file, { upsert: false });
       if (uploadError) throw uploadError;
+      uploadedPaths.push(path);
 
       const { data: signedData, error: signError } = await supabase.storage
         .from("task-attachments")
         .createSignedUrl(path, 60 * 60 * 24 * 60); // 60 days
       if (signError) throw signError;
 
-      await supabase.from("task_attachments").insert({
+      const { error: attachmentError } = await supabase.from("task_attachments").insert({
         task_id: taskId,
         uploaded_by: submission.submitterId,
         uploader_name: submission.submitterName,
@@ -660,45 +686,30 @@ export const submitTaskForReview = async (
         file_size: file.size || 0,
         mime_type: file.type || "",
       });
+      if (attachmentError) throw attachmentError;
 
-      return signedData.signedUrl;
-    }),
-  );
+      uploadedUrls.push(signedData.signedUrl);
+    }
 
-  const now = Date.now();
-  const latestSubmission: TaskSubmissionMetadata = {
-    note: trimmedNote,
-    submitterId: submission.submitterId,
-    submitterName: submission.submitterName,
-    submittedAt: now,
-    attachments: uploadedUrls,
-  };
-
-  // The submission payload (attachments + note) is stored on non-status
-  // columns, which the guard trigger allows. Clearing any prior rejection here
-  // keeps the review card clean for the reviewer.
-  const { error: metaError } = await supabase
-    .from("tasks")
-    .update({
-      latest_submission: latestSubmission,
-      rejection_note: null,
-      rejected_at: null,
-      feedback: null,
-    })
-    .eq("id", taskId);
-  if (metaError) throw metaError;
-
-  // The status move itself goes through the authoritative RPC. It writes
-  // history + activity + audit and notifies the task creator/reviewer (never
-  // just the submitter). The submission note is passed so it lands on the
-  // history/activity record.
-  const { error: transitionError } = await supabase.rpc("transition_task_status", {
-    p_task_id: taskId,
-    p_to_status: "for_review",
-    p_feedback: null,
-    p_reason: trimmedNote,
-  });
-  if (transitionError) throw new Error(transitionError.message);
+    // Metadata and lifecycle change commit together in one database command.
+    const { error } = await supabase.rpc("submit_task_for_review", {
+      p_task_id: taskId,
+      p_submission: {
+        note: trimmedNote,
+        attachments: uploadedUrls,
+      },
+    });
+    if (error) throw new Error(error.message);
+  } catch (error) {
+    if (uploadedPaths.length > 0) {
+      await supabase.storage.from("task-attachments").remove(uploadedPaths);
+      await supabase
+        .from("task_attachments")
+        .delete()
+        .in("file_path", uploadedPaths);
+    }
+    throw error;
+  }
 
   await notifyTaskListeners();
 };
@@ -725,24 +736,14 @@ export const verifyTask = async (
     throw new Error('Feedback is required when requesting changes.');
   }
 
-  // Approval stamps a tamper-evident audit hash on a non-status column first
-  // (the guard trigger permits non-status writes); the status move itself is
-  // authoritative and atomic through the RPC, which owns history/activity/
-  // audit/notification to the assignee.
-  if (approve) {
-    const hash = await generateAuditHash({ ...current, approvedAt: Date.now() });
-    const { error: hashError } = await supabase
-      .from('tasks')
-      .update({ audit_hash: hash })
-      .eq('id', taskId);
-    if (hashError) throw hashError;
-  }
-
-  const { error } = await supabase.rpc('transition_task_status', {
+  const auditHash = approve
+    ? await generateAuditHash({ ...current, approvedAt: Date.now() })
+    : null;
+  const { error } = await supabase.rpc('decide_task_review', {
     p_task_id: taskId,
-    p_to_status: approve ? 'completed' : 'changes_requested',
+    p_approve: approve,
     p_feedback: reason || null,
-    p_reason: null,
+    p_audit_hash: auditHash,
   });
   if (error) throw new Error(error.message);
 
@@ -898,7 +899,7 @@ export function subscribeToTaskActivities(
 // task status CHECK constraint; new screens filter on archivedAt. Writes an
 // audit event — archiving is never silent.
 
-export const archiveTask = async (taskId: string, actor?: TaskActor): Promise<void> => {
+export const archiveTask = async (taskId: string, _actor?: TaskActor): Promise<void> => {
   const current = await fetchTaskById(taskId);
   if (!current) throw new Error('Task not found.');
   await supabase.from('tasks').update({
@@ -917,7 +918,7 @@ export const archiveTask = async (taskId: string, actor?: TaskActor): Promise<vo
   await notifyTaskListeners();
 };
 
-export const unarchiveTask = async (taskId: string, actor?: TaskActor): Promise<void> => {
+export const unarchiveTask = async (taskId: string, _actor?: TaskActor): Promise<void> => {
   const current = await fetchTaskById(taskId);
   if (!current) throw new Error('Task not found.');
   await supabase.from('tasks').update({

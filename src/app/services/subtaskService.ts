@@ -113,7 +113,7 @@ export async function toggleSubtask(
   isCompleted: boolean,
   actorId?: string,
 ): Promise<void> {
-  await supabase
+  const { error } = await supabase
     .from('subtasks')
     .update({
       is_completed: isCompleted,
@@ -121,6 +121,7 @@ export async function toggleSubtask(
       completed_at: isCompleted ? new Date().toISOString() : null,
     })
     .eq('id', subtaskId);
+  if (error) throw error;
 }
 
 // ─── updateSubtask ──────────────────────────────────────────────────
@@ -132,19 +133,29 @@ export async function updateSubtask(
   if (updates.title !== undefined) row.title = updates.title;
   if (updates.position !== undefined) row.position = updates.position;
   if (updates.assignedTo !== undefined) row.assigned_to = updates.assignedTo || null;
-  await supabase.from('subtasks').update(row).eq('id', subtaskId);
+  const { error } = await supabase
+    .from('subtasks')
+    .update(row)
+    .eq('id', subtaskId);
+  if (error) throw error;
 }
 
 // ─── deleteSubtask ──────────────────────────────────────────────────
 export async function deleteSubtask(subtaskId: string): Promise<void> {
-  await supabase.from('subtasks').delete().eq('id', subtaskId);
+  const { error } = await supabase
+    .from('subtasks')
+    .delete()
+    .eq('id', subtaskId);
+  if (error) throw error;
 }
 
 // ─── reorderSubtasks ────────────────────────────────────────────────
 export async function reorderSubtasks(orderedIds: string[]): Promise<void> {
-  await Promise.all(
+  const results = await Promise.all(
     orderedIds.map((id, idx) =>
       supabase.from('subtasks').update({ position: idx }).eq('id', id),
     ),
   );
+  const failed = results.find((result) => result.error);
+  if (failed?.error) throw failed.error;
 }

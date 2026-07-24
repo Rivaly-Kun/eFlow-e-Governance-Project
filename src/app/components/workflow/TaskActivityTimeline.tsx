@@ -158,7 +158,9 @@ export function TaskActivityTimeline({ taskId }: { taskId: string }) {
                     “{item.data.note}”
                   </div>
                 )}
-                <div className="text-[10.5px] text-neutral-400 mt-0.5">{timeAgo(item.data.at)}</div>
+                <div className="text-[10.5px] text-neutral-400 mt-0.5">
+                  {timeAgo(item.data.at)}
+                </div>
               </div>
             </div>
           ) : (
@@ -200,7 +202,9 @@ export function TaskActivityTimeline({ taskId }: { taskId: string }) {
                     </div>
                   )}
                 </div>
-                <div className="text-[10.5px] text-neutral-400 mt-0.5">{timeAgo(item.data.at)}</div>
+                <div className="text-[10.5px] text-neutral-400 mt-0.5">
+                  {timeAgo(item.data.createdAt)}
+                </div>
               </div>
             </div>
           ),

@@ -95,13 +95,14 @@ export function PriorityPill({ priority }: { priority?: string }) {
 }
 
 // ─── Health dot (project health rollups) ─────────────────────────
-export type Health = "on_track" | "at_risk" | "delayed" | "complete";
+export type Health = "on_track" | "at_risk" | "delayed" | "complete" | "no_data";
 
 export const HEALTH_META: Record<Health, { label: string; color: string; text: string; bg: string }> = {
   on_track: { label: "On Track", color: "#10b981", text: "text-emerald-700", bg: "bg-emerald-50" },
   at_risk:  { label: "At Risk",  color: "#f59e0b", text: "text-amber-700",  bg: "bg-amber-50" },
   delayed:  { label: "Delayed",  color: "#dc2626", text: "text-red-700",    bg: "bg-red-50" },
   complete: { label: "Complete", color: "#6366f1", text: "text-indigo-700", bg: "bg-indigo-50" },
+  no_data:  { label: "No Task Data", color: "#a3a3a3", text: "text-neutral-600", bg: "bg-neutral-100" },
 };
 
 export function HealthDot({ health }: { health: Health }) {

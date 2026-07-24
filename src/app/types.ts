@@ -124,6 +124,7 @@ export type TaskStatus =
   | 'todo'
   | 'in_progress'
   | 'for_review'
+  | 'changes_requested'
   | 'completed';
 
 export interface Task {

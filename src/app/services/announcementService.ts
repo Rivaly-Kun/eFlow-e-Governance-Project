@@ -181,16 +181,30 @@ export async function fetchMyAnnouncements(userId: string): Promise<Announcement
   if (error) return [];
 
   const now = Date.now();
-  return (data || [])
-    .map((r: Record<string, unknown>) => {
+  const announcements = (data || []).reduce<AnnouncementForUser[]>(
+    (rows, r: Record<string, unknown>) => {
       const a = r.announcement as Record<string, unknown> | null;
-      if (!a) return null;
+      if (!a) return rows;
       const base = rowToAnnouncement(a);
-      return { ...base, readAt: r.read_at ? new Date(r.read_at as string).getTime() : undefined };
-    })
-    .filter((a): a is AnnouncementForUser =>
-      !!a && a.status === 'published' && (!a.expiresAt || a.expiresAt > now))
-    .sort((x, y) => (y.publishedAt || 0) - (x.publishedAt || 0));
+      const announcement: AnnouncementForUser = {
+        ...base,
+        readAt: r.read_at
+          ? new Date(r.read_at as string).getTime()
+          : undefined,
+      };
+      if (
+        announcement.status === 'published' &&
+        (!announcement.expiresAt || announcement.expiresAt > now)
+      ) {
+        rows.push(announcement);
+      }
+      return rows;
+    },
+    [],
+  );
+  return announcements.sort(
+    (x, y) => (y.publishedAt || 0) - (x.publishedAt || 0),
+  );
 }
 
 export function subscribeToMyAnnouncements(userId: string, callback: (a: AnnouncementForUser[]) => void): () => void {

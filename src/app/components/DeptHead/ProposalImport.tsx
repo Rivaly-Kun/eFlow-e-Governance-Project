@@ -440,7 +440,8 @@ export default function ProposalImport({ onClose }: { onClose?: () => void }) {
     let created = 0;
     let failed = 0;
 
-    // Grouping map: projectTitle -> { projectTitle, activityTitle -> tasks[] }
+    // Group by the imported hierarchy id, not title alone. Two programs may
+    // legitimately contain projects with the same display title.
     const projectGroups = new Map<
       string,
       {
@@ -455,7 +456,9 @@ export default function ProposalImport({ onClose }: { onClose?: () => void }) {
     >();
 
     toCreate.forEach((dt) => {
-      const projKey = dt.projectTitle.trim();
+      const projKey =
+        dt.projectId ||
+        `${dt.proposalId}:${dt.programId}:${dt.projectTitle.trim()}`;
       if (!projectGroups.has(projKey)) {
         projectGroups.set(projKey, {
           projectTitle: dt.projectTitle,
@@ -494,12 +497,17 @@ export default function ProposalImport({ onClose }: { onClose?: () => void }) {
         let dbProjectId = "";
         try {
           // Check for existing project to prevent duplicate imports
-          const { data: existingProjs } = await supabase
+          let existingQuery = supabase
             .from("projects")
             .select("id")
             .eq("title", projGroup.projectTitle.trim())
-            .eq("org_id", departmentFilter || "")
             .is("archived_at", null);
+          existingQuery = departmentFilter
+            ? existingQuery.eq("org_id", departmentFilter)
+            : existingQuery.is("org_id", null);
+          const { data: existingProjs, error: existingError } =
+            await existingQuery;
+          if (existingError) throw existingError;
 
           if (existingProjs && existingProjs.length > 0) {
             dbProjectId = existingProjs[0].id;
@@ -527,7 +535,13 @@ export default function ProposalImport({ onClose }: { onClose?: () => void }) {
           }
         } catch (projErr) {
           console.error("Failed to create/resolve project:", projGroup.projectTitle, projErr);
-          dbProjectId = projGroup.projectId;
+          // `project_id` is a legacy hierarchy string, not the UUID foreign key
+          // used by operational projects. Never write it into linked_project_id.
+          failed += Array.from(projGroup.activities.values()).reduce(
+            (sum, activity) => sum + activity.tasks.length,
+            0,
+          );
+          continue;
         }
 
         // Fetch milestone mapping
@@ -1450,7 +1464,7 @@ function AssignmentModal({
                         {load}% Load
                       </div>
                       <div className="text-[9px] text-neutral-400 mt-0.5">
-                        {notes?.weeklyHoursLimit || 40}h limit
+                        40h weekly capacity
                       </div>
                     </div>
                   </div>

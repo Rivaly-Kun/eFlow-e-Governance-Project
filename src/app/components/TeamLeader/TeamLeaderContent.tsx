@@ -1,4 +1,4 @@
-import { DeptHeadContent } from "../DeptHead/DeptHeadContent";
+import { EmployeeContent } from "../Employee/EmployeeContent";
 
 export function TeamLeaderContent({
   activeSection,
@@ -8,8 +8,8 @@ export function TeamLeaderContent({
   activePage?: string;
 }) {
   return (
-    <DeptHeadContent
-      activeSection={activeSection || "command"}
+    <EmployeeContent
+      activeSection={activeSection || "tasks"}
       activePage={activePage}
     />
   );

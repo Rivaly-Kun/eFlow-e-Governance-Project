@@ -1,7 +1,7 @@
 // ─── ProgressUpdateForm ──────────────────────────────────────────
 // Structured progress report: percent complete, blocker category + free text,
-// next step, optional note, optional private attachment. Saving NEVER marks the
-// task complete — it appends to the progress timeline and updates metrics.
+// next step, optional note, optional private attachment. The first non-zero
+// update starts a To Do task; final approval remains a separate review action.
 
 import React, { useState } from "react";
 import { Gauge, Paperclip, X, Send } from "lucide-react";
@@ -77,7 +77,7 @@ export function ProgressUpdateForm({
         <div>
           <div className="text-[13px] font-['Lexend:Medium',_sans-serif] text-neutral-900">Post a progress update</div>
           <div className="text-[11px] font-['Lexend:Regular',_sans-serif] text-neutral-500">
-            This won't submit the task for review — it keeps your reviewer informed.
+            Your first update starts the task. At 100%, submit it to the review queue below.
           </div>
         </div>
       </div>

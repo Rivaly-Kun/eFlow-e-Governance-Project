@@ -212,11 +212,20 @@ export interface ProgressUpdateInput {
   attachment?: File | null;
 }
 
-// Saving a progress update NEVER changes task status to completed. It updates
-// the progress timeline and the task's own percent_complete + last_activity_at,
-// and pings the reviewer when a blocker is raised.
+// Progress never bypasses review to mark a task completed. The first non-zero
+// update does, however, advance To Do -> In Progress through the authoritative
+// lifecycle RPC so a task cannot display meaningful progress while remaining
+// in the untouched queue.
 export async function submitProgressUpdate(input: ProgressUpdateInput): Promise<void> {
   if (!input.author.id) throw new Error('You must be signed in.');
+  if (
+    input.percentComplete != null &&
+    (!Number.isFinite(input.percentComplete) ||
+      input.percentComplete < 0 ||
+      input.percentComplete > 100)
+  ) {
+    throw new Error('Progress must be between 0 and 100.');
+  }
 
   let attachmentPath: string | null = null;
   let attachmentName: string | null = null;
@@ -233,32 +242,27 @@ export async function submitProgressUpdate(input: ProgressUpdateInput): Promise<
 
   const hasBlocker = !!input.blocker?.trim() && input.blockerCategory !== 'None';
 
-  const { data, error } = await supabase
-    .from('task_progress_updates')
-    .insert({
-      task_id: input.taskId,
-      author_id: input.author.id,
-      author_name: input.author.name,
-      percent_complete: input.percentComplete ?? null,
-      blocker_category: hasBlocker ? input.blockerCategory || null : null,
-      blocker: hasBlocker ? input.blocker?.trim() || null : null,
-      next_step: input.nextStep?.trim() || null,
-      note: input.note?.trim() || null,
-      attachment_path: attachmentPath,
-      attachment_name: attachmentName,
-    })
-    .select()
-    .single();
-  if (error) throw error;
-
-  // Reflect latest percent on the task itself (does not touch status).
-  if (input.percentComplete != null) {
-    await supabase
-      .from('tasks')
-      .update({ percent_complete: input.percentComplete, last_activity_at: new Date().toISOString() })
-      .eq('id', input.taskId);
-  } else {
-    await supabase.from('tasks').update({ last_activity_at: new Date().toISOString() }).eq('id', input.taskId);
+  const { error } = await supabase.rpc('submit_task_progress', {
+    p_task_id: input.taskId,
+    p_percent_complete: input.percentComplete ?? null,
+    p_blocker_category: hasBlocker
+      ? input.blockerCategory || null
+      : null,
+    p_blocker: hasBlocker ? input.blocker?.trim() || null : null,
+    p_next_step: input.nextStep?.trim() || null,
+    p_note: input.note?.trim() || null,
+    p_attachment_path: attachmentPath,
+    p_attachment_name: attachmentName,
+  });
+  if (error) {
+    // The upload belongs only to this attempted progress record. Remove it if
+    // the atomic database command rejects the update so no orphan is left.
+    if (attachmentPath) {
+      await supabase.storage
+        .from('task-comment-attachments')
+        .remove([attachmentPath]);
+    }
+    throw new Error(error.message);
   }
 
   // Notify reviewer/creator when a blocker is raised.
@@ -281,13 +285,6 @@ export async function submitProgressUpdate(input: ProgressUpdateInput): Promise<
     }
   }
 
-  await recordAudit({
-    entityType: 'task',
-    entityId: input.taskId,
-    action: 'progress.updated',
-    afterData: { percentComplete: input.percentComplete, blocker: hasBlocker ? input.blocker : undefined },
-    metadata: { progressId: data.id },
-  });
 }
 
 // Fresh signed URL for a private progress/comment attachment.

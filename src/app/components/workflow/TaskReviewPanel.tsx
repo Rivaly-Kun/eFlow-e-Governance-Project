@@ -30,10 +30,12 @@ export function TaskReviewPanel({
   task,
   onDone,
   compact,
+  canReview = false,
 }: {
   task: Task;
   onDone?: () => void;
   compact?: boolean;
+  canReview?: boolean;
 }) {
   const { user, userProfile } = useAuth();
   const { toast } = useToast();
@@ -42,6 +44,8 @@ export function TaskReviewPanel({
   const [busy, setBusy] = useState(false);
   const [attachments, setAttachments] = useState<StoredAttachment[]>([]);
   const [signing, setSigning] = useState<string | null>(null);
+  const effectiveCanReview =
+    canReview && Boolean(user?.id) && task.assigneeId !== user?.id;
 
   // Pull relational attachment rows so we can always mint a fresh signed URL,
   // even if the one stored on the submission has expired.
@@ -76,6 +80,7 @@ export function TaskReviewPanel({
   };
 
   const decide = async (approve: boolean) => {
+    if (!effectiveCanReview) return;
     if (!approve && !feedback.trim()) {
       toast("Feedback is required when requesting changes.", "error");
       return;
@@ -159,7 +164,7 @@ export function TaskReviewPanel({
       )}
 
       {/* Decision */}
-      {mode === "idle" && (
+      {effectiveCanReview && mode === "idle" && (
         <div className="flex items-center gap-2">
           <button
             onClick={() => setMode("approve")}
@@ -176,7 +181,7 @@ export function TaskReviewPanel({
         </div>
       )}
 
-      {mode !== "idle" && (
+      {effectiveCanReview && mode !== "idle" && (
         <div>
           <textarea
             value={feedback}

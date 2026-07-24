@@ -8,6 +8,12 @@ import { IncomingCallListener } from "../ui/IncomingCallListener";
 import { SettingsContent } from "../Settings/SettingsContent";
 import { getProfileAvatarUrl } from "../../services/userSettingsService";
 import {
+  getCoreRoleNavigation,
+  getCoreSidebarContent,
+} from "./coreWorkflowNavigation";
+import { useTasksData } from "../../hooks/useSupabaseData";
+import { isTaskLead } from "../../services/taskSelectors";
+import {
   Search,
   Dashboard,
   Task,
@@ -389,6 +395,7 @@ interface RoleNavItem {
   id: string;
   icon: React.ReactNode;
   label: string;
+  requiresLeadership?: boolean;
 }
 
 const roleNavConfigs: Record<
@@ -547,6 +554,19 @@ const roleNavConfigs: Record<
   },
 };
 
+// The active workflow roles use the flat, stable manifest in
+// coreWorkflowNavigation. The large map below remains only as compatibility
+// content for the currently out-of-scope prototype roles.
+for (const coreRole of ["depthead", "employee"]) {
+  const coreConfig = getCoreRoleNavigation(coreRole);
+  if (coreConfig) {
+    roleNavConfigs[coreRole] = {
+      defaultSection: coreConfig.defaultSection,
+      navItems: coreConfig.navItems,
+    };
+  }
+}
+
 // === SIDEBAR CONTENT PER ROLE + SECTION ===
 
 import {
@@ -593,6 +613,9 @@ function getSidebarContent(role: string, section: string): SidebarContent {
     ],
   };
   if (section === "settings") return settingsContent;
+
+  const coreContent = getCoreSidebarContent(role, section);
+  if (coreContent) return coreContent;
 
   const map: Record<string, Record<string, SidebarContent>> = {
     superadmin: {
@@ -1338,7 +1361,6 @@ function getSidebarContent(role: string, section: string): SidebarContent {
             items: [
               { icon: <Task size={16} className="text-neutral-900" />, label: "My Tasks", isActive: true },
               { icon: <StarFilled size={16} className="text-neutral-900" />, label: "Pinned — You're Leading" },
-              { icon: <FolderOpen size={16} className="text-neutral-900" />, label: "My Projects" },
               { icon: <CalendarIcon size={16} className="text-neutral-900" />, label: "Deadlines" },
               { icon: <Time size={16} className="text-neutral-900" />, label: "Task History" },
               { icon: <Notification size={16} className="text-neutral-900" />, label: "Announcements" },
@@ -1458,6 +1480,11 @@ function UnifiedSidebar({
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set([activeSection]));
   const config = roleNavConfigs[role] || roleNavConfigs.superadmin;
   const { user, userProfile, logout } = useAuth();
+  const { tasks } = useTasksData();
+  const hasLeadingWork = !!user?.id && tasks.some((task) => isTaskLead(task, user.id));
+  const visibleNavItems = config.navItems.filter(
+    (item) => !item.requiresLeadership || hasLeadingWork,
+  );
 
   useEffect(() => {
     setExpandedSections((prev) => {
@@ -1529,16 +1556,9 @@ function UnifiedSidebar({
         </button>
       </div>
 
-      {/* Search (only when expanded) */}
-      {!isCollapsed && (
-        <div className="px-4 pt-4 shrink-0">
-          <SearchContainer isCollapsed={false} />
-        </div>
-      )}
-
       {/* Navigation List */}
       <div className="flex-1 overflow-y-auto px-3 py-4 flex flex-col gap-1 select-none">
-        {config.navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const sectionContent = getSidebarContent(role, item.id);
           const isCurrentSection = activeSection === item.id;
           const isExpanded = expandedSections.has(item.id);

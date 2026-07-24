@@ -36,13 +36,28 @@ export function isCompleted(t: Task): boolean {
   return t.status === 'completed';
 }
 
-/** Active = not archived, not completed, and not 100% complete. */
+/** Lifecycle status is authoritative; progress alone never removes active work. */
 export function isActive(t: Task): boolean {
-  return !isArchived(t) && !isCompleted(t) && (t.percentComplete ?? 0) < 100;
+  return !isArchived(t) && !isCompleted(t);
 }
 
 export function isForReview(t: Task): boolean {
   return t.status === 'for_review';
+}
+
+/**
+ * The explicit recommendation lead is authoritative. Older tasks without one
+ * use the first team member as their legacy lead convention.
+ */
+export function isTaskLead(
+  task: Pick<Task, 'recommendationLeadId' | 'teamMemberIds'>,
+  userId: string | null | undefined,
+): boolean {
+  if (!userId) return false;
+  if (task.recommendationLeadId) {
+    return task.recommendationLeadId === userId;
+  }
+  return task.teamMemberIds?.[0] === userId;
 }
 
 /**
@@ -247,7 +262,9 @@ export function milestoneAutoStatus(
   tasks: Task[],
   now: number = Date.now(),
 ): { status: Exclude<Milestone['status'], 'auto'>; source: 'manual' | 'auto' } {
-  if (milestone.manualStatus) return { status: milestone.manualStatus, source: 'manual' };
+  if (milestone.manualStatus && milestone.manualStatus !== 'auto') {
+    return { status: milestone.manualStatus, source: 'manual' };
+  }
   const linked = tasks.filter((t) => !isArchived(t));
   if (linked.length === 0) return { status: 'not_started', source: 'auto' };
   const done = linked.filter(isCompleted).length;

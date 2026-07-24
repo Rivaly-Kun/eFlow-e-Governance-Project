@@ -16,6 +16,7 @@ import {
 import { useAuth } from "../../contexts/AuthContext";
 import { useTasks } from "../../hooks/useFirebaseData";
 import { type Task } from "../../services/taskService";
+import { isTaskLead } from "../../services/taskSelectors";
 import {
   PageHeader,
   StatCard,
@@ -39,16 +40,10 @@ export function YouAreLeadingView() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
-  // Dynamic leadership check: User is lead if assigned as assignee, leadId, or first team member
+  // Explicit lead assignments win; legacy tasks fall back to their first member.
   const leadingTasks = useMemo(() => {
     if (!user?.id) return [];
-    return tasks.filter((t) => {
-      if (t.archivedAt) return false;
-      const isAssignee = t.assigneeId === user.id;
-      const isLead = t.recommendationLeadId === user.id;
-      const isFirstMember = (t.teamMemberIds || [])[0] === user.id;
-      return isAssignee || isLead || isFirstMember;
-    });
+    return tasks.filter((t) => !t.archivedAt && isTaskLead(t, user.id));
   }, [tasks, user?.id]);
 
   const filteredTasks = useMemo(() => {

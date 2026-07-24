@@ -173,13 +173,23 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
   (input.memberIds || []).forEach((uid) => {
     if (uid && uid !== project.ownerId) memberRows.push({ project_id: project.id, user_id: uid, role: 'member' });
   });
-  if (memberRows.length) await supabase.from('project_members').insert(memberRows);
+  if (memberRows.length) {
+    const { error: membersError } = await supabase
+      .from('project_members')
+      .insert(memberRows);
+    if (membersError) throw membersError;
+  }
 
   // Initial milestones
   const milestoneRows = (input.milestones || [])
     .filter((m) => m.title.trim())
     .map((m, i) => ({ project_id: project.id, title: m.title.trim(), due_date: m.dueDate || null, sort_order: i }));
-  if (milestoneRows.length) await supabase.from('milestones').insert(milestoneRows);
+  if (milestoneRows.length) {
+    const { error: milestonesError } = await supabase
+      .from('milestones')
+      .insert(milestoneRows);
+    if (milestonesError) throw milestonesError;
+  }
 
   await recordAudit({
     entityType: 'project',
