@@ -6883,11 +6883,10 @@ export function DeptHeadTaskBoard() {
 
   return (
     <div className="p-8 h-full bg-neutral-50">
-      <div className="flex items-center justify-between mb-3">
+      <div className="mb-3">
         <div className="text-[12px] text-neutral-500 font-['Lexend:Regular',_sans-serif]">
           Department Task Board
         </div>
-        <NotificationBell userId={userProfile?.uid} />
       </div>
       <MondayBoard
         tasks={deptTasks}

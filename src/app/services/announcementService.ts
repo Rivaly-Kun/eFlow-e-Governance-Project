@@ -29,6 +29,19 @@ export interface AnnouncementForUser extends Announcement {
 }
 
 function rowToAnnouncement(row: Record<string, unknown>): Announcement {
+  let expiresAt: number | undefined = undefined;
+  if (row.expires_at) {
+    const expStr = String(row.expires_at);
+    const d = new Date(expStr);
+    if (!isNaN(d.getTime())) {
+      // If date-only string like YYYY-MM-DD, set to end of day (23:59:59.999)
+      if (expStr.length <= 10) {
+        d.setHours(23, 59, 59, 999);
+      }
+      expiresAt = d.getTime();
+    }
+  }
+
   return {
     id: row.id as string,
     title: (row.title as string) || '',
@@ -37,7 +50,7 @@ function rowToAnnouncement(row: Record<string, unknown>): Announcement {
     orgId: (row.org_id as string) || undefined,
     status: (row.status as AnnouncementStatus) || 'draft',
     publishedAt: row.published_at ? new Date(row.published_at as string).getTime() : undefined,
-    expiresAt: row.expires_at ? new Date(row.expires_at as string).getTime() : undefined,
+    expiresAt,
     createdBy: (row.created_by as string) || undefined,
     createdAt: new Date((row.created_at as string) || Date.now()).getTime(),
     updatedAt: new Date((row.updated_at as string) || Date.now()).getTime(),
@@ -106,18 +119,24 @@ async function resolveRecipients(draft: { audience: Audience; orgId?: string | n
 
   if (draft.audience === 'org' && draft.orgId) {
     // The org and everything under it (ltree path prefix).
+    let scoped: string[] = [draft.orgId];
     const { data: anchor } = await supabase.from('organizations').select('path').eq('id', draft.orgId).maybeSingle();
-    if (!anchor) return [];
-    const { data: orgs } = await supabase.from('organizations').select('id, path');
-    const scoped = (orgs || [])
-      .filter((o) => o.path === anchor.path || (o.path as string).startsWith(`${anchor.path}.`))
-      .map((o) => o.id);
+    if (anchor?.path) {
+      const { data: orgs } = await supabase.from('organizations').select('id, path');
+      const children = (orgs || [])
+        .filter((o) => o.path === anchor.path || (o.path as string)?.startsWith(`${anchor.path}.`))
+        .map((o) => o.id);
+      scoped = Array.from(new Set([...scoped, ...children]));
+    }
     const { data: profiles } = await supabase.from('profiles').select('id').in('org_id', scoped);
     return (profiles || []).map((p) => p.id as string);
   }
 
   // audience === 'all'
-  const { data: profiles } = await supabase.from('profiles').select('id').eq('is_active', true);
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id')
+    .or('is_active.eq.true,is_active.is.null');
   return (profiles || []).map((p) => p.id as string);
 }
 
@@ -174,37 +193,103 @@ export async function deleteAnnouncement(id: string): Promise<void> {
 
 // ─── Recipient-side (Announcement Center) ────────────────────────
 export async function fetchMyAnnouncements(userId: string): Promise<AnnouncementForUser[]> {
-  const { data, error } = await supabase
+  // 1. Fetch user's recipient records + joined announcements
+  const { data: recipientData } = await supabase
     .from('announcement_recipients')
-    .select('read_at, announcement:announcements(*)')
+    .select('read_at, announcement_id, announcement:announcements(*)')
     .eq('user_id', userId);
-  if (error) return [];
+
+  // 2. Fetch all published announcements directly so no published broadcast is missed
+  const { data: publishedAnnouncements } = await supabase
+    .from('announcements')
+    .select('*')
+    .eq('status', 'published');
+
+  // 3. Fetch recipient profile for org matching
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('org_id')
+    .eq('id', userId)
+    .maybeSingle();
+  const userOrgId = profile?.org_id;
+
+  const recipientMap = new Map<string, number | undefined>();
+  if (recipientData) {
+    for (const r of recipientData as Record<string, unknown>[]) {
+      const rawA = r.announcement || r.announcements;
+      const a = (Array.isArray(rawA) ? rawA[0] : rawA) as Record<string, unknown> | null;
+      const annId = (a?.id || r.announcement_id) as string;
+      if (annId) {
+        const readAt = r.read_at ? new Date(r.read_at as string).getTime() : undefined;
+        recipientMap.set(annId, readAt);
+      }
+    }
+  }
 
   const now = Date.now();
-  const announcements = (data || []).reduce<AnnouncementForUser[]>(
-    (rows, r: Record<string, unknown>) => {
-      const a = r.announcement as Record<string, unknown> | null;
-      if (!a) return rows;
+  const announcementsToEnsure: string[] = [];
+  const announcementMap = new Map<string, AnnouncementForUser>();
+
+  // Process joined recipient announcements first
+  if (recipientData) {
+    for (const r of recipientData as Record<string, unknown>[]) {
+      const rawA = r.announcement || r.announcements;
+      const a = (Array.isArray(rawA) ? rawA[0] : rawA) as Record<string, unknown> | null;
+      if (!a) continue;
       const base = rowToAnnouncement(a);
-      const announcement: AnnouncementForUser = {
-        ...base,
-        readAt: r.read_at
-          ? new Date(r.read_at as string).getTime()
-          : undefined,
-      };
-      if (
-        announcement.status === 'published' &&
-        (!announcement.expiresAt || announcement.expiresAt > now)
-      ) {
-        rows.push(announcement);
+      if (base.status === 'published' && (!base.expiresAt || base.expiresAt > now)) {
+        announcementMap.set(base.id, {
+          ...base,
+          readAt: r.read_at ? new Date(r.read_at as string).getTime() : undefined,
+        });
       }
-      return rows;
-    },
-    [],
-  );
-  return announcements.sort(
-    (x, y) => (y.publishedAt || 0) - (x.publishedAt || 0),
-  );
+    }
+  }
+
+  // Process all published announcements from table to catch any missing recipient rows
+  if (publishedAnnouncements) {
+    for (const row of publishedAnnouncements as Record<string, unknown>[]) {
+      const base = rowToAnnouncement(row);
+      if (base.status !== 'published') continue;
+      if (base.expiresAt && base.expiresAt <= now) continue;
+
+      let isTargeted = false;
+      if (base.audience === 'all') {
+        isTargeted = true;
+      } else if (base.audience === 'org' && base.orgId) {
+        if (userOrgId === base.orgId) {
+          isTargeted = true;
+        }
+      }
+
+      if (isTargeted && !announcementMap.has(base.id)) {
+        if (!recipientMap.has(base.id)) {
+          announcementsToEnsure.push(base.id);
+        }
+        announcementMap.set(base.id, {
+          ...base,
+          readAt: recipientMap.get(base.id),
+        });
+      }
+    }
+  }
+
+  // Auto-materialize missing recipient rows in background
+  if (announcementsToEnsure.length > 0) {
+    const rowsToInsert = announcementsToEnsure.map((aid) => ({
+      announcement_id: aid,
+      user_id: userId,
+    }));
+    supabase
+      .from('announcement_recipients')
+      .upsert(rowsToInsert, { onConflict: 'announcement_id,user_id' })
+      .then(({ error }) => {
+        if (error) console.error('Error auto-materializing announcement recipients:', error);
+      });
+  }
+
+  const list = Array.from(announcementMap.values());
+  return list.sort((x, y) => (y.publishedAt || 0) - (x.publishedAt || 0));
 }
 
 export function subscribeToMyAnnouncements(userId: string, callback: (a: AnnouncementForUser[]) => void): () => void {
@@ -214,6 +299,7 @@ export function subscribeToMyAnnouncements(userId: string, callback: (a: Announc
   const channel = supabase
     .channel(channelId)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'announcement_recipients', filter: `user_id=eq.${userId}` }, () => load())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements' }, () => load())
     .subscribe();
   return () => { supabase.removeChannel(channel); };
 }

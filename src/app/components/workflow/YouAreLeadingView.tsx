@@ -12,6 +12,7 @@ import {
   ListTodo,
   UserCheck,
   ChevronRight,
+  RotateCcw,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTasks } from "../../hooks/useFirebaseData";
@@ -192,6 +193,29 @@ export function YouAreLeadingView() {
                     </button>
                   </div>
                 </div>
+
+                {/* Rejection / Undo Reason Alert Banner */}
+                {t.status !== "completed" &&
+                  (t.status === "changes_requested" || t.rejectionNote || t.reopenReason) && (
+                    <div className="mb-3 p-3 rounded-lg bg-rose-50/90 border border-rose-200 text-rose-900 shadow-sm">
+                      <div className="flex items-center gap-1.5 font-['Lexend:SemiBold',_sans-serif] text-[11px] uppercase tracking-wider text-rose-700 mb-1">
+                        <RotateCcw size={13} className="text-rose-600" />
+                        {t.status === "changes_requested"
+                          ? "Changes Requested / Rejected for Rework"
+                          : "Task Reopened / Undone"}
+                      </div>
+                      <div className="text-[12.5px] font-['Lexend:Regular',_sans-serif] text-rose-900 leading-relaxed">
+                        <span className="font-['Lexend:Medium',_sans-serif]">Reason:</span>{" "}
+                        {t.rejectionNote || t.reopenReason || "Action required. Please review feedback and update task."}
+                      </div>
+                      {(t.rejectedAt || t.reopenedAt) && (
+                        <div className="mt-1 text-[10.5px] text-rose-600 font-['Lexend:Regular',_sans-serif]">
+                          {t.reopenedByName ? `Undone by ${t.reopenedByName} · ` : ""}
+                          {formatDate(t.rejectedAt || t.reopenedAt)}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                 {/* Progress bar & details */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3 p-2.5 rounded-lg bg-neutral-50 border border-neutral-100">

@@ -40,8 +40,7 @@ export function TaskDetailDrawer({
   const { user, userProfile } = useAuth();
 
   if (!task) return null;
-  const effectiveCanReview =
-    canReview && Boolean(user?.id) && task.assigneeId !== user?.id;
+  const effectiveCanReview = canReview && Boolean(user?.id);
 
   // Rework is now the first-class `changes_requested` state (plan §2.1).
   const rejected = task.status === "changes_requested";

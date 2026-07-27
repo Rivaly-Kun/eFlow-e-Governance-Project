@@ -2,6 +2,7 @@ import { Settings } from "lucide-react";
 import { AnnouncementCenter } from "../workflow/AnnouncementCenter";
 import { YouAreLeadingView } from "../workflow/YouAreLeadingView";
 import { LeaderReviewInbox } from "../DeptHead/ForReviewInbox";
+import { SubtasksWorkspace } from "../workflow/SubtasksWorkspace";
 import {
   RolePageRouter,
   type RolePageSections,
@@ -22,6 +23,9 @@ import { EmployeeTaskWorkspace } from "./EmployeeTaskWorkspace";
 export const employeePages: RolePageSections = {
   tasks: {
     "My Tasks": EmployeeTaskWorkspace,
+  },
+  subtasks: {
+    "My Subtasks": SubtasksWorkspace,
   },
   leading: {
     "Leading Work": YouAreLeadingView,
@@ -49,6 +53,7 @@ export const employeePages: RolePageSections = {
   // navigation consolidation. They are intentionally not shown in the sidebar.
   mywork: {
     "My Tasks": EmployeeTaskWorkspace,
+    "My Subtasks": SubtasksWorkspace,
     "Pinned — You're Leading": YouAreLeadingView,
     Deadlines: EmployeeDeadlines,
     "Task History": EmployeeTaskHistory,
@@ -68,6 +73,7 @@ export const employeePages: RolePageSections = {
 
 export const employeeDefaultPages: Record<string, string> = {
   tasks: "My Tasks",
+  subtasks: "My Subtasks",
   leading: "Leading Work",
   reviews: "Leader Reviews",
   deadlines: "Deadlines",

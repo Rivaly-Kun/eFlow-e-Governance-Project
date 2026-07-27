@@ -58,6 +58,21 @@ const CORE_WORKFLOW_NAVIGATION: Record<string, CoreRoleNavigation> = {
         group: "Department",
       },
       {
+        id: "leading",
+        icon: <StarFilled size={16} />,
+        label: "Work I'm Leading",
+        page: "Leading Work",
+        group: "Leadership",
+        requiresLeadership: true,
+      },
+      {
+        id: "subtasks",
+        icon: <CheckmarkOutline size={16} />,
+        label: "My Subtasks",
+        page: "My Subtasks",
+        group: "Department",
+      },
+      {
         id: "reviews",
         icon: <CheckmarkOutline size={16} />,
         label: "Reviews",
@@ -77,14 +92,6 @@ const CORE_WORKFLOW_NAVIGATION: Record<string, CoreRoleNavigation> = {
         label: "Team Intelligence",
         page: "Team Intelligence",
         group: "People",
-      },
-      {
-        id: "leading",
-        icon: <StarFilled size={16} />,
-        label: "Work I'm Leading",
-        page: "Leading Work",
-        group: "Leadership",
-        requiresLeadership: true,
       },
       {
         id: "reports",
@@ -119,6 +126,13 @@ const CORE_WORKFLOW_NAVIGATION: Record<string, CoreRoleNavigation> = {
         page: "Leading Work",
         group: "Leadership",
         requiresLeadership: true,
+      },
+      {
+        id: "subtasks",
+        icon: <CheckmarkOutline size={16} />,
+        label: "My Subtasks",
+        page: "My Subtasks",
+        group: "My Work",
       },
       {
         id: "reviews",

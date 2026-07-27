@@ -2120,14 +2120,13 @@ function ListBoardView({
                               submission={task.latestSubmission}
                             />
                           )}
-                        {role === "employee" && task.rejectionNote && (
+                        {task.rejectionNote && (
                           <RejectionNotice
                             note={task.rejectionNote}
                             rejectedAt={task.rejectedAt}
                           />
                         )}
-                        {role === "employee" &&
-                          task.status !== "completed" &&
+                        {task.status !== "completed" &&
                           task.reopenReason && (
                             <ReopenNotice
                               reason={task.reopenReason}
@@ -2565,14 +2564,13 @@ function KanbanBoardView({
                     {role === "depthead" && task.status === "for_review" && (
                       <SubmissionDetails submission={task.latestSubmission} />
                     )}
-                    {role === "employee" && task.rejectionNote && (
+                    {task.rejectionNote && (
                       <RejectionNotice
                         note={task.rejectionNote}
                         rejectedAt={task.rejectedAt}
                       />
                     )}
-                    {role === "employee" &&
-                      task.status !== "completed" &&
+                    {task.status !== "completed" &&
                       task.reopenReason && (
                         <ReopenNotice
                           reason={task.reopenReason}
@@ -2986,15 +2984,13 @@ function HierarchyBoardView({
                                                 }
                                               />
                                             )}
-                                          {role === "employee" &&
-                                            task.rejectionNote && (
+                                          {task.rejectionNote && (
                                               <RejectionNotice
                                                 note={task.rejectionNote}
                                                 rejectedAt={task.rejectedAt}
                                               />
                                             )}
-                                          {role === "employee" &&
-                                            task.status !== "completed" &&
+                                          {task.status !== "completed" &&
                                             task.reopenReason && (
                                               <ReopenNotice
                                                 reason={task.reopenReason}
@@ -3790,182 +3786,6 @@ export function MondayBoard({
 
   return (
     <div className="w-full flex flex-col gap-5 font-['Lexend:Regular',_sans-serif]">
-      {/* ─── Task Composer (Dept Head only) ──────────────────── */}
-      {role === "depthead" && (
-        <div className="bg-white border border-neutral-200 rounded-2xl shadow-sm overflow-hidden">
-          {/* Composer header */}
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-neutral-100">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.22em] text-neutral-400 font-['Lexend:Medium',_sans-serif]">
-                Task Composer
-              </div>
-              <div className="text-[15px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900 mt-0.5">
-                Create & Import Tasks
-              </div>
-            </div>
-            <button
-              onClick={() => setComposerOpen((p) => !p)}
-              className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-2.5 py-1 text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-600 hover:bg-neutral-50 transition"
-            >
-              {composerOpen ? (
-                <ChevronDown size={13} />
-              ) : (
-                <ChevronRight size={13} />
-              )}
-              {composerOpen ? "Collapse" : "Expand"}
-            </button>
-          </div>
-
-          {composerOpen && (
-            <div className="p-5">
-              <div className="grid gap-3 md:grid-cols-[1fr_180px]">
-                <input
-                  type="text"
-                  placeholder="Task title…"
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  className="h-[42px] rounded-xl border border-neutral-200 bg-neutral-50 px-3 text-[13px] text-neutral-900 outline-none focus:border-neutral-400 focus:bg-white transition"
-                />
-                <input
-                  type="date"
-                  value={newDeadline}
-                  onChange={(e) => setNewDeadline(e.target.value)}
-                  className="h-[42px] rounded-xl border border-neutral-200 bg-neutral-50 px-3 text-[13px] text-neutral-900 outline-none focus:border-neutral-400 focus:bg-white transition"
-                />
-              </div>
-              <textarea
-                rows={2}
-                value={newDesc}
-                onChange={(e) => setNewDesc(e.target.value)}
-                placeholder="Description or context for the AI assignment engine…"
-                className="mt-3 w-full resize-none rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-[13px] text-neutral-900 outline-none focus:border-neutral-400 focus:bg-white transition"
-              />
-              <div className="mt-3 grid gap-3 md:grid-cols-[140px_1fr]">
-                <select
-                  value={newPriority}
-                  onChange={(e) =>
-                    setNewPriority(
-                      e.target.value as "low" | "medium" | "high",
-                    )
-                  }
-                  className="h-[36px] rounded-xl border border-neutral-200 bg-neutral-50 px-2 text-[12px] text-neutral-800 outline-none focus:border-neutral-400"
-                >
-                  <option value="low">🟢 Low</option>
-                  <option value="medium">🟡 Medium</option>
-                  <option value="high">🔴 High</option>
-                </select>
-                <input
-                  type="text"
-                  value={newTags}
-                  onChange={(e) => setNewTags(e.target.value)}
-                  placeholder="Tags (comma-separated): drainage, inspection, civil-works…"
-                  className="h-[36px] rounded-xl border border-neutral-200 bg-neutral-50 px-3 text-[12px] text-neutral-800 outline-none focus:border-neutral-400 transition"
-                />
-              </div>
-
-              {/* Team assignment area */}
-              <div className="mt-3 rounded-xl border border-dashed border-neutral-200 bg-neutral-50 p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-['Lexend:Medium',_sans-serif]">
-                    Team Assignment
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleAiSuggest}
-                      disabled={composerAiLoading || !newTitle.trim()}
-                      className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full bg-violet-100 text-[11px] font-['Lexend:Medium',_sans-serif] text-violet-800 hover:bg-violet-200 disabled:opacity-50 transition"
-                    >
-                      {composerAiLoading ? (
-                        <Loader2 size={11} className="animate-spin" />
-                      ) : (
-                        <Sparkles size={11} />
-                      )}
-                      AI Suggest
-                    </button>
-                    <button
-                      onClick={() => setManualModalOpen(true)}
-                      disabled={!deptEmployees.length}
-                      className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full border border-neutral-200 bg-white text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 transition"
-                    >
-                      <Users size={11} />
-                      Browse
-                    </button>
-                    {selectedMembers.length > 0 && (
-                      <button
-                        onClick={() => setSelectedMembers([])}
-                        className="h-7 px-2.5 rounded-full border border-neutral-200 bg-white text-[11px] text-neutral-500 hover:bg-neutral-50 transition"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {selectedMembers.length === 0 ? (
-                  <div className="text-[12px] text-neutral-400">
-                    No team assigned · click{" "}
-                    <span className="font-['Lexend:Medium',_sans-serif]">
-                      Browse
-                    </span>{" "}
-                    or{" "}
-                    <span className="font-['Lexend:Medium',_sans-serif]">
-                      AI Suggest
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedMembers.map((m, i) => (
-                      <span
-                        key={m.id}
-                        className="inline-flex items-center gap-1.5 bg-white border border-neutral-200 text-neutral-700 text-[11px] px-2.5 py-1 rounded-full"
-                      >
-                        <span className="w-4 h-4 rounded-full bg-neutral-800 text-[9px] text-white flex items-center justify-center font-['Lexend:SemiBold',_sans-serif]">
-                          {getInitials(m.name)}
-                        </span>
-                        {i === 0 && (
-                          <Crown size={10} className="text-amber-500" />
-                        )}
-                        {m.name.split(" ")[0]}
-                        <button
-                          onClick={() =>
-                            setSelectedMembers((p) =>
-                              p.filter((x) => x.id !== m.id),
-                            )
-                          }
-                        >
-                          <X size={10} className="text-neutral-400" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {composerAiOffline && (
-                  <div className="mt-2 text-[11px] text-red-600">
-                    AI suggestions unavailable right now.
-                  </div>
-                )}
-                {composerAiRec?.reasoning && (
-                  <div className="mt-2 text-[11px] text-violet-600 italic">
-                    {composerAiRec.reasoning}
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-3 flex items-center justify-between">
-                <div className="text-[11px] text-neutral-400">
-                  Tasks without a team go to Pending Assignment.
-                </div>
-                <button
-                  onClick={handleCreate}
-                  disabled={!newTitle.trim() || !newDeadline}
-                  className="px-5 py-2 bg-neutral-900 text-white text-[12px] font-['Lexend:SemiBold',_sans-serif] rounded-xl hover:bg-neutral-800 disabled:opacity-40 disabled:cursor-not-allowed transition"
-                >
-                  Create Task
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* ─── Task Board ──────────────────────────────────────────── */}
       <div>

@@ -1,9 +1,9 @@
 // ─── TaskSubtasksWidget ──────────────────────────────────────────
-// Standalone subtask checklist with assignment, completion toggle, and realtime updates.
+// Standalone subtask checklist with multi-user assignment, completion toggle, and realtime updates.
 // Reused across TaskDetailDrawer, YouAreLeadingView, and MondayBoard.
 
 import React, { useState, useEffect } from "react";
-import { User, Plus, X, CheckSquare, Sparkles } from "lucide-react";
+import { User, Plus, X, CheckSquare, Sparkles, Check } from "lucide-react";
 import {
   type Subtask,
   subscribeToSubtasks,
@@ -27,7 +27,7 @@ export function TaskSubtasksWidget({
   const [adding, setAdding] = useState(false);
   const [pickerOpenFor, setPickerOpenFor] = useState<string | null>(null);
   const { employees } = useEmployees();
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
 
   useEffect(() => {
     if (!taskId) return;
@@ -57,6 +57,7 @@ export function TaskSubtasksWidget({
         source: "manual",
         position: subtasks.length,
         createdBy: user?.id,
+        actorName: userProfile?.full_name || "Team Lead",
       });
       setNewTitle("");
     } catch (err) {
@@ -87,8 +88,12 @@ export function TaskSubtasksWidget({
 
       <div className="space-y-1.5">
         {subtasks.map((st) => {
-          const assignedUser = assigneeOptions.find((e) => e.id === st.assignedTo);
-          const isMySubtask = user?.id && st.assignedTo === user.id;
+          const assignedIds = st.assignedToIds || (st.assignedTo ? [st.assignedTo] : []);
+          const assignedUsers = assignedIds
+            .map((id) => assigneeOptions.find((e) => e.id === id))
+            .filter((u): u is { id: string; name: string; initials: string } => Boolean(u));
+
+          const isMySubtask = Boolean(user?.id && assignedIds.includes(user.id));
 
           return (
             <div
@@ -119,56 +124,84 @@ export function TaskSubtasksWidget({
                 </span>
               )}
 
-              {/* Assignee Avatar / Picker */}
-              <div className="relative">
+              {/* Assignee Avatars / Multi-Select Picker */}
+              <div className="relative shrink-0">
                 <button
                   type="button"
                   onClick={() => setPickerOpenFor(pickerOpenFor === st.id ? null : st.id)}
-                  className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all ${
-                    assignedUser
-                      ? "bg-neutral-900 text-white text-[9px] font-['Lexend:SemiBold',_sans-serif]"
-                      : "bg-neutral-100 text-neutral-400 text-[11px] hover:bg-neutral-200 hover:text-neutral-600"
-                  }`}
-                  title={assignedUser ? `Assigned to ${assignedUser.name}` : "Assign subtask to team member"}
+                  className="flex items-center -space-x-1.5 hover:opacity-90 transition shrink-0"
+                  title={
+                    assignedUsers.length > 0
+                      ? `Assigned to: ${assignedUsers.map((u) => u.name).join(", ")}`
+                      : "Assign subtask to team members"
+                  }
                 >
-                  {assignedUser ? assignedUser.initials : <User size={12} />}
+                  {assignedUsers.length > 0 ? (
+                    assignedUsers.map((u) => (
+                      <div
+                        key={u.id}
+                        className="w-6 h-6 rounded-full bg-neutral-900 border border-white text-white text-[9px] flex items-center justify-center font-['Lexend:SemiBold',_sans-serif] shadow-sm"
+                      >
+                        {u.initials}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-neutral-100 text-neutral-400 flex items-center justify-center hover:bg-neutral-200 hover:text-neutral-600 transition">
+                      <User size={12} />
+                    </div>
+                  )}
                 </button>
 
                 {pickerOpenFor === st.id && (
-                  <div className="absolute z-30 top-7 right-0 bg-white rounded-xl border border-neutral-200 shadow-xl py-1.5 w-48 max-h-56 overflow-y-auto">
+                  <div className="absolute z-30 top-7 right-0 bg-white rounded-xl border border-neutral-200 shadow-xl py-1.5 w-52 max-h-60 overflow-y-auto">
                     <div className="px-3 py-1 text-[9px] uppercase tracking-wider text-neutral-400 font-['Lexend:SemiBold',_sans-serif]">
-                      Assign to Member
+                      Assign Team Members
                     </div>
-                    {st.assignedTo && (
+                    {assignedIds.length > 0 && (
                       <button
                         type="button"
                         onClick={() => {
-                          updateSubtask(st.id, { assignedTo: "" });
-                          setPickerOpenFor(null);
+                          updateSubtask(
+                            st.id,
+                            { assignedToIds: [] },
+                            { id: user?.id || "", name: userProfile?.full_name || "Team Lead" },
+                          );
                         }}
-                        className="w-full text-left px-3 py-1.5 text-[11px] hover:bg-red-50 text-red-600 font-['Lexend:Medium',_sans-serif]"
+                        className="w-full text-left px-3 py-1 text-[11px] hover:bg-red-50 text-red-600 font-['Lexend:Medium',_sans-serif] border-b border-neutral-100 mb-1 pb-1.5"
                       >
-                        Unassign
+                        Clear All Assignees
                       </button>
                     )}
-                    {assigneeOptions.map((e) => (
-                      <button
-                        type="button"
-                        key={e.id}
-                        onClick={() => {
-                          updateSubtask(st.id, { assignedTo: e.id });
-                          setPickerOpenFor(null);
-                        }}
-                        className={`w-full text-left px-3 py-1.5 text-[11px] hover:bg-neutral-50 flex items-center gap-2 ${
-                          st.assignedTo === e.id ? "bg-neutral-100 font-medium text-neutral-900" : "text-neutral-700"
-                        }`}
-                      >
-                        <div className="w-5 h-5 rounded-full bg-neutral-800 text-white text-[8px] flex items-center justify-center font-['Lexend:SemiBold',_sans-serif]">
-                          {e.initials}
-                        </div>
-                        <span className="font-['Lexend:Regular',_sans-serif] truncate">{e.name}</span>
-                      </button>
-                    ))}
+                    {assigneeOptions.map((e) => {
+                      const selected = assignedIds.includes(e.id);
+                      return (
+                        <button
+                          type="button"
+                          key={e.id}
+                          onClick={() => {
+                            const nextIds = selected
+                              ? assignedIds.filter((id) => id !== e.id)
+                              : [...assignedIds, e.id];
+                            updateSubtask(
+                              st.id,
+                              { assignedToIds: nextIds },
+                              { id: user?.id || "", name: userProfile?.full_name || "Team Lead" },
+                            );
+                          }}
+                          className={`w-full text-left px-3 py-1.5 text-[11px] hover:bg-neutral-50 flex items-center justify-between gap-2 ${
+                            selected ? "bg-blue-50/50 font-medium text-blue-900" : "text-neutral-700"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-5 h-5 rounded-full bg-neutral-800 text-white text-[8px] flex items-center justify-center font-['Lexend:SemiBold',_sans-serif] shrink-0">
+                              {e.initials}
+                            </div>
+                            <span className="font-['Lexend:Regular',_sans-serif] truncate">{e.name}</span>
+                          </div>
+                          {selected && <Check size={12} className="text-blue-600 shrink-0" />}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -206,3 +239,4 @@ export function TaskSubtasksWidget({
     </div>
   );
 }
+

@@ -550,6 +550,48 @@ create policy audit_read_scoped on public.audit_events
     )
   );
 
+-- Keep this repair runnable even when the earlier task-lifecycle migration was
+-- not installed. The transition helper and write guard are dependencies of the
+-- authoritative commands and trigger defined below.
+create or replace function public.is_allowed_task_transition(
+  from_status text,
+  to_status text
+)
+returns boolean
+language sql
+immutable
+set search_path = public
+as $$
+  select (from_status, to_status) in (
+    ('pending_assignment', 'todo'),
+    ('todo', 'in_progress'),
+    ('in_progress', 'for_review'),
+    ('for_review', 'completed'),
+    ('for_review', 'changes_requested'),
+    ('changes_requested', 'in_progress'),
+    ('completed', 'in_progress')
+  );
+$$;
+
+create or replace function public.guard_task_status_write()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if new.status is distinct from old.status
+     and coalesce(
+       current_setting('eflow.allow_status_write', true),
+       'off'
+     ) <> 'on' then
+    raise exception
+      'Task status may only change through transition_task_status()'
+      using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
 create or replace function public.transition_task_status(
   p_task_id uuid,
   p_to_status text,

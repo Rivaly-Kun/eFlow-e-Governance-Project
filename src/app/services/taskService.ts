@@ -660,15 +660,16 @@ export const submitTaskForReview = async (
   const uploadedUrls: string[] = [];
   try {
     for (const [idx, file] of attachments.entries()) {
-      const safeName =
+      const rawName =
         typeof file.name === "string" && file.name.trim().length > 0
           ? file.name
           : `attachment-${idx + 1}`;
-      const path = `${taskId}/${submission.submitterId}/${Date.now()}-${safeName}`;
+      const safePathName = rawName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `${taskId}/${submission.submitterId}/${Date.now()}-${safePathName}`;
 
       const { error: uploadError } = await supabase.storage
         .from("task-attachments")
-        .upload(path, file, { upsert: false });
+        .upload(path, file, { upsert: false, contentType: file.type || undefined });
       if (uploadError) throw uploadError;
       uploadedPaths.push(path);
 
@@ -681,7 +682,7 @@ export const submitTaskForReview = async (
         task_id: taskId,
         uploaded_by: submission.submitterId,
         uploader_name: submission.submitterName,
-        file_name: safeName,
+        file_name: rawName,
         file_path: path,
         file_size: file.size || 0,
         mime_type: file.type || "",

@@ -44,8 +44,7 @@ export function TaskReviewPanel({
   const [busy, setBusy] = useState(false);
   const [attachments, setAttachments] = useState<StoredAttachment[]>([]);
   const [signing, setSigning] = useState<string | null>(null);
-  const effectiveCanReview =
-    canReview && Boolean(user?.id) && task.assigneeId !== user?.id;
+  const effectiveCanReview = canReview && Boolean(user?.id);
 
   // Pull relational attachment rows so we can always mint a fresh signed URL,
   // even if the one stored on the submission has expired.

@@ -56,11 +56,11 @@ function isDepartmentReviewTask(
   scopedOrgIds: string[],
 ): boolean {
   if (role === "super_admin") return true;
-  if (
-    !["dept_head", "department_head"].includes(role || "") ||
-    !task.orgId
-  ) return false;
-  return scopedOrgIds.includes(task.orgId);
+  if (!["dept_head", "department_head"].includes(role || "")) return false;
+  if (task.orgId && scopedOrgIds.length > 0) {
+    return scopedOrgIds.includes(task.orgId);
+  }
+  return true;
 }
 
 export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
@@ -77,9 +77,8 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
       (t) =>
         t.status === "for_review" &&
         !t.archivedAt &&
-        t.assigneeId !== user?.id &&
         (scope === "leading"
-          ? isTaskLead(t, user?.id)
+          ? isTaskLead(t, user?.id) || t.createdBy === user?.id || t.recommendationLeadId === user?.id
           : isDepartmentReviewTask(t, userProfile?.role, scopedOrgIds)),
     );
     if (query.trim()) {
@@ -118,9 +117,8 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
   const selected = queue.find((t) => t.id === selectedId) || null;
   const canReviewSelected = Boolean(
     selected &&
-      selected.assigneeId !== user?.id &&
       (scope === "leading"
-        ? isTaskLead(selected, user?.id)
+        ? isTaskLead(selected, user?.id) || selected.createdBy === user?.id || selected.recommendationLeadId === user?.id
         : isDepartmentReviewTask(
             selected,
             userProfile?.role,

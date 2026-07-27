@@ -86,14 +86,17 @@ export async function createNotification(
 ): Promise<void> {
   if (!userId) return;
 
+  const isUuid = (val?: string) =>
+    Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
+
   await supabase.from('notifications').insert({
     user_id: userId,
     type: notification.type,
     title: notification.title,
     message: notification.message,
-    task_id: notification.taskId || null,
+    task_id: isUuid(notification.taskId) ? notification.taskId : null,
     task_title: notification.taskTitle || '',
-    actor_id: notification.actorId || null,
+    actor_id: isUuid(notification.actorId) ? notification.actorId : null,
     actor_name: notification.actorName || '',
     status_from: notification.statusFrom || '',
     status_to: notification.statusTo || '',
