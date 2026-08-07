@@ -16,6 +16,7 @@ import { TaskReviewPanel } from "./TaskReviewPanel";
 import { ProgressUpdateForm } from "./ProgressUpdateForm";
 import { TaskSubtasksWidget } from "./TaskSubtasksWidget";
 import { SubmitForReviewForm } from "./SubmitForReviewForm";
+import { useTasks } from "../../hooks/useFirebaseData";
 
 type Tab = "overview" | "activity" | "discussion" | "review";
 
@@ -38,14 +39,28 @@ export function TaskDetailDrawer({
   const [resuming, setResuming] = useState(false);
   const [starting, setStarting] = useState(false);
   const { user, userProfile } = useAuth();
+  const { tasks } = useTasks();
 
   if (!task) return null;
   const effectiveCanReview = canReview && Boolean(user?.id);
+  const dependencies = (task.dependencyIds || [])
+    .map((id) => tasks.find((candidate) => candidate.id === id))
+    .filter((dependency): dependency is Task => Boolean(dependency));
+  const unresolvedDependencies = dependencies.filter(
+    (dependency) => dependency.status !== "completed",
+  );
 
   // Rework is now the first-class `changes_requested` state (plan §2.1).
   const rejected = task.status === "changes_requested";
   const isOwnerOrLead =
     task.assigneeId === user?.id || task.recommendationLeadId === user?.id;
+  const canManageSubtasks = Boolean(
+    isOwnerOrLead ||
+    task.createdBy === user?.id ||
+    userProfile?.role === "super_admin" ||
+    userProfile?.role === "dept_head" ||
+    userProfile?.role === "department_head",
+  );
 
   // The assignee resumes rework by transitioning changes_requested → in_progress.
   // Only offered to whoever can post progress (the owner surface).
@@ -144,6 +159,42 @@ export function TaskDetailDrawer({
                 </div>
               )}
 
+              {task.status === "cancelled" && (
+                <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+                  <div className="text-[11px] font-['Lexend:Medium',_sans-serif] uppercase tracking-wide text-neutral-500">Cancelled</div>
+                  <div className="mt-0.5 text-[12.5px] text-neutral-700">
+                    {task.cancellationReason || "No cancellation reason recorded."}
+                  </div>
+                </div>
+              )}
+
+              {(Boolean(task.acceptanceCriteria?.length) || task.definitionOfDone) && (
+                <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+                  <div className="text-[11px] font-['Lexend:Medium',_sans-serif] uppercase tracking-wide text-neutral-500">Completion standard</div>
+                  {task.acceptanceCriteria?.length ? (
+                    <ul className="mt-1.5 list-disc space-y-1 pl-4 text-[12px] text-neutral-700">
+                      {task.acceptanceCriteria.map((criterion) => <li key={criterion}>{criterion}</li>)}
+                    </ul>
+                  ) : null}
+                  {task.definitionOfDone && (
+                    <div className="mt-2 text-[11.5px] text-neutral-600">Done when: {task.definitionOfDone}</div>
+                  )}
+                </div>
+              )}
+
+              {dependencies.length > 0 && (
+                <div className={`rounded-xl border p-3 ${unresolvedDependencies.length ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}>
+                  <div className="text-[11px] font-['Lexend:Medium',_sans-serif] uppercase tracking-wide text-neutral-600">
+                    Dependencies · {dependencies.length - unresolvedDependencies.length}/{dependencies.length} complete
+                  </div>
+                  <div className="mt-1.5 space-y-1 text-[11.5px] text-neutral-700">
+                    {dependencies.map((dependency) => (
+                      <div key={dependency.id}>{dependency.status === "completed" ? "✓" : "○"} {dependency.title}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[11px] font-['Lexend:Medium',_sans-serif] uppercase tracking-wider text-neutral-400">Progress</span>
@@ -184,6 +235,7 @@ export function TaskDetailDrawer({
                     id,
                     name: (task.teamMemberNames || [])[idx] || "Team Member",
                   }))}
+                  canManage={canManageSubtasks}
                 />
               </div>
 

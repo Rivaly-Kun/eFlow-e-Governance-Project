@@ -9,6 +9,11 @@
 //        table, and an optional chart snapshot (SVG/canvas dataURL).
 
 import { recordAudit } from './auditService';
+import {
+  escapeCsv as formatCsvValue,
+  escapeHtml as formatHtmlValue,
+  safeFilename as formatFilename,
+} from "../features/reports/services/formatting";
 
 export interface ReportColumn<T> {
   key: string;
@@ -26,9 +31,7 @@ export interface ReportMeta {
 }
 
 function escapeCsv(value: string | number): string {
-  const s = String(value ?? '');
-  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
+  return formatCsvValue(value);
 }
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -43,8 +46,7 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 function safeFilename(title: string, ext: string): string {
-  const base = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'report';
-  return `${base}-${new Date().toISOString().slice(0, 10)}.${ext}`;
+  return formatFilename(title, ext);
 }
 
 // ─── CSV ─────────────────────────────────────────────────────────
@@ -148,9 +150,5 @@ export function exportPdf<T>(rows: T[], columns: ReportColumn<T>[], meta: Report
 }
 
 function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return formatHtmlValue(s);
 }

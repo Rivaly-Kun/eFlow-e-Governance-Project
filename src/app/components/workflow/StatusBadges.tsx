@@ -2,8 +2,6 @@
 // One source of truth for status → color mapping across Dept Head, Admin, and
 // Employee screens, so a "for_review" task looks identical everywhere.
 
-import React from "react";
-
 export type WorkflowTaskStatus =
   | "pending_assignment"
   | "todo"
@@ -12,6 +10,7 @@ export type WorkflowTaskStatus =
   | "changes_requested"
   | "rejected"
   | "completed"
+  | "cancelled"
   | "archived";
 
 interface Tone {
@@ -32,6 +31,7 @@ const TASK_TONES: Record<string, Tone> = {
   changes_requested:  { bg: "bg-rose-50",     text: "text-rose-700",    border: "border-rose-200",    dot: "bg-rose-500",    label: "Changes Requested" },
   rejected:           { bg: "bg-rose-50",     text: "text-rose-700",    border: "border-rose-200",    dot: "bg-rose-500",    label: "Needs Changes" },
   completed:          { bg: "bg-emerald-50",  text: "text-emerald-700", border: "border-emerald-200", dot: "bg-emerald-500", label: "Completed" },
+  cancelled:          { bg: "bg-neutral-100", text: "text-neutral-500", border: "border-neutral-200", dot: "bg-neutral-400", label: "Cancelled" },
   archived:           { bg: "bg-neutral-100", text: "text-neutral-500", border: "border-neutral-200", dot: "bg-neutral-300", label: "Archived" },
 };
 

@@ -278,6 +278,7 @@ export function YouAreLeadingView() {
                       id,
                       name: memberNames[idx] || "Team Member",
                     }))}
+                    canManage
                   />
                 </div>
               </div>

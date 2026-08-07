@@ -3,7 +3,7 @@
 // CSV/PDF export of the EXACT filtered rows. Scope-parameterized: Dept Head is
 // limited to their subtree; Super Admin gets the cross-department filter.
 
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   BarChart3,
   Users,
@@ -23,7 +23,7 @@ import {
   Cell,
   CartesianGrid,
 } from "recharts";
-import { useTasks, useUsers } from "../../hooks/useFirebaseData";
+import { useTasks } from "../../hooks/useFirebaseData";
 import { useOrgs } from "../../hooks/useSupabaseData";
 import type { Task } from "../../services/taskService";
 import { isOverdue } from "../../services/taskSelectors";
@@ -53,7 +53,6 @@ type ReportView = "status" | "productivity" | "workload" | "overdue";
 
 export function ReportsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eyebrow: string }) {
   const { tasks, loading } = useTasks();
-  const { users } = useUsers();
   const { orgs } = useOrgs();
   const [view, setView] = useState<ReportView>("status");
   const [orgFilter, setOrgFilter] = useState("all");

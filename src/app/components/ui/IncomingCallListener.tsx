@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Phone, PhoneOff } from "lucide-react";
 import { ActiveCall, subscribeToIncomingCalls, declineCall } from "../../services/callService";
 import { CallModal } from "./CallModal";

@@ -2,16 +2,13 @@
 // Dedicated Subtasks Workspace for viewing, filtering, and checking off
 // subtasks assigned to the user across all department projects and tasks.
 
-import React, { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   ListChecks,
   CheckCircle2,
   Clock,
-  CheckSquare,
-  Search,
   Sparkles,
   ChevronRight,
-  Filter,
 } from "lucide-react";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
@@ -26,7 +23,6 @@ import {
   WSelect,
   SectionEmpty,
   LoadingState,
-  ProgressBar,
 } from "./primitives";
 import { TaskStatusBadge, PriorityPill } from "./StatusBadges";
 import { TaskDetailDrawer } from "./TaskDetailDrawer";
@@ -223,8 +219,6 @@ export function SubtasksWorkspace() {
         <div className="space-y-4">
           {grouped.map((group) => {
             const parent = group.parentTask;
-            const groupCompleted = group.subtasks.filter((st) => st.isCompleted).length;
-            const groupPct = Math.round((groupCompleted / group.subtasks.length) * 100);
 
             return (
               <Card key={group.parentTask?.id || Math.random().toString()} bodyClassName="p-4">

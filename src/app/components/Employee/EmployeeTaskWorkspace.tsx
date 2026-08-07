@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bell } from "lucide-react";
-import { MondayBoard } from "../ui/MondayBoard";
+import { MondayBoard } from "../../features/tasks";
 import { PageHeader } from "../workflow/primitives";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCurrentUserTasks } from "../../hooks/useCurrentUserTasks";

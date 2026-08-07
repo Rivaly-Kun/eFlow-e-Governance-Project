@@ -1,0 +1,1 @@
+export { AnnouncementCenter } from './AnnouncementCenter';

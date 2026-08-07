@@ -76,81 +76,6 @@ export function subscribeToSubtasks(
 }
 
 // ─── syncTaskSubtaskStats ──────────────────────────────────────────
-export async function syncTaskSubtaskStats(
-  taskId: string,
-  assignedMemberIds?: string[] | string,
-): Promise<void> {
-  try {
-    const { data: taskRow } = await supabase
-      .from('tasks')
-      .select('id, team_member_ids, team_member_names, percent_complete, status')
-      .eq('id', taskId)
-      .maybeSingle();
-
-    if (!taskRow) return;
-
-    const idsToAdd: string[] = Array.isArray(assignedMemberIds)
-      ? assignedMemberIds.filter(Boolean)
-      : assignedMemberIds
-      ? [assignedMemberIds]
-      : [];
-
-    if (idsToAdd.length > 0) {
-      const currentMemberIds: string[] = Array.isArray(taskRow.team_member_ids)
-        ? (taskRow.team_member_ids as string[])
-        : [];
-      const newIds = idsToAdd.filter((id) => !currentMemberIds.includes(id));
-
-      if (newIds.length > 0) {
-        const nextIds = [...currentMemberIds, ...newIds];
-        let nextNames: string[] = Array.isArray(taskRow.team_member_names)
-          ? (taskRow.team_member_names as string[])
-          : [];
-
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name')
-          .in('id', newIds);
-
-        if (profiles && profiles.length > 0) {
-          const newNames = profiles.map((p) => p.full_name || 'User');
-          nextNames = [...nextNames, ...newNames];
-        }
-
-        await supabase
-          .from('tasks')
-          .update({
-            team_member_ids: nextIds,
-            team_member_names: nextNames,
-          })
-          .eq('id', taskId);
-      }
-    }
-
-    const { data: subtasks } = await supabase
-      .from('subtasks')
-      .select('is_completed')
-      .eq('task_id', taskId);
-
-    if (subtasks) {
-      const total = subtasks.length;
-      const completed = subtasks.filter((s) => s.is_completed).length;
-      const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-
-      await supabase
-        .from('tasks')
-        .update({
-          subtask_count: total,
-          subtask_completed_count: completed,
-          percent_complete: percent,
-        })
-        .eq('id', taskId);
-    }
-  } catch (err) {
-    console.error('Failed to sync task subtask stats:', err);
-  }
-}
-
 // ─── createSubtask (single, manual add) ────────────────────────────
 export async function createSubtask(
   taskId: string,
@@ -165,6 +90,9 @@ export async function createSubtask(
   },
 ): Promise<Subtask> {
   const assignedIds = opts?.assignedToIds || (opts?.assignedTo ? [opts.assignedTo] : []);
+  const { data: authData } = await supabase.auth.getUser();
+  const createdBy = authData.user?.id || opts?.createdBy;
+  if (!createdBy) throw new Error('You must be signed in to create a subtask.');
 
   const { data, error } = await supabase
     .from('subtasks')
@@ -173,15 +101,13 @@ export async function createSubtask(
       title,
       source: opts?.source || 'manual',
       position: opts?.position ?? 0,
-      created_by: opts?.createdBy || null,
+      created_by: createdBy,
       assigned_to: assignedIds[0] || null,
       assigned_to_ids: assignedIds,
     })
     .select()
     .single();
   if (error) throw error;
-
-  await syncTaskSubtaskStats(taskId, assignedIds);
 
   if (assignedIds.length > 0) {
     const { data: task } = await supabase
@@ -195,7 +121,7 @@ export async function createSubtask(
 
     await Promise.all(
       assignedIds
-        .filter((uid) => uid !== opts?.createdBy)
+        .filter((uid) => uid !== createdBy)
         .map((uid) =>
           createNotification(uid, {
             type: 'assignment',
@@ -218,6 +144,8 @@ export async function createSubtasksBatch(
   source: SubtaskSource = 'ai_extracted',
 ): Promise<Subtask[]> {
   if (!titles || titles.length === 0) return [];
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData.user?.id) throw new Error('You must be signed in to create subtasks.');
   const rows = titles
     .filter((t) => t && t.trim().length > 0)
     .map((title, idx) => ({
@@ -225,12 +153,12 @@ export async function createSubtasksBatch(
       title: title.trim(),
       source,
       position: idx,
+      created_by: authData.user.id,
     }));
   if (rows.length === 0) return [];
   const { data, error } = await supabase.from('subtasks').insert(rows).select();
   if (error) throw error;
 
-  await syncTaskSubtaskStats(taskId);
   return (data || []).map(rowToSubtask);
 }
 
@@ -240,12 +168,6 @@ export async function toggleSubtask(
   isCompleted: boolean,
   actorId?: string,
 ): Promise<void> {
-  const { data: current } = await supabase
-    .from('subtasks')
-    .select('task_id')
-    .eq('id', subtaskId)
-    .maybeSingle();
-
   const { error } = await supabase
     .from('subtasks')
     .update({
@@ -256,9 +178,6 @@ export async function toggleSubtask(
     .eq('id', subtaskId);
   if (error) throw error;
 
-  if (current?.task_id) {
-    await syncTaskSubtaskStats(current.task_id);
-  }
 }
 
 // ─── updateSubtask ──────────────────────────────────────────────────
@@ -294,8 +213,6 @@ export async function updateSubtask(
   if (error) throw error;
 
   if (current?.task_id) {
-    await syncTaskSubtaskStats(current.task_id, newAssignedIds);
-
     if (newAssignedIds && newAssignedIds.length > 0) {
       const oldIds: string[] = Array.isArray(current.assigned_to_ids) ? current.assigned_to_ids : [];
       const addedIds = newAssignedIds.filter((id) => !oldIds.includes(id) && id !== actor?.id);
@@ -331,21 +248,12 @@ export async function updateSubtask(
 
 // ─── deleteSubtask ──────────────────────────────────────────────────
 export async function deleteSubtask(subtaskId: string): Promise<void> {
-  const { data: current } = await supabase
-    .from('subtasks')
-    .select('task_id')
-    .eq('id', subtaskId)
-    .maybeSingle();
-
   const { error } = await supabase
     .from('subtasks')
     .delete()
     .eq('id', subtaskId);
   if (error) throw error;
 
-  if (current?.task_id) {
-    await syncTaskSubtaskStats(current.task_id);
-  }
 }
 
 // ─── reorderSubtasks ────────────────────────────────────────────────
@@ -358,5 +266,3 @@ export async function reorderSubtasks(orderedIds: string[]): Promise<void> {
   const failed = results.find((result) => result.error);
   if (failed?.error) throw failed.error;
 }
-
-

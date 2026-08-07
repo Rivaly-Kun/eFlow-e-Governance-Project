@@ -3,7 +3,7 @@
 // and blocked tasks, and opens any task's full review/activity history. Reuses
 // the shared TaskDetailDrawer — no second task board.
 
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ListTodo,
   AlertTriangle,

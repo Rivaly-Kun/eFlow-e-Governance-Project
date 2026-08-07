@@ -3,7 +3,7 @@
 // next step, optional note, optional private attachment. The first non-zero
 // update starts a To Do task; final approval remains a separate review action.
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { Gauge, Paperclip, X, Send } from "lucide-react";
 import {
   submitProgressUpdate,

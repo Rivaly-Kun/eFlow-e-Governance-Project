@@ -3,7 +3,7 @@
 // capability set. RLS remains the enforcement boundary; this is the admin
 // surface for tuning role_permissions and user_permission_overrides.
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ShieldCheck, Users, RotateCcw, Check, Minus } from "lucide-react";
 import {
   PERMISSION_KEYS,

@@ -3,12 +3,12 @@
 // All hooks now use Supabase under the hood.
 
 import { useState, useEffect, useMemo } from 'react';
-import { subscribeToTasks } from '../services/taskService';
+import { subscribeToTasks, type Task as OperationalTask } from '../services/taskService';
 import { subscribeToProjects, type Project as OperationalProject } from '../services/projectService';
 import { subscribeToEmployees } from '../services/employeeService';
 import { subscribeToEmployeeNotes, EmployeeNotesMap } from '../services/employeeNotesService';
 import { fetchAllProfiles, subscribeToProfiles, fetchAllOrgs, subscribeToOrgs } from '../../lib/supabaseService';
-import type { UserProfile, Department, Project, Task, RoleDefinition, DashboardMetrics } from '../types';
+import type { UserProfile, Department, RoleDefinition, DashboardMetrics } from '../types';
 import type { Employee } from '../services/employeeService';
 
 // ─── useUsers ────────────────────────────────────────────────────
@@ -88,7 +88,7 @@ export function useProjects() {
 
 // ─── useTasks ────────────────────────────────────────────────────
 export function useTasks() {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<OperationalTask[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

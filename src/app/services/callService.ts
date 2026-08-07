@@ -109,7 +109,7 @@ export class WebRTCSession {
   public onHangup?: () => void;
 
   constructor(
-    private callId: string,
+    callId: string,
     private isCaller: boolean,
   ) {
     this.pc = new RTCPeerConnection({ iceServers: getIceServers() as any });

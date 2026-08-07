@@ -1,0 +1,173 @@
+import { Settings } from "@carbon/icons-react";
+import {
+  DeptHeadTaskBoardView,
+  YouAreLeadingView,
+  useDeptHeadTaskBoard,
+} from "../tasks";
+import { DeptHeadProjectsWorkspace } from "../projects";
+import { DeptHeadReportsWorkspace } from "../reports";
+import { ForReviewInbox } from "../reviews";
+import {
+  assignTask,
+  createTask,
+  deleteTask,
+  updateTask,
+  verifyTask,
+} from "../../services/taskService";
+import { DeptHeadDashboard } from "../../components/DeptHead/DeptHeadDashboard";
+import { AnnouncementCenter } from "../../components/workflow/AnnouncementCenter";
+import {
+  RolePageRouter,
+  type RolePageSections,
+} from "../../components/Layout/RolePageRouter";
+import { EmployeeInsights } from "./components/EmployeeInsights";
+import { TeamSupervision } from "./components/TeamSupervision";
+
+export function DeptHeadTaskBoard() {
+  const {
+    allEmployees,
+    deptEmployees,
+    deptTasks,
+    isLoading,
+    notes,
+    userProfile,
+  } = useDeptHeadTaskBoard();
+
+  if (isLoading) {
+    return (
+      <div className="p-8 h-full bg-neutral-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-[13px] font-['Lexend:Regular',_sans-serif] text-neutral-600">
+            Loading tasks and team members...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <DeptHeadTaskBoardView
+      tasks={deptTasks}
+      employees={deptEmployees}
+      allEmployees={allEmployees}
+      employeeNotes={notes}
+      role="depthead"
+      departmentFilter={userProfile?.departmentId}
+      currentUserId={userProfile?.uid}
+      currentUserName={userProfile?.fullName || userProfile?.email || ""}
+      onCreateTask={createTask}
+      onAssign={assignTask}
+      onVerify={(taskId, approve, feedback) =>
+        verifyTask(taskId, approve, feedback, {
+          id: userProfile?.uid,
+          name:
+            userProfile?.fullName ||
+            userProfile?.email ||
+            "Department Head",
+        })
+      }
+      onUpdateTask={updateTask}
+      onDeleteTask={deleteTask}
+    />
+  );
+}
+
+// ==================== ROUTER ====================
+
+// ── Core Workflow (Phase 1) screens ──
+
+
+export const deptheadPages: RolePageSections = {
+  dashboard: {
+    Dashboard: DeptHeadDashboard,
+  },
+  projects: {
+    Projects: DeptHeadProjectsWorkspace,
+  },
+  tasks: {
+    "Task Board": DeptHeadTaskBoard,
+  },
+  reviews: {
+    "For Review": ForReviewInbox,
+  },
+  team: {
+    "Team Supervision": TeamSupervision,
+  },
+  intelligence: {
+    "Team Intelligence": EmployeeInsights,
+  },
+  leading: {
+    "Leading Work": YouAreLeadingView,
+  },
+  reports: {
+    Reports: DeptHeadReportsWorkspace,
+  },
+  announcements: {
+    Announcements: () => (
+      <AnnouncementCenter eyebrow="Dept. Head · Updates" />
+    ),
+  },
+
+  // Compatibility aliases for sessions opened before this navigation cleanup.
+  command: {
+    Dashboard: DeptHeadDashboard,
+    Projects: DeptHeadProjectsWorkspace,
+    "Pinned — You're Leading": YouAreLeadingView,
+    "For Review": ForReviewInbox,
+    Reports: DeptHeadReportsWorkspace,
+    Announcements: () => <AnnouncementCenter eyebrow="Dept. Head · Updates" />,
+  },
+  leader: {
+    "Pinned — You're Leading": YouAreLeadingView,
+    "For Review": ForReviewInbox,
+    "Team Workload": TeamSupervision,
+  },
+  deptportfolio: {
+    "Task Board & Composer": DeptHeadTaskBoard,
+    "Team Supervision": TeamSupervision,
+    "Team Intelligence": EmployeeInsights,
+  },
+};
+
+export const deptheadDefaultPages: Record<string, string> = {
+  dashboard: "Dashboard",
+  projects: "Projects",
+  tasks: "Task Board",
+  reviews: "For Review",
+  team: "Team Supervision",
+  intelligence: "Team Intelligence",
+  leading: "Leading Work",
+  reports: "Reports",
+  announcements: "Announcements",
+  command: "Dashboard",
+  leader: "Pinned — You're Leading",
+  deptportfolio: "Task Board & Composer",
+};
+
+export function DeptHeadContent({
+  activeSection,
+  activePage,
+}: {
+  activeSection: string;
+  activePage?: string;
+}) {
+  return (
+    <RolePageRouter
+      sections={deptheadPages}
+      defaults={deptheadDefaultPages}
+      activeSection={activeSection}
+      activePage={activePage}
+      fallback={(section) => (
+        <div className="flex h-full items-center justify-center text-neutral-400">
+          <div className="text-center">
+            <Settings size={40} className="mx-auto mb-3 opacity-30" />
+            <p className="text-[14px] font-['Lexend:Regular',_sans-serif]">
+              Section unavailable
+            </p>
+            <p className="mt-1 text-[12px]">Section: {section}</p>
+          </div>
+        </div>
+      )}
+    />
+  );
+}

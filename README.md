@@ -1,27 +1,55 @@
+# eFlow Web
 
-  # Minimalist sidebar component
+eFlow is a role-based local-government workflow application built with React, TypeScript, Vite, Supabase, and a FastAPI companion server.
 
-  This is a code bundle for Minimalist sidebar component. The original project is available at https://www.figma.com/design/YJ450EqvAjZgCstuwqSZeQ/Minimalist-sidebar-component.
+## Development
 
-  ## Running the code
+Install dependencies and run the frontend:
 
-  Run `npm i` to install the dependencies.
+```powershell
+npm install
+npm run dev
+```
 
-  pip install supabase
+Run the backend separately when proposal decomposition, administrative APIs, or mail delivery are needed:
 
-  To run the full setup, you keep two terminal windows open:
+```powershell
+python server/main.py
+```
 
-    Terminal 1 (Backend): Runs the FastAPI server on port 8321:
-    bash
+Keep SMTP and service credentials in local environment files. Never expose a Supabase service-role key through a `VITE_` variable.
 
-    python server/main.py
+## Verification
 
-    Terminal 2 (Frontend): Runs the Vite development server on port 5174:
-    bash
+```powershell
+npm run check
+npm test
+npm run build
+```
 
-    npm run dev
+Authenticated browser smoke tests require dedicated non-production accounts:
 
-    https://myaccount.google.com/apppasswords
-    to access the 
-    SMTP_EMAIL=eflow.notifications@gmail.com
-    SMTP_APP_PASSWORD=ttsv uyei cgdb vqdk
+```powershell
+$env:EFLOW_E2E = "1"
+$env:EFLOW_E2E_ACCOUNTS = '[{"role":"superadmin","email":"...","password":"..."}]'
+npm run test:e2e
+```
+
+## Module map
+
+Feature-owned application code lives under `src/app/features/`. Each feature exposes a deliberately small `index.ts`; files under old component paths are temporary compatibility bridges only.
+
+- `app-shell`: providers, authentication gate, loading state, role resolution, and development quick-login handling.
+- `navigation`: declarative role sections, default destinations, sidebar state, lazy role-content loading, and role dispatch.
+- `tasks`: task contracts, mapping, realtime subscriptions, focused mutation/review/activity/archive services, recurring templates, maintenance, and decomposed list/Kanban/hierarchy/timeline boards with controller hooks.
+- `reviews`: reviewer authorization, review services, immutable submission history, inbox, and decision components.
+- `subtasks`: permission-aware subtask services and task checklist UI.
+- `projects`, `reports`, `employees`, `announcements`: active workflow workspaces with project query/mutation/member/milestone operations, PDS parser stages, employee core-work pages, and announcement inbox controllers kept in focused modules.
+- `proposal-import`: PDF extraction, employee-scope selection, draft model, controller hook, assignment UI, import cockpit, and a separate project/task commit operation.
+- `role-department-head`, `role-executive`, `role-finance`, `role-hrmo`, `role-legislative`: role registries and focused page components, including committee, session, councilor, portfolio, finance, audit, and project-health submodules.
+- `chat-calls`: chat/call public API plus separate controller, channel-list, active-chat, reaction, and message-codec modules.
+- `administration`, `organization`, `permissions`, `audit`, `settings`: administrative boundaries, including componentized user management and organization-tree tooling.
+
+Generated design imports and reusable UI primitive collections can remain physically long when they already consist of small independent functions; application page controllers and service workflows should not.
+
+See [task-management-flow.md](docs/task-management-flow.md) for the end-to-end workflow and [feature-inventory.md](docs/feature-inventory.md) for the compatibility baseline. Database setup and migration order are documented in [supabase/README.md](supabase/README.md).

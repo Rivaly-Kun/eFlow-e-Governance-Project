@@ -3,7 +3,7 @@
 // assignees / team members and authorized reviewers. Dept Head / Super Admin
 // may moderate (soft-delete with a reason → audit event, history preserved).
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Send, Trash2, MoreHorizontal, ShieldAlert } from "lucide-react";
 import {
   subscribeToComments,

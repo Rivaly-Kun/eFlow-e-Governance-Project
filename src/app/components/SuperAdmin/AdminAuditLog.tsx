@@ -20,12 +20,10 @@ import {
   type AuditEvent,
   type DiffRow,
 } from "../../services/auditService";
-import { useUsers } from "../../hooks/useFirebaseData";
 import {
   PageHeader,
   SearchInput,
   WSelect,
-  Card,
   SectionEmpty,
   LoadingState,
 } from "../workflow/primitives";
@@ -58,7 +56,6 @@ export function AdminAuditLog() {
   const [entityType, setEntityType] = useState("all");
   const [action, setAction] = useState("all");
   const [selected, setSelected] = useState<AuditEvent | null>(null);
-  const { users } = useUsers();
 
   useEffect(() => {
     const unsub = subscribeToAuditEvents((e) => { setEvents(e); setLoading(false); }, { limit: 500 });

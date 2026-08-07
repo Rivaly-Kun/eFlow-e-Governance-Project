@@ -363,7 +363,18 @@ export function LoginPage() {
             </>
           )}
 
-      
+          {canSetupAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                clearError();
+                setMode((current) => current === "login" ? "setup" : "login");
+              }}
+              className="mt-5 w-full text-[12px] font-['Lexend:Medium',_sans-serif] text-[#0085FF] hover:text-[#006FD6]"
+            >
+              {mode === "login" ? "Set up the first Super Admin" : "Back to sign in"}
+            </button>
+          )}
         </div>
 
         {/* Footer */}

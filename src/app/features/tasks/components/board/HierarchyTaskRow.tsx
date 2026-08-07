@@ -1,0 +1,207 @@
+import type { Employee } from '../../../../services/employeeService';
+import type { Task } from '../../../../services/taskService';
+import { RejectionNotice, ReopenNotice, SubmissionDetails } from './TaskFeedback';
+import { SubtaskProgressChip, getDeadlineInfo, getTaskMemberNames, priorityMeta, statusMeta, type MondayBoardProps } from './model';
+
+interface HierarchyTaskRowProps {
+  task: Task;
+  employeeById: Record<string, Employee>;
+  role: 'depthead' | 'employee';
+  currentUserId?: string;
+  onVerify?: MondayBoardProps['onVerify'];
+  onExecute?: MondayBoardProps['onExecute'];
+  onSubmitRequest?: (task: Task) => void;
+  onOpenTaskEditor?: (task: Task) => void;
+  onDeleteTaskRequest?: (task: Task) => void;
+  onUndoRequest?: (task: Task) => void;
+}
+
+export function HierarchyTaskRow({ task, employeeById, role, currentUserId, onVerify, onExecute, onSubmitRequest, onOpenTaskEditor, onDeleteTaskRequest, onUndoRequest }: HierarchyTaskRowProps) {
+  const pm =
+                                    priorityMeta[task.priority || "medium"] ||
+                                    priorityMeta.medium;
+                                  const sm = statusMeta[task.status];
+                                  const dlInfo = getDeadlineInfo(task);
+                                  const memberNames = getTaskMemberNames(
+                                    task,
+                                    employeeById,
+                                  );
+                                  const leadName =
+                                    task.assigneeName || memberNames[0] || "";
+                                  const canSubmit =
+                                    role === "employee" &&
+                                    task.status === "in_progress" &&
+                                    currentUserId &&
+                                    task.assigneeId === currentUserId;
+                                  return (
+                                    <div key={task.id} className="px-3 py-2.5">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                          {role === "depthead" &&
+                                          onOpenTaskEditor ? (
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                onOpenTaskEditor(task);
+                                              }}
+                                              className="text-left text-[12px] text-neutral-900 font-['Lexend:Medium',_sans-serif] truncate hover:text-violet-700 transition"
+                                            >
+                                              {task.title}
+                                            </button>
+                                          ) : (
+                                            <div className="text-[12px] text-neutral-900 font-['Lexend:Medium',_sans-serif] truncate">
+                                              {task.title}
+                                            </div>
+                                          )}
+                                          {task.description && (
+                                            <div className="text-[10px] text-neutral-500 mt-0.5 line-clamp-2">
+                                              {task.description}
+                                            </div>
+                                          )}
+                                          <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                                            <span
+                                              className={`text-[9px] px-1.5 py-0.5 rounded-full ${pm.badge}`}
+                                            >
+                                              {pm.label}
+                                            </span>
+                                            <SubtaskProgressChip task={task} />
+                                            <span
+                                              className={`inline-flex items-center gap-1 text-[9px] font-['Lexend:Medium',_sans-serif] px-1.5 py-0.5 rounded-full border ${sm.color}`}
+                                            >
+                                              <div
+                                                className={`w-1.5 h-1.5 rounded-full ${sm.dot}`}
+                                              />
+                                              {sm.label}
+                                            </span>
+                                            {leadName && (
+                                              <span className="text-[9px] text-neutral-500">
+                                                Lead: {leadName}
+                                              </span>
+                                            )}
+                                            {memberNames.length > 1 && (
+                                              <span className="text-[9px] text-violet-600">
+                                                Team: {memberNames.length}
+                                              </span>
+                                            )}
+                                            {dlInfo &&
+                                              task.status !== "completed" && (
+                                                <span
+                                                  className={`text-[9px] px-1.5 py-0.5 rounded-full border ${dlInfo.cls}`}
+                                                >
+                                                  {dlInfo.label}
+                                                </span>
+                                              )}
+                                          </div>
+                                          {role === "depthead" &&
+                                            task.status === "for_review" && (
+                                              <SubmissionDetails
+                                                submission={
+                                                  task.latestSubmission
+                                                }
+                                              />
+                                            )}
+                                          {task.rejectionNote && (
+                                              <RejectionNotice
+                                                note={task.rejectionNote}
+                                                rejectedAt={task.rejectedAt}
+                                              />
+                                            )}
+                                          {task.status !== "completed" &&
+                                            task.reopenReason && (
+                                              <ReopenNotice
+                                                reason={task.reopenReason}
+                                                reopenedAt={task.reopenedAt}
+                                                reopenedByName={
+                                                  task.reopenedByName
+                                                }
+                                              />
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-center gap-1">
+                                          {role === "depthead" &&
+                                            task.status === "for_review" && (
+                                              <>
+                                                <button
+                                                  onClick={() =>
+                                                    onVerify?.(task.id, true)
+                                                  }
+                                                  className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-md hover:bg-emerald-600 transition"
+                                                >
+                                                  Approve
+                                                </button>
+                                                <button
+                                                  onClick={() => {
+                                                    const msg =
+                                                      prompt("Reason:");
+                                                    onVerify?.(
+                                                      task.id,
+                                                      false,
+                                                      msg || "Needs rework",
+                                                    );
+                                                  }}
+                                                  className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-md hover:bg-red-600 transition"
+                                                >
+                                                  Reject
+                                                </button>
+                                              </>
+                                            )}
+                                          {role === "depthead" &&
+                                            task.status === "completed" && (
+                                              <button
+                                                onClick={() =>
+                                                  onUndoRequest?.(task)
+                                                }
+                                                className="text-[10px] border border-amber-200 text-amber-700 px-2 py-0.5 rounded-md hover:bg-amber-50 transition"
+                                              >
+                                                Undo
+                                              </button>
+                                            )}
+                                          {role === "employee" &&
+                                            task.status === "todo" && (
+                                              <button
+                                                onClick={() =>
+                                                  onExecute?.(task.id)
+                                                }
+                                                className="text-[10px] bg-blue-500 text-white px-2 py-0.5 rounded-md hover:bg-blue-600 transition"
+                                              >
+                                                Start
+                                              </button>
+                                            )}
+                                          {canSubmit && (
+                                            <button
+                                              onClick={() =>
+                                                onSubmitRequest?.(task)
+                                              }
+                                              className="text-[10px] bg-violet-500 text-white px-2 py-0.5 rounded-md hover:bg-violet-600 transition"
+                                            >
+                                              Submit
+                                            </button>
+                                          )}
+                                          {role === "depthead" &&
+                                            onOpenTaskEditor && (
+                                              <button
+                                                onClick={() =>
+                                                  onOpenTaskEditor(task)
+                                                }
+                                                className="text-[10px] border border-neutral-200 text-neutral-600 px-2 py-0.5 rounded-md hover:bg-neutral-100 transition"
+                                              >
+                                                Edit
+                                              </button>
+                                            )}
+                                          {role === "depthead" &&
+                                            onDeleteTaskRequest && (
+                                              <button
+                                                onClick={() =>
+                                                  onDeleteTaskRequest(task)
+                                                }
+                                                className="text-[10px] border border-red-200 text-red-600 px-2 py-0.5 rounded-md hover:bg-red-50 transition"
+                                              >
+                                                Delete
+                                              </button>
+                                            )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+}
