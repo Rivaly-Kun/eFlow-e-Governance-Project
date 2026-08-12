@@ -1,5 +1,6 @@
 import type { Employee } from "../../../../services/employeeService";
 import type { EmployeeNotesMap } from "../../../../services/employeeNotesService";
+import type { AiQueueUpdate } from "../../../ai";
 import type {
   ProposalDecompositionActivity,
   ProposalDecompositionResult,
@@ -8,7 +9,6 @@ import type {
 import { callDecompositionLLM } from "./llmClient";
 import { extractPartSections, type PartSection } from "./textAnalysis";
 import {
-  applyLocalRecommendations,
   getRecommendedValues,
   mapNamesToIds,
 } from "./recommendations";
@@ -16,7 +16,8 @@ import {
 export async function decomposeSinglePart(
   part: PartSection,
   employees?: Employee[],
-  employeeNotes?: EmployeeNotesMap,
+  _employeeNotes?: EmployeeNotesMap,
+  onQueueUpdate?: (update: AiQueueUpdate) => void,
 ): Promise<ProposalDecompositionActivity> {
   const employeeList = (employees || [])
     .map((e) => `- ${e.name} (${e.id}): ${e.jobDescription || "no listed skills"}`)
@@ -47,7 +48,7 @@ Respond with JSON only, no preamble, no markdown fences:
 Produce 1-4 tasks for this section only. Do not attempt to cover the whole proposal — only this section.`;
 
   try {
-    const rawResponse = await callDecompositionLLM(prompt);
+    const rawResponse = await callDecompositionLLM(prompt, onQueueUpdate);
     const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("No JSON in LLM response");
 
@@ -75,20 +76,8 @@ Produce 1-4 tasks for this section only. Do not attempt to cover the whole propo
       tasks: parsed.tasks,
     };
   } catch (err) {
-    console.warn(`[Per-Part LLM] Failed for "${part.title}", using local scoring for this part only:`, err);
-    const fallbackActivity: ProposalDecompositionActivity = {
-      title: part.title,
-      description: part.description,
-      schedule: part.schedule,
-      methodology: [],
-      tasks: part.tasks, // the regex-extracted tasks for this part, unscored
-    };
-    const wrapper: ProposalDecompositionResult = {
-      proposal: { title: part.title, description: part.description },
-      programs: [{ title: part.title, description: part.description, projects: [{ title: part.title, description: part.description, activities: [fallbackActivity] }] }],
-    };
-    applyLocalRecommendations(wrapper, employees, employeeNotes);
-    return fallbackActivity;
+    const detail = err instanceof Error ? err.message : "Unknown AI error";
+    throw new Error(`DeepSeek could not decompose "${part.title}": ${detail}`);
   }
 }
 
@@ -103,16 +92,22 @@ export async function decomposeProposalByPart(
   employees?: Employee[],
   employeeNotes?: EmployeeNotesMap,
   onProgress?: (current: number, total: number, partTitle: string) => void,
+  onQueueUpdate?: (update: AiQueueUpdate) => void,
 ): Promise<ProposalDecompositionResult> {
   const parts = extractPartSections(proposalText);
   if (!parts || parts.length === 0) {
-    throw new Error("No parts extracted — caller should fall back to whole-document path");
+    throw new Error("No proposal parts could be extracted for DeepSeek to process.");
   }
 
   const activities: ProposalDecompositionActivity[] = [];
   for (let i = 0; i < parts.length; i++) {
     if (onProgress) onProgress(i + 1, parts.length, parts[i].title);
-    const activity = await decomposeSinglePart(parts[i], employees, employeeNotes);
+    const activity = await decomposeSinglePart(
+      parts[i],
+      employees,
+      employeeNotes,
+      onQueueUpdate,
+    );
     activities.push(activity);
   }
 

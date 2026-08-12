@@ -76,7 +76,7 @@ export function CreateUserModal({
           full_name: form.fullName.trim(),
           role: form.role,
           org_id: form.orgId,
-          employee_id: "",
+          employee_id: null,
           skills,
         },
       );

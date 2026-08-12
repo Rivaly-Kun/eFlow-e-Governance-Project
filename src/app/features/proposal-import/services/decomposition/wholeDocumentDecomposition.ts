@@ -2,16 +2,14 @@ import type { Employee } from "../../../../services/employeeService";
 import { scoreEmployees } from "../../../../services/aiScoringEngine";
 import type { Task } from "../../../../services/taskService";
 import type { EmployeeNotesMap } from "../../../../services/employeeNotesService";
+import type { AiQueueUpdate } from "../../../ai";
 import type { ProposalDecompositionResult } from "../../types";
 import { parseLlmResult } from "../parseLlmResult";
 import { callDecompositionLLM } from "./llmClient";
 import {
-  buildFallbackDecomposition,
-  buildStructuredDecomposition,
   hasHierarchyContent,
   repairFlatStructure,
-  shouldUseStructuredFallback,
-} from "./hierarchyFallback";
+} from "./hierarchyValidation";
 import {
   buildCompactEmployeesContext,
   getRecommendedValues,
@@ -29,6 +27,7 @@ export const decomposeWholeDocument = async (
   proposalTitle: string,
   employees?: Employee[],
   employeeNotes?: EmployeeNotesMap,
+  onQueueUpdate?: (update: AiQueueUpdate) => void,
 ): Promise<ProposalDecompositionResult> => {
   // Build employee context for the prompt
   const employeeBlock =
@@ -113,7 +112,7 @@ Required JSON shape:
 }`;
 
   try {
-    const contentString = await callDecompositionLLM(prompt);
+    const contentString = await callDecompositionLLM(prompt, onQueueUpdate);
 
     console.log("[Decomposition DEBUG] Raw LLM response content:\n", contentString);
 
@@ -134,18 +133,9 @@ Required JSON shape:
     }
 
     if (!parsed || !hasHierarchyContent(parsed)) {
-      console.warn("LLM output did not contain valid hierarchy. Using fallback decomposition.");
-      return buildFallbackDecomposition(proposalText, proposalTitle, employees, employeeNotes);
-    }
-
-    if (shouldUseStructuredFallback(parsed, proposalText)) {
-      const structured = buildStructuredDecomposition(
-        proposalText,
-        proposalTitle,
-        employees,
-        employeeNotes,
+      throw new Error(
+        "DeepSeek returned a response that could not be parsed into a proposal hierarchy.",
       );
-      if (structured) return structured;
     }
 
     // If LLM produced hierarchy but no employee recommendations, populate them locally
@@ -213,7 +203,9 @@ Required JSON shape:
     return parsed;
   } catch (error) {
     console.error("Proposal decomposition failed:", error);
-    return buildFallbackDecomposition(proposalText, proposalTitle, employees, employeeNotes);
+    throw error instanceof Error
+      ? error
+      : new Error("DeepSeek could not decompose this proposal.");
   }
 };
 

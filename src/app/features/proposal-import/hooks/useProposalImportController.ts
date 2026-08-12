@@ -9,6 +9,7 @@ import { extractTextFromPdf } from "../services/pdfTextExtractor";
 import { commitProposalDrafts } from "../services/commitProposalDrafts";
 import { filterEmployeesByPdfMentions } from "../selectors/employeeMentions";
 import { buildHierarchyIds, type DraftTask, type PdfPhase } from "../components/draftModel";
+import type { AiQueueUpdate } from "../../ai";
 
 export function useProposalImportController(onClose?: () => void) {
   const { employees: allEmployees } = useEmployees();
@@ -52,6 +53,12 @@ export function useProposalImportController(onClose?: () => void) {
   const [pdfPhase, setPdfPhase] = useState<PdfPhase>("idle");
   const [pdfFileName, setPdfFileName] = useState("");
   const [pdfError, setPdfError] = useState("");
+  const [aiQueueStatus, setAiQueueStatus] = useState<AiQueueUpdate | null>(null);
+  const [decompositionProgress, setDecompositionProgress] = useState<{
+    current: number;
+    total: number;
+    partTitle: string;
+  } | null>(null);
   const [draftTasks, setDraftTasks] = useState<DraftTask[]>([]);
   const [committing, setCommitting] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
@@ -129,6 +136,8 @@ export function useProposalImportController(onClose?: () => void) {
     }
     setPdfFileName(file.name);
     setPdfError("");
+    setAiQueueStatus(null);
+    setDecompositionProgress(null);
     setDraftTasks([]);
     setCommitMessage("");
     setPdfPhase("extracting");
@@ -157,11 +166,20 @@ export function useProposalImportController(onClose?: () => void) {
         file.name.replace(/\.pdf$/i, ""),
         candidates,
         employeeNotes,
+        (current, total, partTitle) =>
+          setDecompositionProgress({ current, total, partTitle }),
+        setAiQueueStatus,
       );
       setDraftTasks(buildDraftTasks(result, file.name.replace(/\.pdf$/i, "")));
       setPdfPhase("review");
-    } catch {
-      setPdfError("AI decomposition failed. Please try again.");
+      setAiQueueStatus(null);
+    } catch (error) {
+      setAiQueueStatus(null);
+      setPdfError(
+        error instanceof Error
+          ? `AI decomposition failed: ${error.message}`
+          : "AI decomposition failed. Please try again.",
+      );
       setPdfPhase("error");
     }
   };
@@ -271,6 +289,8 @@ export function useProposalImportController(onClose?: () => void) {
     setPdfFileName,
     pdfError,
     setPdfError,
+    aiQueueStatus,
+    decompositionProgress,
     draftTasks,
     setDraftTasks,
     committing,

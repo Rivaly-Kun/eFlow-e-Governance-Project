@@ -6,10 +6,14 @@
   "scripts": {
     "build": "vite build",
     "check": "tsc --noEmit",
-    "dev": "vite",
+    "dev": "concurrently --kill-others-on-fail --names gateway,web -c yellow,green \"npm run dev:gateway\" \"npm run dev:frontend\"",
+    "dev:gateway": "python server/start.py",
+    "dev:frontend": "vite",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "verify:client-secrets": "node scripts/verify-client-secrets.mjs",
+    "verify:live-schema": "node scripts/verify-live-task-schema.mjs"
   },
   "dependencies": {
     "@carbon/icons-react": "^11.78.0",
@@ -88,6 +92,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "4.7.0",
+    "concurrently": "^9.2.4",
     "jsdom": "^26.1.0",
     "tailwindcss": "4.1.12",
     "typescript": "^6.0.3",

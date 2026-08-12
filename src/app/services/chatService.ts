@@ -1,4 +1,5 @@
   import { supabase } from "../../lib/supabase";
+  import { controlPanelFetch } from "../shared/controlPanelClient";
 
   export interface ChatMessage {
     id: string;
@@ -137,7 +138,7 @@ export async function sendMessageWithMentions(
 
   // ─── deleteMessage ───────────────────────────────────────────────────
   export async function deleteMessage(messageId: string): Promise<void> {
-    const res = await fetch("/api/admin/chat/messages/delete", {
+    const res = await controlPanelFetch("admin/chat/messages/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messageId }),
@@ -151,7 +152,7 @@ export async function sendMessageWithMentions(
 
   // ─── updateMessageContent ────────────────────────────────────────────
   export async function updateMessageContent(messageId: string, newContent: string): Promise<void> {
-    const res = await fetch("/api/admin/chat/messages/update", {
+    const res = await controlPanelFetch("admin/chat/messages/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messageId, newContent }),

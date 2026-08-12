@@ -1,5 +1,6 @@
 import type { Employee } from "../../../../services/employeeService";
 import type { EmployeeNotesMap } from "../../../../services/employeeNotesService";
+import type { AiQueueUpdate } from "../../../ai";
 import type { ProposalDecompositionResult } from "../../types";
 import { decomposeProposalByPart } from "./partDecomposition";
 import { decomposeWholeDocument } from "./wholeDocumentDecomposition";
@@ -18,19 +19,23 @@ export async function decomposeProposal(
   employees?: Employee[],
   employeeNotes?: EmployeeNotesMap,
   onProgress?: (current: number, total: number, partTitle: string) => void,
+  onQueueUpdate?: (update: AiQueueUpdate) => void,
 ): Promise<ProposalDecompositionResult> {
   if (/Part\s+\d+/i.test(proposalText)) {
-    try {
-      return await decomposeProposalByPart(
-        proposalText,
-        proposalTitle,
-        employees,
-        employeeNotes,
-        onProgress,
-      );
-    } catch (error) {
-      console.warn("[Decomposition] Per-part path failed, falling back to whole-document:", error);
-    }
+    return decomposeProposalByPart(
+      proposalText,
+      proposalTitle,
+      employees,
+      employeeNotes,
+      onProgress,
+      onQueueUpdate,
+    );
   }
-  return decomposeWholeDocument(proposalText, proposalTitle, employees, employeeNotes);
+  return decomposeWholeDocument(
+    proposalText,
+    proposalTitle,
+    employees,
+    employeeNotes,
+    onQueueUpdate,
+  );
 }

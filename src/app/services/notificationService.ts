@@ -2,6 +2,7 @@
 // Real-time notifications from Supabase notifications table.
 
 import { supabase } from '../../lib/supabase';
+import { controlPanelFetch } from '../shared/controlPanelClient';
 
 export type NotificationType =
   | 'assignment'
@@ -106,8 +107,7 @@ export async function createNotification(
 
   // Fire-and-forget email — never let this throw into the caller. The
   // in-app notification above has already succeeded regardless of
-  const apiBase = (import.meta.env.VITE_LLM_BASE_URL || "").replace(/\/$/, "");
-  fetch(`${apiBase}/controlpanelEflow/api/notifications/email`, {
+  controlPanelFetch("notifications/email", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -116,7 +116,9 @@ export async function createNotification(
       body: notification.message,
       taskId: notification.taskId || null,
     }),
-  }).catch((err) => console.error("Email notification request failed:", err));
+  }, { retryOnEndpointChange: true }).catch((err) =>
+    console.error("Email notification request failed:", err),
+  );
 }
 
 export async function markNotificationRead(userId: string, notificationId: string): Promise<void> {

@@ -2,37 +2,15 @@ import { Employee } from "./employeeService";
 import { Task } from "./taskService";
 import type { EmployeeNotesMap } from "./employeeNotesService";
 import { scoreEmployees } from "./aiScoringEngine";
+import {
+  readAiText,
+  requestAiChat,
+  isAiServiceUnavailableError,
+  type AiQueueUpdate,
+} from "../features/ai";
 
-const API_BASE = (import.meta.env.VITE_LLM_BASE_URL || "/api").replace(/\/$/, "");
-const CHAT_ENDPOINT = `${API_BASE}/chat`;
 const LLM_MODEL = "deepseek-r1:8b";
-const LLM_TIMEOUT_MS = 120_000;
 const LLM_MAX_ATTEMPTS = 2;
-
-let cachedAuthKey: string | null = null;
-let authKeyPromise: Promise<string> | null = null;
-
-const fetchAuthKey = async (): Promise<string> => {
-  if (cachedAuthKey) return cachedAuthKey;
-  if (authKeyPromise) return authKeyPromise;
-
-  authKeyPromise = fetch(`/api/authkey`)
-    .then(async (res) => {
-      if (!res.ok) throw new Error(`[LLM] authkey endpoint returned ${res.status}`);
-      const data = await res.json();
-      const key = typeof data.api_key === "string" ? data.api_key.trim() : null;
-      if (!key) throw new Error("[LLM] authkey endpoint returned an empty key");
-      cachedAuthKey = key;
-      return key;
-    })
-    .catch((error) => {
-      authKeyPromise = null; // allow retry next time
-      console.error("[LLM] Failed to fetch auth key — is the eFlow server running?", error);
-      throw error;
-    });
-
-  return authKeyPromise;
-};
 
 export interface LLMTeamRecommendation {
   recommendedEmployeeIds: string[];
@@ -216,40 +194,19 @@ const buildFallbackRecommendation = (
   };
 };
 
-const requestLlm = async (prompt: string) => {
-  const runtimeToken = await fetchAuthKey();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
-
-  const response = await fetch(CHAT_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(runtimeToken ? { Authorization: `Bearer ${runtimeToken}` } : {}),
-    },
-    body: JSON.stringify({
+const requestLlm = async (
+  prompt: string,
+  onQueueUpdate?: (update: AiQueueUpdate) => void,
+) => {
+  const response = await requestAiChat(
+    {
       model: LLM_MODEL,
       messages: [{ role: "user", content: prompt }],
       stream: false,
-    }),
-    signal: controller.signal,
-  });
-
-  clearTimeout(timeout);
-
-  if (!response.ok) {
-    throw new Error(`LLM Error: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
-
-  return (
-    data.message?.content ||
-    data.choices?.[0]?.message?.content ||
-    data.response ||
-    data.content ||
-    ""
-  ) as string;
+    },
+    { requestTimeoutMs: 30_000, onQueueUpdate },
+  );
+  return readAiText(response);
 };
 
 export const recommendTeam = async (
@@ -257,6 +214,7 @@ export const recommendTeam = async (
   employees: Employee[],
   employeeNotes?: EmployeeNotesMap,
   hierarchyContext?: HierarchyContext,
+  onQueueUpdate?: (update: AiQueueUpdate) => void,
 ): Promise<LLMTeamRecommendation | null> => {
   // No employees in the department — skip LLM entirely and return null
   if (!employees || employees.length === 0) {
@@ -273,12 +231,13 @@ export const recommendTeam = async (
 
   for (let attempt = 1; attempt <= LLM_MAX_ATTEMPTS; attempt += 1) {
     try {
-      const contentString = await requestLlm(prompt);
+      const contentString = await requestLlm(prompt, onQueueUpdate);
       console.info("[LLM] Recommendation response:", contentString);
       const parsed = parseRecommendation(contentString, employees);
       if (parsed) return parsed;
     } catch (error) {
       console.warn(`[LLM] Attempt ${attempt} failed:`, error);
+      if (isAiServiceUnavailableError(error)) throw error;
       if (attempt >= LLM_MAX_ATTEMPTS) break;
     }
   }
@@ -298,6 +257,7 @@ export const recommendTeamsForTasks = async (
   requests: BulkRecommendationRequest[],
   employees: Employee[],
   employeeNotes?: EmployeeNotesMap,
+  onQueueUpdate?: (update: AiQueueUpdate) => void,
 ): Promise<{ recommendations: Record<string, LLMTeamRecommendation>; failedTaskIds: string[] }> => {
   const recommendations: Record<string, LLMTeamRecommendation> = {};
   const failedTaskIds: string[] = [];
@@ -309,12 +269,14 @@ export const recommendTeamsForTasks = async (
         employees,
         employeeNotes,
         request.hierarchyContext,
+        onQueueUpdate,
       );
       if (result) {
         recommendations[request.task.id] = result;
       }
-    } catch {
-      // Will be handled by fallback below
+    } catch (error) {
+      if (isAiServiceUnavailableError(error)) throw error;
+      // Invalid AI output can still use the deterministic scoring fallback.
     }
   }
 

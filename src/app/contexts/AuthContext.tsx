@@ -8,6 +8,7 @@ import React, {
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { fetchEffectivePermissions } from '../services/permissionService';
+import { controlPanelFetch } from '../shared/controlPanelClient';
 import type { UserProfile, UserRole } from '../types';
 
 // ─── Error message mapper ────────────────────────────────────────
@@ -37,7 +38,7 @@ interface AuthContextValue {
   createManagedUser: (
     newEmail: string,
     newPassword: string,
-    profile: { full_name: string; role: UserRole; org_id?: string; employee_id?: string; skills?: Record<string, boolean> },
+    profile: { full_name: string; role: UserRole; org_id?: string; employee_id?: string | null; skills?: Record<string, boolean> },
   ) => Promise<string>;
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -51,19 +52,6 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 // ─── Fetch auth key from LLM server ─────────────────────────────
-const API_BASE = (import.meta.env.VITE_LLM_BASE_URL || '/api').replace(/\/$/, '');
-
-async function fetchAuthKey(): Promise<string | null> {
-  try {
-    const res = await fetch(`${API_BASE}/authkey`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    return typeof data.api_key === 'string' ? data.api_key.trim() : null;
-  } catch {
-    return null;
-  }
-}
-
 // ─── Spread legacy compatibility aliases ─────────────────────────
 function addCompatAliases(data: Record<string, unknown>): UserProfile {
   return {
@@ -206,7 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email,
             role,
             org_id: orgId || null,
-            employee_id: '',
+            employee_id: data.user.id,
             skills: {},
             workload: 0,
             burnout_level: 'low',
@@ -227,17 +215,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (
       newEmail: string,
       newPassword: string,
-      profileData: { full_name: string; role: UserRole; org_id?: string; employee_id?: string; skills?: Record<string, boolean> },
+      profileData: { full_name: string; role: UserRole; org_id?: string; employee_id?: string | null; skills?: Record<string, boolean> },
     ): Promise<string> => {
       setError(null);
       try {
-        const apiKey = await fetchAuthKey();
-
-        const res = await fetch(`${API_BASE}/admin/users/create`, {
+        const res = await controlPanelFetch('admin/users/create', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
           },
           body: JSON.stringify({
             email: newEmail,
@@ -245,10 +230,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             full_name: profileData.full_name,
             role: profileData.role,
             org_id: profileData.org_id || null,
-            employee_id: profileData.employee_id || '',
             skills: profileData.skills || {},
           }),
-        });
+        }, { retryOnEndpointChange: true });
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));

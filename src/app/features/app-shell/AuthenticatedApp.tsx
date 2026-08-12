@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useUserPreferences } from "../../contexts/UserPreferencesContext";
 import { LoginPage } from "../../components/Auth/LoginPage";
@@ -20,6 +21,9 @@ export function AuthenticatedApp() {
   if (loading || (user && preferencesLoading)) return <LoadingScreen />;
   if (!user || !userProfile) return <LoginPage />;
 
-  return <Frame760 role={mapRoleToPanel(userProfile.role)} />;
+  return (
+    <>
+      <Frame760 role={mapRoleToPanel(userProfile.role)} />
+    </>
+  );
 }
-import { useEffect } from "react";
