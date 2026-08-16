@@ -96,11 +96,12 @@ Feature-owned application code lives under `src/app/features/`. Each feature exp
 
 - `app-shell`: providers, authentication gate, loading state, role resolution, and development quick-login handling.
 - `navigation`: declarative role sections, default destinations, sidebar state, lazy role-content loading, and role dispatch.
-- `tasks`: task contracts, mapping, realtime subscriptions, focused mutation/review/activity/archive services, recurring templates, maintenance, and decomposed list/Kanban/hierarchy/timeline boards with controller hooks.
+- `tasks`: task contracts, mapping, realtime subscriptions, focused mutation/review/activity/archive services, recurring-task scheduling, maintenance, and decomposed list/Kanban/hierarchy/timeline boards with controller hooks and a consistent overflow-management menu.
+- `work-templates`: the Projects-owned template workspace for recurring whole-task schedules and reusable subtask checklists, including personal/department sharing, leadership approval, editable assignment previews, and guarded merge-or-replace application.
 - `reviews`: reviewer authorization, review services, immutable submission history, inbox, and decision components.
 - `subtasks`: permission-aware subtask services and task checklist UI.
 - `ai`: Supabase-authenticated AI gateway client, dynamic Quick Tunnel endpoint discovery, AI-only runtime gating, FIFO job submission/polling, queue-position updates, model configuration, and common response handling.
-- `projects`, `reports`, `employees`, `announcements`: active workflow workspaces with project query/mutation/member/milestone operations, PDS parser stages, employee core-work pages, and announcement inbox controllers kept in focused modules.
+- `projects`, `reports`, `employees`, `announcements`: active workflow workspaces with project query/mutation/member/milestone operations, the manual/AI work-plan entry points and Projects-owned template library, PDS parser stages, employee core-work pages, and announcement inbox controllers kept in focused modules.
 - `proposal-import`: PDF extraction, AI-required per-part/whole-document DeepSeek decomposition, hierarchy validation/repair of the same AI response, employee-scope selection, draft model, queue-aware controller hook, assignment UI, import cockpit, and a separate project/task commit operation. It contains no silent non-AI proposal fallback.
 - `role-department-head`, `role-executive`, `role-finance`, `role-hrmo`, `role-legislative`: role registries and focused page components, including committee, session, councilor, portfolio, finance, audit, and project-health submodules.
 - `chat-calls`: chat/call public API plus separate controller, channel-list, active-chat, reaction, and message-codec modules.

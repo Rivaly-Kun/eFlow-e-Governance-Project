@@ -1,25 +1,33 @@
 import * as React from "react";
 import * as Icons from "lucide-react";
 import { ManualPlanBuilder, ProposalImport } from "../../proposal-import";
+import { useDeptDirectoryEmployees } from "../../employees";
+import { isTaskLead } from "../../tasks";
+import { ProjectTemplatesModal } from "../../work-templates";
 import { useProjectsData, useOrgs } from "../../../hooks/useSupabaseData";
 import { useTasks } from "../../../hooks/useFirebaseData";
 import { useAuth } from "../../../contexts/AuthContext";
 import * as UI from "../../../components/workflow/primitives";
 import { ProjectCard } from "./ProjectCard";
-import { ProjectComposer } from "./ProjectComposer";
 import { ProjectDetail } from "./ProjectDetail";
 import type { ProjectScope } from "./model";
 
 export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eyebrow: string }) {
   const { projects: dbProjects, loading: projectsLoading } = useProjectsData();
-  const { loading: tasksLoading } = useTasks();
+  const { tasks, loading: tasksLoading } = useTasks();
   const { orgs } = useOrgs();
-  const { can } = useAuth();
+  const { can, user, userProfile } = useAuth();
+  const { deptEmployees } = useDeptDirectoryEmployees({
+    scope: "exact",
+    includeCurrentUser: true,
+    includeDepartmentHeads: true,
+    activeOnly: true,
+    excludeSuperAdmins: true,
+  });
   const [detailId, setDetailId] = React.useState<string | null>(null);
-  const [composerOpen, setComposerOpen] = React.useState(false);
-  const [dropdownOpen, setDropdownOpen] = React.useState(false);
   const [importOpen, setImportOpen] = React.useState(false);
   const [manualPlanOpen, setManualPlanOpen] = React.useState(false);
+  const [templatesOpen, setTemplatesOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("active");
   const [orgFilter, setOrgFilter] = React.useState("all");
@@ -44,6 +52,19 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
 
   const detail = detailId ? dbProjects.find((p) => p.id === detailId) : null;
   const loading = projectsLoading || tasksLoading;
+  const currentUserId = user?.id || userProfile?.id || userProfile?.uid || "";
+  const canManageDepartmentTemplates = [
+    "dept_head",
+    "department_head",
+    "assistant_head",
+  ].includes(userProfile?.role || "");
+  const leadingTasks = tasks.filter(
+    (task) =>
+      isTaskLead(task, currentUserId) &&
+      !task.archivedAt &&
+      !["for_review", "completed", "cancelled"].includes(task.status),
+  );
+  const canUseTemplates = canManageDepartmentTemplates || leadingTasks.length > 0;
 
   if (loading) return <div className="p-8"><UI.LoadingState label="Loading projects…" /></div>;
 
@@ -74,52 +95,34 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
           ? "Create, track, and manage projects from one operational workspace."
           : "View the same operational projects, milestones, members, and tasks used by management."}
         actions={
-          can("projects.create") ? (
-            <div className="relative inline-flex items-center">
-              {/* Primary action builds the same editable hierarchy as the AI importer, without AI. */}
+          can("projects.create") || canUseTemplates ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {can("projects.create") && (
               <button
                 onClick={() => setManualPlanOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-l-lg text-[12px] font-['Lexend:Medium',_sans-serif] bg-neutral-900 text-white hover:bg-neutral-800 transition-colors cursor-pointer border-r border-neutral-700 h-[34px]"
+                className="inline-flex h-[34px] items-center gap-1.5 rounded-lg bg-neutral-900 px-3 py-2 text-[12px] font-['Lexend:Medium',_sans-serif] text-white transition-colors hover:bg-neutral-800"
               >
                 <Icons.Plus size={14} />
                 Build work plan
               </button>
-
-              {/* Dropdown Toggle */}
+              )}
+              {can("projects.create") && (
               <button
-                onClick={() => setDropdownOpen(!dropdownOpen)}
-                className="inline-flex items-center justify-center px-2 py-2 rounded-r-lg bg-neutral-900 text-white hover:bg-neutral-800 transition-colors cursor-pointer h-[34px]"
+                onClick={() => setImportOpen(true)}
+                className="inline-flex h-[34px] items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-700 transition-colors hover:bg-neutral-50"
               >
-                <Icons.ChevronDown size={14} />
+                <Icons.FileText size={14} className="text-neutral-400" />
+                Import PDF with AI
               </button>
-
-              {/* Dropdown Menu */}
-              {dropdownOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setDropdownOpen(false)} />
-                  <div className="absolute right-0 top-[38px] z-20 w-[230px] bg-white border border-neutral-200 rounded-lg shadow-lg py-1 mt-1 origin-top-right transition-all">
-                    <button
-                      onClick={() => {
-                        setDropdownOpen(false);
-                        setComposerOpen(true);
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-neutral-700 hover:bg-neutral-50 transition-colors text-left font-['Lexend:Regular',_sans-serif]"
-                    >
-                      <Icons.FolderPlus size={14} className="text-neutral-400" />
-                      Quick project
-                    </button>
-                    <button
-                      onClick={() => {
-                        setDropdownOpen(false);
-                        setImportOpen(true);
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-neutral-700 hover:bg-neutral-50 transition-colors text-left font-['Lexend:Regular',_sans-serif]"
-                    >
-                      <Icons.FileText size={14} className="text-neutral-400" />
-                      Import PDF with AI
-                    </button>
-                  </div>
-                </>
+              )}
+              {canUseTemplates && (
+                <button
+                  onClick={() => setTemplatesOpen(true)}
+                  className="inline-flex h-[34px] items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[12px] font-['Lexend:Medium',_sans-serif] text-violet-700 transition-colors hover:bg-violet-100"
+                >
+                  <Icons.LayoutTemplate size={14} />
+                  Templates
+                </button>
               )}
             </div>
           ) : undefined
@@ -155,15 +158,12 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
           <UI.SectionEmpty
             icon={<Icons.FolderKanban size={30} />}
             title={query ? "No matching projects" : "No projects yet"}
-            description={query ? "Try a different search." : "Build a work plan or create a quick project to organize milestones and tasks."}
+            description={query ? "Try a different search." : "Build a structured work plan or import a proposal to organize projects, milestones, and tasks."}
             action={
               can("projects.create") && !query ? (
                 <div className="flex items-center gap-2">
                   <UI.WButton icon={<Icons.Plus size={14} />} variant="primary" onClick={() => setManualPlanOpen(true)}>
                     Build work plan
-                  </UI.WButton>
-                  <UI.WButton icon={<Icons.FolderPlus size={14} />} variant="secondary" onClick={() => setComposerOpen(true)}>
-                    Quick project
                   </UI.WButton>
                   <UI.WButton icon={<Icons.FileText size={14} />} variant="secondary" onClick={() => setImportOpen(true)}>
                     Import PDF with AI
@@ -179,10 +179,6 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
             <ProjectCard key={p.id} project={p} orgs={orgs} onOpen={() => setDetailId(p.id)} />
           ))}
         </div>
-      )}
-
-      {composerOpen && (
-        <ProjectComposer scope={scope} orgs={orgs} onClose={() => setComposerOpen(false)} onCreated={(id) => { setComposerOpen(false); setDetailId(id); }} />
       )}
 
       {manualPlanOpen && (
@@ -214,6 +210,16 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
           </div>
         </div>
       )}
+
+      <ProjectTemplatesModal
+        open={templatesOpen}
+        onClose={() => setTemplatesOpen(false)}
+        orgId={userProfile?.departmentId || userProfile?.org_id || ""}
+        currentUserId={currentUserId}
+        canManageDepartment={canManageDepartmentTemplates}
+        leadingTasks={leadingTasks}
+        employees={deptEmployees}
+      />
     </div>
   );
 }

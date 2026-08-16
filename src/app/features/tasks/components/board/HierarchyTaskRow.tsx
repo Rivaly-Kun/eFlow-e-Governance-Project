@@ -2,6 +2,7 @@ import type { Employee } from '../../../../services/employeeService';
 import type { Task } from '../../../../services/taskService';
 import { RejectionNotice, ReopenNotice, SubmissionDetails } from './TaskFeedback';
 import { SubtaskProgressChip, getDeadlineInfo, getTaskMemberNames, priorityMeta, statusMeta, type MondayBoardProps } from './model';
+import { TaskManagementMenu } from './TaskManagementMenu';
 
 interface HierarchyTaskRowProps {
   task: Task;
@@ -13,10 +14,12 @@ interface HierarchyTaskRowProps {
   onSubmitRequest?: (task: Task) => void;
   onOpenTaskEditor?: (task: Task) => void;
   onDeleteTaskRequest?: (task: Task) => void;
+  onArchiveTaskRequest?: (task: Task) => void;
+  onCancelTaskRequest?: (task: Task) => void;
   onUndoRequest?: (task: Task) => void;
 }
 
-export function HierarchyTaskRow({ task, employeeById, role, currentUserId, onVerify, onExecute, onSubmitRequest, onOpenTaskEditor, onDeleteTaskRequest, onUndoRequest }: HierarchyTaskRowProps) {
+export function HierarchyTaskRow({ task, employeeById, role, currentUserId, onVerify, onExecute, onSubmitRequest, onOpenTaskEditor, onDeleteTaskRequest, onArchiveTaskRequest, onCancelTaskRequest, onUndoRequest }: HierarchyTaskRowProps) {
   const pm =
                                     priorityMeta[task.priority || "medium"] ||
                                     priorityMeta.medium;
@@ -146,17 +149,6 @@ export function HierarchyTaskRow({ task, employeeById, role, currentUserId, onVe
                                                 </button>
                                               </>
                                             )}
-                                          {role === "depthead" &&
-                                            task.status === "completed" && (
-                                              <button
-                                                onClick={() =>
-                                                  onUndoRequest?.(task)
-                                                }
-                                                className="text-[10px] border border-amber-200 text-amber-700 px-2 py-0.5 rounded-md hover:bg-amber-50 transition"
-                                              >
-                                                Undo
-                                              </button>
-                                            )}
                                           {role === "employee" &&
                                             task.status === "todo" && (
                                               <button
@@ -178,28 +170,16 @@ export function HierarchyTaskRow({ task, employeeById, role, currentUserId, onVe
                                               Submit
                                             </button>
                                           )}
-                                          {role === "depthead" &&
-                                            onOpenTaskEditor && (
-                                              <button
-                                                onClick={() =>
-                                                  onOpenTaskEditor(task)
-                                                }
-                                                className="text-[10px] border border-neutral-200 text-neutral-600 px-2 py-0.5 rounded-md hover:bg-neutral-100 transition"
-                                              >
-                                                Edit
-                                              </button>
-                                            )}
-                                          {role === "depthead" &&
-                                            onDeleteTaskRequest && (
-                                              <button
-                                                onClick={() =>
-                                                  onDeleteTaskRequest(task)
-                                                }
-                                                className="text-[10px] border border-red-200 text-red-600 px-2 py-0.5 rounded-md hover:bg-red-50 transition"
-                                              >
-                                                Delete
-                                              </button>
-                                            )}
+                                          {role === "depthead" && (
+                                            <TaskManagementMenu
+                                              task={task}
+                                              onEdit={onOpenTaskEditor}
+                                              onArchive={onArchiveTaskRequest}
+                                              onCancel={onCancelTaskRequest}
+                                              onDelete={onDeleteTaskRequest}
+                                              onReopen={onUndoRequest}
+                                            />
+                                          )}
                                         </div>
                                       </div>
                                     </div>

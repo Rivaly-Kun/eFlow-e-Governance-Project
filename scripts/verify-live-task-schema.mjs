@@ -39,6 +39,8 @@ async function verifyLiveSchema() {
     "subtask_progress_updates",
     "subtask_submissions",
     "subtask_submission_attachments",
+    "subtask_templates",
+    "subtask_template_items",
   ]) {
     if (!definitions[table]) missing.push(`table:${table}`);
   }
@@ -94,6 +96,9 @@ async function verifyLiveSchema() {
     "materialize_due_task_templates",
     "set_organization_leadership",
     "save_subtask_progress",
+    "save_subtask_template",
+    "review_subtask_template",
+    "apply_subtask_template",
     "submit_subtask_for_review",
     "submit_task_for_review",
   ]) {

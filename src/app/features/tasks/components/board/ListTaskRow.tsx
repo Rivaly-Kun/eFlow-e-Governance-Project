@@ -3,6 +3,7 @@ import type { Employee } from '../../../../services/employeeService';
 import type { Task } from '../../../../services/taskService';
 import { RejectionNotice, ReopenNotice, SubmissionDetails } from './TaskFeedback';
 import { SubtaskProgressChip, canDragTask, getDeadlineInfo, getHierarchyDisplay, getInitials, getTaskMemberNames, priorityMeta, statusMeta, type MondayBoardProps } from './model';
+import { TaskManagementMenu } from './TaskManagementMenu';
 
 interface ListTaskRowProps {
   task: Task;
@@ -12,13 +13,15 @@ interface ListTaskRowProps {
   onEditTeam: (task: Task) => void;
   onOpenTaskEditor?: (task: Task) => void;
   onDeleteTaskRequest?: (task: Task) => void;
+  onArchiveTaskRequest?: (task: Task) => void;
+  onCancelTaskRequest?: (task: Task) => void;
   onSubmitRequest?: (task: Task) => void;
   onUndoRequest?: (task: Task) => void;
   onVerify?: MondayBoardProps['onVerify'];
   onExecute?: MondayBoardProps['onExecute'];
 }
 
-export function ListTaskRow({ task, role, employeeById, currentUserId, onEditTeam, onOpenTaskEditor, onDeleteTaskRequest, onSubmitRequest, onUndoRequest, onVerify, onExecute }: ListTaskRowProps) {
+export function ListTaskRow({ task, role, employeeById, currentUserId, onEditTeam, onOpenTaskEditor, onDeleteTaskRequest, onArchiveTaskRequest, onCancelTaskRequest, onSubmitRequest, onUndoRequest, onVerify, onExecute }: ListTaskRowProps) {
   const dlInfo = getDeadlineInfo(task);
                   const pm =
                     priorityMeta[task.priority || "medium"] ||
@@ -154,16 +157,6 @@ export function ListTaskRow({ task, role, employeeById, currentUserId, onEditTea
                             </span>
                           </div>
                         )}
-                        {role === "depthead" && (
-                          <button
-                            onClick={() =>
-                              onEditTeam(task)
-                            }
-                            className="mt-1 text-[10px] text-violet-600 hover:underline"
-                          >
-                            Edit Team
-                          </button>
-                        )}
                       </div>
 
                       {/* Priority */}
@@ -225,14 +218,6 @@ export function ListTaskRow({ task, role, employeeById, currentUserId, onEditTea
                               </button>
                             </div>
                           )}
-                        {role === "depthead" && task.status === "completed" && (
-                          <button
-                            onClick={() => onUndoRequest?.(task)}
-                            className="text-[10px] border border-amber-200 text-amber-700 px-2 py-0.5 rounded-md hover:bg-amber-50 transition"
-                          >
-                            Undo
-                          </button>
-                        )}
                         {role === "employee" && task.status === "todo" && (
                           <button
                             onClick={() => onExecute?.(task.id)}
@@ -249,33 +234,17 @@ export function ListTaskRow({ task, role, employeeById, currentUserId, onEditTea
                             Submit
                           </button>
                         )}
-                        {role === "depthead" &&
-                          (onOpenTaskEditor || onDeleteTaskRequest) && (
-                            <div className="flex gap-1">
-                              {onOpenTaskEditor && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onOpenTaskEditor(task);
-                                  }}
-                                  className="text-[10px] border border-neutral-200 text-neutral-600 px-2 py-0.5 rounded-md hover:bg-neutral-100 transition"
-                                >
-                                  Edit
-                                </button>
-                              )}
-                              {onDeleteTaskRequest && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onDeleteTaskRequest(task);
-                                  }}
-                                  className="text-[10px] border border-red-200 text-red-600 px-2 py-0.5 rounded-md hover:bg-red-50 transition"
-                                >
-                                  Delete
-                                </button>
-                              )}
-                            </div>
-                          )}
+                        {role === "depthead" && (
+                          <TaskManagementMenu
+                            task={task}
+                            onEdit={onOpenTaskEditor}
+                            onEditTeam={onEditTeam}
+                            onArchive={onArchiveTaskRequest}
+                            onCancel={onCancelTaskRequest}
+                            onDelete={onDeleteTaskRequest}
+                            onReopen={onUndoRequest}
+                          />
+                        )}
                         {task.status === "completed" && task.auditHash && (
                           <div
                             className="text-[9px] text-neutral-400 cursor-help"

@@ -1,5 +1,5 @@
-import { BarChart2, Columns, Layers, List, RotateCcw } from "lucide-react";
-import { RecurringTaskTemplatesModal } from "../RecurringTaskTemplatesModal";
+import { useMemo, useState } from "react";
+import { Archive, BarChart2, Columns, Layers, List } from "lucide-react";
 import { uniqueValues, type BoardView, type MondayBoardProps } from "./model";
 import { AssignmentModal } from "./AssignmentModal";
 import { TaskEditorModal } from "./TaskEditorModal";
@@ -26,14 +26,19 @@ export function MondayBoard({
   onUpdateTask,
   onDeleteTask,
 }: MondayBoardProps) {
+  const [recordScope, setRecordScope] = useState<"active" | "archived">("active");
+  const scopedTasks = useMemo(
+    () => tasks.filter((task) => recordScope === "archived" ? Boolean(task.archivedAt) : !task.archivedAt),
+    [recordScope, tasks],
+  );
   // ── View & composer state ─────────────────────────────────────
   const controller = useMondayBoardController({
-    tasks, employees, allEmployees, employeeNotes, role, departmentFilter,
+    tasks: scopedTasks, employees, allEmployees, employeeNotes, role, departmentFilter,
     currentUserId, currentUserName, onAssign, onExecute, onSubmit, onVerify,
     onUpdateTask, onDeleteTask,
   });
   const {
-    boardView, setBoardView, recurringTemplatesOpen, setRecurringTemplatesOpen,
+    boardView, setBoardView,
     deptEmployees, employeeById, taskEditorOpen, taskEditorDraft,
     setTaskEditorDraft, taskEditorSaving, taskEditorError,
     taskEditorAssignOpen, setTaskEditorAssignOpen, submitModalOpen,
@@ -43,7 +48,7 @@ export function MondayBoard({
     openTaskEditor, closeTaskEditor, openSubmitModal, closeSubmitModal,
     handleRemoveAttachment, handleSubmitConfirm, openUndoModal, closeUndoModal,
     handleUndoConfirm, handleTaskEditorSave, handleTaskDeleteRequest,
-    handleTaskCancelRequest, handleTaskEditorDelete,
+    handleTaskCancelRequest, handleTaskArchiveRequest, handleTaskEditorDelete,
   } = controller;
 
   return (
@@ -53,18 +58,14 @@ export function MondayBoard({
       <div>
         {/* View switcher header */}
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[18px] font-['Lexend:SemiBold',_sans-serif] text-neutral-800">
-            Task Board
-          </h2>
+          <div className="flex items-center gap-2 text-[11.5px] text-neutral-500">
+            <Archive size={13} />
+            <select value={recordScope} onChange={(event) => setRecordScope(event.target.value as typeof recordScope)} className="h-8 rounded-lg border border-neutral-200 bg-white px-2.5 text-[11px] text-neutral-700 outline-none">
+              <option value="active">Active work</option>
+              <option value="archived">Archived work</option>
+            </select>
+          </div>
           <div className="flex items-center gap-2">
-          {role === "depthead" && (
-            <button
-              onClick={() => setRecurringTemplatesOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-[11.5px] font-['Lexend:Medium',_sans-serif] text-neutral-700 hover:bg-neutral-50"
-            >
-              <RotateCcw size={13} /> Recurring templates
-            </button>
-          )}
           <div className="flex items-center gap-0.5 bg-neutral-100 rounded-xl p-0.5">
             {(
               [
@@ -122,6 +123,8 @@ export function MondayBoard({
             onDeleteTaskRequest={
               role === "depthead" ? handleTaskDeleteRequest : undefined
             }
+            onArchiveTaskRequest={role === "depthead" ? handleTaskArchiveRequest : undefined}
+            onCancelTaskRequest={role === "depthead" ? handleTaskCancelRequest : undefined}
             departmentFilter={departmentFilter}
             currentUserId={currentUserId}
             currentUserName={currentUserName}
@@ -140,6 +143,8 @@ export function MondayBoard({
             onDeleteTaskRequest={
               role === "depthead" ? handleTaskDeleteRequest : undefined
             }
+            onArchiveTaskRequest={role === "depthead" ? handleTaskArchiveRequest : undefined}
+            onCancelTaskRequest={role === "depthead" ? handleTaskCancelRequest : undefined}
             currentUserId={currentUserId}
             currentUserName={currentUserName}
             onUndoRequest={role === "depthead" ? openUndoModal : undefined}
@@ -164,6 +169,8 @@ export function MondayBoard({
             onDeleteTaskRequest={
               role === "depthead" ? handleTaskDeleteRequest : undefined
             }
+            onArchiveTaskRequest={role === "depthead" ? handleTaskArchiveRequest : undefined}
+            onCancelTaskRequest={role === "depthead" ? handleTaskCancelRequest : undefined}
             currentUserId={currentUserId}
             onUndoRequest={role === "depthead" ? openUndoModal : undefined}
           />
@@ -236,14 +243,6 @@ export function MondayBoard({
           );
         }}
       />
-
-      <RecurringTaskTemplatesModal
-        open={recurringTemplatesOpen}
-        onClose={() => setRecurringTemplatesOpen(false)}
-        employees={deptEmployees}
-        orgId={departmentFilter}
-      />
-
 
       {/* ─── Assignment Modal — Manual composer ──────────────────── */}
     </div>

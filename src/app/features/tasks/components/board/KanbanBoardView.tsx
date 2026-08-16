@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from "react";
-import { Crown } from "lucide-react";
+import { ChevronLeft, ChevronRight, Crown, Hand } from "lucide-react";
 import type { Employee } from "../../../../services/employeeService";
 import type { Task, TaskStatus } from "../../../../services/taskService";
 import { updateTaskStatus } from "../../../../services/taskService";
 import { STATUS_ORDER, SubtaskProgressChip, canDragTask, getDeadlineInfo, getDirectBoardTransitionError, getHierarchyDisplay, getInitials, getTaskMemberNames, priorityMeta, statusMeta } from "./model";
 import type { MondayBoardProps } from "./model";
 import { RejectionNotice, ReopenNotice, SubmissionDetails } from "./TaskFeedback";
+import { TaskManagementMenu } from "./TaskManagementMenu";
+import { useHorizontalBoardViewport } from "./useHorizontalBoardViewport";
 
 export function KanbanBoardView({
   tasks,
@@ -16,6 +18,8 @@ export function KanbanBoardView({
   onSubmitRequest,
   onOpenTaskEditor,
   onDeleteTaskRequest,
+  onArchiveTaskRequest,
+  onCancelTaskRequest,
   currentUserId,
   currentUserName,
   onUndoRequest,
@@ -28,11 +32,20 @@ export function KanbanBoardView({
   onSubmitRequest?: (task: Task) => void;
   onOpenTaskEditor?: (task: Task) => void;
   onDeleteTaskRequest?: (task: Task) => void;
+  onArchiveTaskRequest?: (task: Task) => void;
+  onCancelTaskRequest?: (task: Task) => void;
   currentUserId?: string;
   currentUserName?: string;
   onUndoRequest?: (task: Task) => void;
 }) {
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
+  const {
+    viewportRef,
+    isPanning,
+    panByPage,
+    autoPanDuringTaskDrag,
+    viewportPointerHandlers,
+  } = useHorizontalBoardViewport();
   const employeeById = useMemo(
     () =>
       Object.fromEntries(
@@ -80,7 +93,24 @@ export function KanbanBoardView({
   };
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-3 min-h-[400px]">
+    <div className="min-w-0 max-w-full">
+      <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2 text-[10.5px] text-neutral-500">
+          <Hand size={13} className="shrink-0 text-neutral-400" />
+          <span className="truncate">Drag the board left or right. Task cards still drag between status columns.</span>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <button type="button" aria-label="Scroll Kanban board left" onClick={() => panByPage(-1)} className="rounded-lg border border-neutral-200 p-1.5 text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800"><ChevronLeft size={14} /></button>
+          <button type="button" aria-label="Scroll Kanban board right" onClick={() => panByPage(1)} className="rounded-lg border border-neutral-200 p-1.5 text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800"><ChevronRight size={14} /></button>
+        </div>
+      </div>
+      <div
+        ref={viewportRef}
+        aria-label="Kanban status board"
+        {...viewportPointerHandlers}
+        onDragOver={(event) => autoPanDuringTaskDrag(event.clientX)}
+        className={`flex min-h-[400px] w-full min-w-0 max-w-full gap-3 overflow-x-auto overscroll-x-contain pb-4 select-none ${isPanning ? "cursor-grabbing" : "cursor-grab"}`}
+      >
       {grouped.map(({ status, tasks: items }) => {
         const meta = statusMeta[status];
         const isDragOver = dragOverStatus === status;
@@ -243,14 +273,6 @@ export function KanbanBoardView({
                           </button>
                         </>
                       )}
-                      {role === "depthead" && task.status === "completed" && (
-                        <button
-                          onClick={() => onUndoRequest?.(task)}
-                          className="flex-1 text-[10px] border border-amber-200 text-amber-700 py-1 rounded-lg hover:bg-amber-50 transition"
-                        >
-                          Undo
-                        </button>
-                      )}
                       {role === "employee" && task.status === "todo" && (
                         <button
                           onClick={() => onExecute?.(task.id)}
@@ -267,27 +289,15 @@ export function KanbanBoardView({
                           Submit for Review
                         </button>
                       )}
-                      {role === "depthead" && onOpenTaskEditor && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenTaskEditor(task);
-                          }}
-                          className="text-[10px] border border-neutral-200 text-neutral-600 px-2 py-1 rounded-lg hover:bg-neutral-100 transition"
-                        >
-                          Edit
-                        </button>
-                      )}
-                      {role === "depthead" && onDeleteTaskRequest && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteTaskRequest(task);
-                          }}
-                          className="text-[10px] border border-red-200 text-red-600 px-2 py-1 rounded-lg hover:bg-red-50 transition"
-                        >
-                          Delete
-                        </button>
+                      {role === "depthead" && (
+                        <TaskManagementMenu
+                          task={task}
+                          onEdit={onOpenTaskEditor}
+                          onArchive={onArchiveTaskRequest}
+                          onCancel={onCancelTaskRequest}
+                          onDelete={onDeleteTaskRequest}
+                          onReopen={onUndoRequest}
+                        />
                       )}
                     </div>
                   </div>
@@ -305,6 +315,7 @@ export function KanbanBoardView({
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

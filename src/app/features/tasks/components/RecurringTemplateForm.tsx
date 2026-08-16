@@ -24,6 +24,10 @@ export function RecurringTemplateForm({
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
+    if (!orgId) {
+      toast("Your account must be assigned to a department before creating recurring work.", "error");
+      return;
+    }
     if (!title.trim() || !nextRun) {
       toast("Template title and first run are required.", "error");
       return;

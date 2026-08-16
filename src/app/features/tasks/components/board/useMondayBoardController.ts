@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { type Task, type UpdateTaskPayload, undoCompletedTask } from "../../../../services/taskService";
 import type { Employee } from "../../../../services/employeeService";
 import { cancelTask } from "../../services/taskLifecycleService";
+import { archiveTask, unarchiveTask } from "../../services/taskArchiveService";
 import { buildTaskEditorDraft, uniqueValues, type BoardView, type MondayBoardProps, type TaskEditorDraft } from "./model";
 
 export function useMondayBoardController({
@@ -17,7 +18,6 @@ export function useMondayBoardController({
 }: MondayBoardProps) {
   // ── View & composer state ─────────────────────────────────────
   const [boardView, setBoardView] = useState<BoardView>("list");
-  const [recurringTemplatesOpen, setRecurringTemplatesOpen] = useState(false);
 
   // ── Employee lookups ──────────────────────────────────────────
   const deptEmployees = useMemo(() => {
@@ -326,6 +326,17 @@ export function useMondayBoardController({
     [closeTaskEditor],
   );
 
+  const handleTaskArchiveRequest = useCallback(async (task: Task) => {
+    const shouldArchive = !task.archivedAt;
+    if (shouldArchive && !window.confirm(`Archive task "${task.title}"?`)) return;
+    try {
+      if (shouldArchive) await archiveTask(task.id);
+      else await unarchiveTask(task.id);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Task archive update failed.");
+    }
+  }, []);
+
   const handleTaskEditorDelete = async () => {
     if (!editingTask) return;
     setTaskEditorSaving(true);
@@ -339,8 +350,6 @@ export function useMondayBoardController({
   return {
     boardView,
     setBoardView,
-    recurringTemplatesOpen,
-    setRecurringTemplatesOpen,
     deptEmployees,
     employeeById,
     taskEditorOpen,
@@ -378,6 +387,7 @@ export function useMondayBoardController({
     handleTaskEditorSave,
     handleTaskDeleteRequest,
     handleTaskCancelRequest,
+    handleTaskArchiveRequest,
     handleTaskEditorDelete,
   };
 }

@@ -15,6 +15,8 @@ export function HierarchyBoardView({
   onSubmitRequest,
   onOpenTaskEditor,
   onDeleteTaskRequest,
+  onArchiveTaskRequest,
+  onCancelTaskRequest,
   currentUserId,
   onUndoRequest,
 }: {
@@ -26,6 +28,8 @@ export function HierarchyBoardView({
   onSubmitRequest?: (task: Task) => void;
   onOpenTaskEditor?: (task: Task) => void;
   onDeleteTaskRequest?: (task: Task) => void;
+  onArchiveTaskRequest?: (task: Task) => void;
+  onCancelTaskRequest?: (task: Task) => void;
   currentUserId?: string;
   currentUserName?: string;
   onUndoRequest?: (task: Task) => void;
@@ -218,6 +222,8 @@ export function HierarchyBoardView({
                                     onSubmitRequest={onSubmitRequest}
                                     onOpenTaskEditor={onOpenTaskEditor}
                                     onDeleteTaskRequest={onDeleteTaskRequest}
+                                    onArchiveTaskRequest={onArchiveTaskRequest}
+                                    onCancelTaskRequest={onCancelTaskRequest}
                                     onUndoRequest={onUndoRequest}
                                   />
                                 ))}

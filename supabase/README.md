@@ -20,6 +20,7 @@ The current task-flow additions are:
 12. `20260817000000_fix_task_chat_uuid_members.sql` — repairs the task-chat synchronization trigger so parent-task rollups consistently handle UUID team-member arrays.
 13. `20260817000001_normalize_subtask_assignee_ids.sql` — converts legacy subtask multi-assignee arrays from text to UUID values and restores the scoped update policy.
 14. `20260817000002_subtask_progress_leader_notifications.sql` — notifies the resolved Team Leader after every employee subtask progress update.
+15. `20260817000003_work_template_library.sql` — moves recurring work under Projects, adds governed personal/department subtask templates, seeds an editable Meeting Preparation checklist, and atomically applies templates with safe merge/replace protection.
 
 Apply these files in the listed order. The Assistant Head migration defensively
 creates the two reviewer columns when absent, but it does not replace the full

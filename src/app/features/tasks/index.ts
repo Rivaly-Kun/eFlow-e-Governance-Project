@@ -3,7 +3,7 @@ export * from "./services/taskService";
 export * from "./selectors";
 export { DeptHeadTaskBoardView } from "./components/DeptHeadTaskBoardView";
 export { useDeptHeadTaskBoard } from "./hooks/useDeptHeadTaskBoard";
-export { RecurringTaskTemplatesModal } from "./components/RecurringTaskTemplatesModal";
+export { RecurringTaskTemplatesPanel } from "./components/RecurringTaskTemplatesPanel";
 export { MondayBoard } from "./components/board/MondayBoard";
 export type { MondayBoardProps } from "./components/board/model";
 export { EmployeeTaskWorkspace } from "../../components/Employee/EmployeeTaskWorkspace";
