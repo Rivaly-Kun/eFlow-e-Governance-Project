@@ -29,23 +29,99 @@ export const ORG_TYPE_OPTIONS: { value: OrgType; label: string }[] = [
 export const ROLE_COLORS: Record<string, string> = {
   super_admin: 'bg-red-100 text-red-700',
   dept_head: 'bg-violet-100 text-violet-700',
+  assistant_head: 'bg-indigo-100 text-indigo-700',
   employee: 'bg-emerald-100 text-emerald-700',
 };
 
 export const ROLE_LABELS: Record<string, string> = {
   super_admin: 'Super Admin',
-  dept_head: 'Dept Head',
+  dept_head: 'Head',
+  assistant_head: 'Assistant Head',
   employee: 'Employee',
 };
+
+// These dimensions are shared by the renderer and Dagre. Keeping one source
+// of truth prevents long organization names from widening cards beyond the
+// space the layout engine reserved for them.
+export const ORG_NODE_WIDTH = 240;
+export const ORG_NODE_HEIGHT = 90;
+export const ORG_NODE_GAP = 32;
+
+type PositionableNode = Pick<Node, 'id' | 'position'>;
+
+export function nodesOverlap(first: PositionableNode, second: PositionableNode): boolean {
+  return (
+    first.position.x < second.position.x + ORG_NODE_WIDTH &&
+    first.position.x + ORG_NODE_WIDTH > second.position.x &&
+    first.position.y < second.position.y + ORG_NODE_HEIGHT &&
+    first.position.y + ORG_NODE_HEIGHT > second.position.y
+  );
+}
+
+export function hasNodeCollision(node: PositionableNode, nodes: PositionableNode[]): boolean {
+  return nodes.some((candidate) => candidate.id !== node.id && nodesOverlap(node, candidate));
+}
+
+/**
+ * Keeps the node the user dragged in place, then shifts any collided cards
+ * sideways. Each moved card becomes the next collision source, so a crowded
+ * row naturally makes room instead of rejecting the user's drag.
+ */
+export function resolveNodeCollisions(nodes: Node[], anchoredNodeId: string): Node[] {
+  const positionedNodes = nodes.map((node) => ({
+    ...node,
+    position: { ...node.position },
+  }));
+  const queue = [anchoredNodeId];
+  const maxMoves = positionedNodes.length * positionedNodes.length;
+  let moves = 0;
+
+  while (queue.length > 0 && moves < maxMoves) {
+    const sourceId = queue.shift();
+    const source = positionedNodes.find((node) => node.id === sourceId);
+    if (!source) continue;
+
+    const collidedNodes = positionedNodes.filter(
+      (candidate) => candidate.id !== source.id && nodesOverlap(source, candidate),
+    );
+
+    for (const target of collidedNodes) {
+      if (target.id === anchoredNodeId) {
+        const targetCenter = target.position.x + ORG_NODE_WIDTH / 2;
+        const sourceCenter = source.position.x + ORG_NODE_WIDTH / 2;
+        const moveRight =
+          sourceCenter > targetCenter ||
+          (sourceCenter === targetCenter && source.id.localeCompare(target.id) > 0);
+
+        source.position.x = target.position.x + (moveRight ? ORG_NODE_WIDTH + ORG_NODE_GAP : -ORG_NODE_WIDTH - ORG_NODE_GAP);
+        queue.push(source.id);
+        moves += 1;
+        continue;
+      }
+
+      const sourceCenter = source.position.x + ORG_NODE_WIDTH / 2;
+      const targetCenter = target.position.x + ORG_NODE_WIDTH / 2;
+      const moveRight =
+        targetCenter > sourceCenter ||
+        (targetCenter === sourceCenter && target.id.localeCompare(source.id) > 0);
+
+      target.position.x = source.position.x + (moveRight ? ORG_NODE_WIDTH + ORG_NODE_GAP : -ORG_NODE_WIDTH - ORG_NODE_GAP);
+      queue.push(target.id);
+      moves += 1;
+    }
+  }
+
+  return positionedNodes;
+}
 
 // ─── Dagre layout helper ─────────────────────────────────────────
 export function layoutNodes(nodes: Node[], edges: Edge[]): Node[] {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'TB', ranksep: 80, nodesep: 40 });
+  g.setGraph({ rankdir: 'TB', ranksep: 88, nodesep: 64 });
 
   for (const node of nodes) {
-    g.setNode(node.id, { width: 180, height: 90 });
+    g.setNode(node.id, { width: ORG_NODE_WIDTH, height: ORG_NODE_HEIGHT });
   }
   for (const edge of edges) {
     g.setEdge(edge.source, edge.target);
@@ -58,8 +134,8 @@ export function layoutNodes(nodes: Node[], edges: Edge[]): Node[] {
     return {
       ...node,
       position: {
-        x: pos.x - 90,
-        y: pos.y - 45,
+        x: pos.x - ORG_NODE_WIDTH / 2,
+        y: pos.y - ORG_NODE_HEIGHT / 2,
       },
     };
   });
@@ -98,7 +174,7 @@ function OrgNodeComp({ data }: NodeProps) {
 
   return (
     <div
-      className={`relative min-w-[160px] rounded-xl border shadow-sm p-3 transition-all
+      className={`relative w-[240px] h-[90px] rounded-xl border shadow-sm p-3 transition-all
         ${isRoot ? 'bg-slate-900 text-white border-slate-700' : 'bg-white border-neutral-200'}
         hover:shadow-md`}
     >

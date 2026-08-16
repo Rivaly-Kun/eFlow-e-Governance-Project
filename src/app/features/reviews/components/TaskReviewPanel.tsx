@@ -13,6 +13,7 @@ export interface TaskReviewPanelProps {
   onDone?: () => void;
   compact?: boolean;
   canReview?: boolean;
+  showDecision?: boolean;
 }
 
 export function TaskReviewPanel({
@@ -20,6 +21,7 @@ export function TaskReviewPanel({
   onDone,
   compact,
   canReview = false,
+  showDecision = true,
 }: TaskReviewPanelProps) {
   const { user, userProfile } = useAuth();
   const [attachments, setAttachments] = useState<ReviewAttachment[]>([]);
@@ -48,7 +50,7 @@ export function TaskReviewPanel({
   return (
     <div className={compact ? "" : "rounded-xl border border-neutral-200 bg-white p-4"}>
       <SubmissionSummary task={task} attachments={attachments} />
-      {effectiveCanReview && <ReviewDecisionForm taskId={task.id} onDone={onDone} />}
+      {showDecision && effectiveCanReview && <ReviewDecisionForm taskId={task.id} onDone={onDone} />}
       {!effectiveCanReview && user?.id === task.latestSubmission?.submitterId && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-800">
           You submitted this attempt, so another assigned reviewer must decide it.

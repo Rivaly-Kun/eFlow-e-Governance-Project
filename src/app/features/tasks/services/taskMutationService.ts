@@ -15,17 +15,19 @@ export const createTask = async (
   description?: string,
   deadline?: string,
 ) => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error('Your sign-in session has expired. Sign in again, then retry creating the task.');
+  }
+
   let userOrgId: string | null = null;
-  if (user) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('org_id')
-      .eq('id', user.id)
-      .single();
-    if (profile) {
-      userOrgId = profile.org_id;
-    }
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('org_id')
+    .eq('id', user.id)
+    .single();
+  if (profile) {
+    userOrgId = profile.org_id;
   }
 
   let newTask: Record<string, unknown>;
@@ -92,19 +94,20 @@ export const createTask = async (
     };
   }
 
-  if (user) {
-    newTask.created_by = user.id;
+  const { data, error } = await supabase.rpc('create_task_with_details', {
+    p_payload: newTask,
+  });
+
+  if (error) {
+    if (error.code === 'PGRST202' || error.message.includes('create_task_with_details')) {
+      throw new Error('The task database upgrade has not been applied yet. Apply the atomic task creation migration, then retry.');
+    }
+    throw error;
   }
 
-
-  const { data, error } = await supabase
-    .from('tasks')
-    .insert(newTask)
-    .select()
-    .single();
-
-  if (error) throw error;
-  const task = rowToTask(data);
+  const taskRow = Array.isArray(data) ? data[0] : data;
+  if (!taskRow) throw new Error('The database did not return the created task.');
+  const task = rowToTask(taskRow as Record<string, unknown>);
 
   const taskTitle = (newTask.title as string) || 'Task';
   // Notify assignee if assigned at creation

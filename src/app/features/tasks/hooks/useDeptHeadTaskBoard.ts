@@ -12,7 +12,13 @@ import { useDeptDirectoryEmployees } from "../../employees";
 export function useDeptHeadTaskBoard() {
   const { tasks } = useTasks();
   const { deptEmployees, allEmployees, directoryLoading, userProfile } =
-    useDeptDirectoryEmployees();
+    useDeptDirectoryEmployees({
+      scope: "exact",
+      includeCurrentUser: true,
+      includeDepartmentHeads: true,
+      activeOnly: true,
+      excludeSuperAdmins: true,
+    });
   const { notes, loading: notesLoading } = useEmployeeNotes();
   const { orgs } = useOrgs();
 

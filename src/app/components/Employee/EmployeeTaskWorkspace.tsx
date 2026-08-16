@@ -12,11 +12,13 @@ import {
   subscribeToNotifications,
   type Notification,
 } from "../../services/notificationService";
+import { useProjectsData } from "../../hooks/useSupabaseData";
 
 export function EmployeeTaskWorkspace() {
   const { tasks, loading } = useCurrentUserTasks();
   const { user, userProfile } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const { projects } = useProjectsData();
 
   useEffect(() => {
     if (!user?.id) {
@@ -48,11 +50,13 @@ export function EmployeeTaskWorkspace() {
     if (!task && !unreadAssignment) return null;
     return {
       title: task?.title || unreadAssignment?.taskTitle || "New assignment",
-      project: task?.projectTitle,
+      project: task?.linkedProjectId
+        ? projects.find((project) => project.id === task.linkedProjectId)?.title || task.projectTitle
+        : task?.projectTitle,
       lead: task?.assigneeName || "To be confirmed",
       due: task?.deadline || task?.dueDate,
     };
-  }, [notifications, tasks]);
+  }, [notifications, projects, tasks]);
 
   const startTask = async (taskId: string) => {
     await updateTaskStatus(taskId, "in_progress", {

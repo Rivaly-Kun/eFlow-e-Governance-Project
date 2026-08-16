@@ -5,6 +5,7 @@ import { NotificationBell } from "../ui/NotificationBell";
 import { ChatListDrawer } from "../../features/chat-calls";
 import { IncomingCallListener } from "../ui/IncomingCallListener";
 import { getProfileAvatarUrl } from "../../services/userSettingsService";
+import { getRoleLabel } from "../../shared/roles";
 import {
   getRoleNavigation,
   RoleContent,
@@ -304,7 +305,7 @@ function UnifiedSidebar({
                 {userProfile?.fullName || "User"}
               </p>
               <p className="text-[10px] text-neutral-400 truncate">
-                {userProfile?.role || role}
+                {getRoleLabel(userProfile?.role || role)}
               </p>
             </div>
           )}

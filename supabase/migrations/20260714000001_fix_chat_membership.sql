@@ -8,7 +8,8 @@ DECLARE
 BEGIN
   v_member_ids := ARRAY(
     SELECT DISTINCT uid FROM unnest(
-      ARRAY[NEW.assigned_to] || COALESCE(NEW.team_member_ids, '{}')
+      ARRAY[NEW.assigned_to::uuid]
+      || COALESCE(NEW.team_member_ids::uuid[], '{}'::uuid[])
     ) AS uid WHERE uid IS NOT NULL
   );
 

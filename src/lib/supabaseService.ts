@@ -158,6 +158,7 @@ export async function recreateOrg(org: Organization): Promise<Organization> {
       org_type: org.org_type,
       description: org.description,
       head_user_id: org.head_user_id,
+      assistant_head_user_id: org.assistant_head_user_id,
       is_active: org.is_active,
     })
     .select()
@@ -207,13 +208,25 @@ export async function deleteOrg(id: string): Promise<void> {
 }
 
 export async function assignOrgHead(orgId: string, userId: string | null): Promise<void> {
-  const { error } = await supabase
+  const { data: org, error: fetchError } = await supabase
     .from('organizations')
-    .update({ head_user_id: userId, updated_at: new Date().toISOString() })
-    .eq('id', orgId);
+    .select('assistant_head_user_id')
+    .eq('id', orgId)
+    .single();
+  if (fetchError) throw fetchError;
+
+  const { error } = await supabase.rpc('set_organization_leadership', {
+    p_org_id: orgId,
+    p_head_user_id: userId,
+    p_assistant_head_user_id: org.assistant_head_user_id || null,
+  });
 
   if (error) throw error;
-  notifyOrgListeners();
+  await refreshOrganizationDirectory();
+}
+
+export async function refreshOrganizationDirectory(): Promise<void> {
+  await Promise.all([notifyOrgListeners(), notifyProfileListeners()]);
 }
 
 export function subscribeToOrgs(callback: (orgs: Organization[]) => void): () => void {

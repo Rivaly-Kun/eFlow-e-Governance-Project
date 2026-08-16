@@ -14,7 +14,7 @@ describe("role navigation compatibility", () => {
     const employee = getRoleNavigation("employee");
     expect(employee.defaultSection).toBe("tasks");
     expect(employee.navItems.map((item) => item.id)).toEqual([
-      "tasks", "leading", "subtasks", "reviews", "deadlines", "history",
+      "tasks", "projects", "leading", "subtasks", "reviews", "deadlines", "history",
       "performance", "reports", "announcements",
     ]);
     expect(employee.navItems.find((item) => item.id === "reviews")?.requiresLeadership).toBe(true);

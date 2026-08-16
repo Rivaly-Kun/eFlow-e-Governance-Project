@@ -11,6 +11,7 @@ import { recordAudit } from './auditService';
 export const PERMISSION_KEYS = [
   'projects.create',
   'projects.archive',
+  'projects.delete',
   'tasks.assign',
   'tasks.verify',
   'reports.export',
@@ -25,6 +26,7 @@ export type PermissionKey = (typeof PERMISSION_KEYS)[number];
 export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   'projects.create': 'Create projects',
   'projects.archive': 'Archive / restore projects',
+  'projects.delete': 'Permanently delete projects',
   'tasks.assign': 'Assign & reassign tasks',
   'tasks.verify': 'Review & verify submissions',
   'reports.export': 'Export reports (CSV / PDF)',
@@ -38,7 +40,8 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
 // migration has not been applied). Mirrors the seeded matrix.
 const FALLBACK_DEFAULTS: Record<string, PermissionKey[]> = {
   super_admin: [...PERMISSION_KEYS],
-  dept_head: ['projects.create', 'projects.archive', 'tasks.assign', 'tasks.verify', 'reports.export'],
+  dept_head: ['projects.create', 'projects.archive', 'projects.delete', 'tasks.assign', 'tasks.verify', 'reports.export'],
+  assistant_head: ['projects.create', 'projects.archive', 'projects.delete', 'tasks.assign', 'tasks.verify', 'reports.export'],
   employee: ['reports.export'],
 };
 
@@ -86,12 +89,18 @@ export function resolvePermissions(
   const result = new Set<string>();
 
   const roleRows = rolePerms.filter((r) => r.role === role);
-  if (roleRows.length > 0) {
-    roleRows.forEach((r) => { if (r.allowed) result.add(r.permission); });
-  } else {
-    // No DB rows yet — fall back to the built-in defaults.
-    (FALLBACK_DEFAULTS[role] || []).forEach((p) => result.add(p));
-  }
+  const persistedPermissions = new Set(roleRows.map((row) => row.permission));
+
+  // Apply defaults per permission so newly introduced capabilities remain
+  // usable while their additive seed migration is being deployed. A stored
+  // allow/deny row always takes precedence over this compatibility fallback.
+  (FALLBACK_DEFAULTS[role] || []).forEach((permission) => {
+    if (!persistedPermissions.has(permission)) result.add(permission);
+  });
+  roleRows.forEach((row) => {
+    if (row.allowed) result.add(row.permission);
+    else result.delete(row.permission);
+  });
 
   overrides.forEach((o) => {
     if (o.allowed) result.add(o.permission);

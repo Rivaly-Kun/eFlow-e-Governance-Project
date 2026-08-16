@@ -1,0 +1,162 @@
+import { AlertCircle, FilePenLine, Layers, Plus } from "lucide-react";
+import { AssignmentModal } from "./AssignmentModal";
+import { DraftCockpit } from "./DraftCockpit";
+import { useManualPlanController } from "../hooks/useManualPlanController";
+
+export function ManualPlanBuilder({ onClose }: { onClose: () => void }) {
+  const {
+    allEmployees,
+    employeesLoading,
+    employeeNotes,
+    planTitle,
+    planDescription,
+    draftTasks,
+    committing,
+    commitMessage,
+    validationIssues,
+    assignModalTaskKey,
+    currentDraftTask,
+    setPlanDescription,
+    setAssignModalTaskKey,
+    updatePlanTitle,
+    handleAddProgram,
+    handleAddProject,
+    handleAddActivity,
+    handleAddTask,
+    handleDraftUpdate,
+    handleDraftDelete,
+    handleRenameProgram,
+    handleRenameProject,
+    handleUpdateActivity,
+    handleCommit,
+  } = useManualPlanController(onClose);
+
+  return (
+    <div className="p-6 font-['Lexend:Regular',_sans-serif]">
+      <div className="mx-auto max-w-4xl space-y-6">
+        <header className="flex items-start justify-between gap-5 border-b border-neutral-100 pb-4">
+          <div className="flex min-w-0 gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
+              <FilePenLine size={19} />
+            </div>
+            <div>
+              <h1 className="text-[20px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">
+                Manual work-plan builder
+              </h1>
+              <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">
+                Build Programs, Projects, Activities, and Tasks yourself. AI is not used in this builder; nothing is saved until you create the draft.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="shrink-0 text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-500 transition hover:text-neutral-900"
+          >
+            Cancel
+          </button>
+        </header>
+
+        <section className="grid gap-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm md:grid-cols-[1fr_1.35fr]">
+          <label className="block">
+            <span className="text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-700">Plan title <span className="text-red-500">*</span></span>
+            <input
+              value={planTitle}
+              onChange={(event) => updatePlanTitle(event.target.value)}
+              placeholder="e.g. 2026 Coastal Resilience Plan"
+              className="mt-1.5 h-10 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 text-[12px] text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:border-violet-400 focus:bg-white"
+            />
+          </label>
+          <label className="block">
+            <span className="text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-700">Plan description</span>
+            <textarea
+              value={planDescription}
+              onChange={(event) => setPlanDescription(event.target.value)}
+              placeholder="What is this plan intended to deliver?"
+              rows={2}
+              className="mt-1.5 w-full resize-none rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[12px] text-neutral-800 outline-none transition placeholder:text-neutral-400 focus:border-violet-400 focus:bg-white"
+            />
+          </label>
+        </section>
+
+        {validationIssues.length > 0 && (
+          <section
+            role="alert"
+            className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4"
+          >
+            <div className="flex items-start gap-3">
+              <AlertCircle size={18} className="mt-0.5 shrink-0 text-amber-700" />
+              <div className="min-w-0">
+                <h2 className="text-[13px] font-['Lexend:SemiBold',_sans-serif] text-amber-950">
+                  Complete these items before creating the work plan
+                </h2>
+                <ul className="mt-2 space-y-1 text-[12px] leading-relaxed text-amber-900">
+                  {validationIssues.map((issue) => (
+                    <li key={issue.id}>• {issue.message}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {draftTasks.length === 0 ? (
+          <section className="rounded-2xl border border-dashed border-violet-200 bg-violet-50/40 px-6 py-12 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-violet-600 shadow-sm">
+              <Layers size={22} />
+            </div>
+            <h2 className="mt-4 text-[15px] font-['Lexend:SemiBold',_sans-serif] text-neutral-800">Start with a Program</h2>
+            <p className="mx-auto mt-1 max-w-md text-[12px] leading-relaxed text-neutral-500">
+              A Program can contain multiple Projects. Each Project can contain Activities, and every Activity can contain one or more tasks.
+            </p>
+            <button
+              onClick={handleAddProgram}
+              className="mt-5 inline-flex items-center gap-1.5 rounded-xl bg-neutral-900 px-4 py-2.5 text-[12px] font-['Lexend:Medium',_sans-serif] text-white transition hover:bg-neutral-800"
+            >
+              <Plus size={14} /> Add first Program
+            </button>
+          </section>
+        ) : (
+          <DraftCockpit
+            source="manual"
+            proposalTitle={planTitle || "Untitled plan"}
+            draftTasks={draftTasks}
+            employees={allEmployees}
+            employeeNotes={employeeNotes}
+            onUpdate={handleDraftUpdate}
+            onDelete={handleDraftDelete}
+            onAdd={handleAddTask}
+            onOpenModal={setAssignModalTaskKey}
+            onCommit={handleCommit}
+            committing={committing}
+            commitMessage={commitMessage}
+            onAddProgram={handleAddProgram}
+            onAddProject={handleAddProject}
+            onAddActivity={handleAddActivity}
+            onRenameProgram={handleRenameProgram}
+            onRenameProject={handleRenameProject}
+            onUpdateActivity={handleUpdateActivity}
+          />
+        )}
+      </div>
+
+      <AssignmentModal
+        open={Boolean(assignModalTaskKey)}
+        onClose={() => setAssignModalTaskKey(null)}
+        employees={allEmployees}
+        loading={employeesLoading}
+        employeeNotes={employeeNotes}
+        selectedIds={currentDraftTask?.assignedMemberIds || []}
+        leadId={currentDraftTask?.leadMemberId || null}
+        onConfirm={(memberIds, leadMemberId) => {
+          if (assignModalTaskKey) {
+            handleDraftUpdate(assignModalTaskKey, {
+              assignedMemberIds: memberIds,
+              leadMemberId,
+            });
+          }
+          setAssignModalTaskKey(null);
+        }}
+      />
+    </div>
+  );
+}

@@ -136,7 +136,7 @@ def _require_message_moderator(message_id: str, user: AuthenticatedUser) -> None
         .execute()
     )
     sender_id = str((result.data or {}).get("sender_id", ""))
-    if user.role not in {"super_admin", "dept_head"} and sender_id != user.id:
+    if user.role not in {"super_admin", "dept_head", "assistant_head"} and sender_id != user.id:
         raise HTTPException(status_code=403, detail="You cannot modify this message.")
 
 

@@ -8,3 +8,4 @@ export type {
   ProposalDecompositionTask,
 } from "./types";
 export { default as ProposalImport } from "./components/ProposalImport";
+export { ManualPlanBuilder } from "./components/ManualPlanBuilder";

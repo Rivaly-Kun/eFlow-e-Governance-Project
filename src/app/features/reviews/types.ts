@@ -24,3 +24,14 @@ export interface ReviewSubmission {
   decidedAt?: number;
   submittedAt: number;
 }
+
+export interface TaskSubtaskReviewEvidence {
+  subtask: Subtask;
+  progressUpdates: SubtaskProgressUpdate[];
+  submissions: SubtaskSubmission[];
+}
+import type {
+  Subtask,
+  SubtaskProgressUpdate,
+  SubtaskSubmission,
+} from "../subtasks";

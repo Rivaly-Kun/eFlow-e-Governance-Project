@@ -42,6 +42,7 @@ create table if not exists public.organizations (
                  check (org_type in ('lgu','department','division','section','unit')),
   description  text not null default '',
   head_user_id uuid,                                -- FK added after profiles exists
+  assistant_head_user_id uuid,                      -- FK added after profiles exists
   is_active    boolean not null default true,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now()
@@ -62,7 +63,7 @@ create table if not exists public.profiles (
   org_id                      uuid references public.organizations(id) on delete set null,
   role                        text not null default 'employee'
                                 check (role in (
-                                  'super_admin','dept_head','employee',
+                                  'super_admin','dept_head','assistant_head','employee',
                                   -- legacy roles still referenced by older panels
                                   'department_head','executive','legislative',
                                   'hrmo','finance','councilor_pad')),
@@ -84,6 +85,22 @@ begin
     alter table public.organizations
       add constraint organizations_head_user_fk
       foreign key (head_user_id) references public.profiles(id) on delete set null;
+  end if;
+end;
+$$;
+
+-- organizations.assistant_head_user_id → profiles
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'organizations_assistant_head_user_fk') then
+    alter table public.organizations
+      add constraint organizations_assistant_head_user_fk
+      foreign key (assistant_head_user_id) references public.profiles(id) on delete set null;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'organizations_distinct_leadership_check') then
+    alter table public.organizations
+      add constraint organizations_distinct_leadership_check
+      check (head_user_id is null or assistant_head_user_id is null or head_user_id <> assistant_head_user_id);
   end if;
 end;
 $$;
@@ -118,7 +135,10 @@ $$;
 create or replace function public.auth_role(caller_id uuid)
 returns text language plpgsql stable security definer set search_path = public as $$
 begin
-  return (select role::text from public.profiles where id = caller_id);
+  return (
+    select case when role = 'assistant_head' then 'dept_head' else role::text end
+    from public.profiles where id = caller_id
+  );
 end;
 $$;
 
@@ -154,6 +174,22 @@ begin
     where o.id = target_org
       and (o.path::text = caller_path or o.path::text like caller_path || '.%')
   );
+end;
+$$;
+
+create or replace function public.can_create_scoped_work(target_org uuid, caller_id uuid)
+returns boolean language plpgsql stable security definer set search_path = public as $$
+declare
+  caller_role text;
+begin
+  if caller_id is null then return false; end if;
+  select role::text into caller_role
+  from public.profiles
+  where id = caller_id and is_active;
+  if caller_role = 'super_admin' then return true; end if;
+  return caller_role in ('dept_head', 'department_head', 'assistant_head')
+    and target_org is not null
+    and public.org_in_my_subtree(target_org, caller_id);
 end;
 $$;
 
@@ -265,11 +301,11 @@ create table if not exists public.tasks (
   org_id                   uuid references public.organizations(id) on delete set null,
   team_id                  text default '',
   team_name                text default '',
-  team_member_ids          jsonb not null default '[]'::jsonb,
-  team_member_names        jsonb not null default '[]'::jsonb,
+  team_member_ids          uuid[] not null default '{}'::uuid[],
+  team_member_names        text[] not null default '{}'::text[],
   deadline                 text default '',          -- kept text: legacy fuzzy schedules
   due_date                 text default '',
-  tags                     jsonb not null default '[]'::jsonb,
+  tags                     text[] not null default '{}'::text[],
   feedback                 text,
   latest_submission        jsonb,
   rejection_note           text,
@@ -278,7 +314,7 @@ create table if not exists public.tasks (
   reopened_at              timestamptz,
   reopened_by_id           uuid references public.profiles(id) on delete set null,
   reopened_by_name         text default '',
-  recommended_employee_ids jsonb not null default '[]'::jsonb,
+  recommended_employee_ids uuid[] not null default '{}'::uuid[],
   recommendation_reasoning text,
   recommendation_source    text,
   recommendation_lead_id   uuid references public.profiles(id) on delete set null,
@@ -984,8 +1020,12 @@ select public._mkpolicy('user_preferences','prefs_all','ALL','auth.uid() = user_
 
 -- ─── projects / members / milestones ───────────────────────────────────────────
 select public._mkpolicy('projects','projects_read','SELECT','public.can_see_project(id, auth.uid())');
-select public._mkpolicy('projects','projects_write','ALL',
+select public._mkpolicy('projects','projects_insert','INSERT',NULL,
+  'created_by = auth.uid() and public.can_create_scoped_work(org_id, auth.uid())');
+select public._mkpolicy('projects','projects_update','UPDATE',
   'public.is_super_admin(auth.uid()) or public.org_in_my_subtree(org_id, auth.uid()) or created_by = auth.uid()',
+  'public.is_super_admin(auth.uid()) or public.org_in_my_subtree(org_id, auth.uid()) or created_by = auth.uid()');
+select public._mkpolicy('projects','projects_delete','DELETE',
   'public.is_super_admin(auth.uid()) or public.org_in_my_subtree(org_id, auth.uid()) or created_by = auth.uid()');
 select public._mkpolicy('project_members','pm_read','SELECT','public.can_see_project(project_id, auth.uid())');
 select public._mkpolicy('project_members','pm_write','ALL','public.can_see_project(project_id, auth.uid())','public.can_see_project(project_id, auth.uid())');
@@ -997,7 +1037,7 @@ select public._mkpolicy('milestones','ms_write','ALL','public.can_see_project(pr
 -- but the guard trigger still forces status changes through transition_task_status().
 select public._mkpolicy('tasks','tasks_read','SELECT','deleted_at is null and public.can_see_task(id, auth.uid())');
 select public._mkpolicy('tasks','tasks_insert','INSERT',NULL,
-  'public.is_super_admin(auth.uid()) or public.org_in_my_subtree(org_id, auth.uid()) or created_by = auth.uid()');
+  'created_by = auth.uid() and public.can_create_scoped_work(org_id, auth.uid())');
 select public._mkpolicy('tasks','tasks_update','UPDATE',
   'public.can_see_task(id, auth.uid())',
   'public.can_see_task(id, auth.uid())');
@@ -1101,14 +1141,17 @@ create policy taskfiles_rw on storage.objects for all
 -- SECTION 14 — SEED DATA (role permission matrix; mirrors permissionService)
 -- ════════════════════════════════════════════════════════════════════════════
 insert into public.role_permissions (role, permission, allowed) values
-  ('super_admin','projects.create',true),('super_admin','projects.archive',true),
+  ('super_admin','projects.create',true),('super_admin','projects.archive',true),('super_admin','projects.delete',true),
   ('super_admin','tasks.assign',true),('super_admin','tasks.verify',true),
   ('super_admin','reports.export',true),('super_admin','announcements.publish',true),
   ('super_admin','users.manage',true),('super_admin','audit.read',true),
   ('super_admin','settings.manage',true),
-  ('dept_head','projects.create',true),('dept_head','projects.archive',true),
+  ('dept_head','projects.create',true),('dept_head','projects.archive',true),('dept_head','projects.delete',true),
   ('dept_head','tasks.assign',true),('dept_head','tasks.verify',true),
   ('dept_head','reports.export',true),
+  ('assistant_head','projects.create',true),('assistant_head','projects.archive',true),('assistant_head','projects.delete',true),
+  ('assistant_head','tasks.assign',true),('assistant_head','tasks.verify',true),
+  ('assistant_head','reports.export',true),
   ('employee','reports.export',true)
 on conflict (role, permission) do update set allowed = excluded.allowed;
 

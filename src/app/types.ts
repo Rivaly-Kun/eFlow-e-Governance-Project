@@ -5,6 +5,7 @@
 export type UserRole =
   | 'super_admin'
   | 'dept_head'
+  | 'assistant_head'
   | 'employee'
   // ── legacy (still referenced by non-migrated components) ──
   | 'department_head'
@@ -39,6 +40,7 @@ export interface Organization {
   org_type: OrgType;
   description: string;
   head_user_id: string | null;
+  assistant_head_user_id: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

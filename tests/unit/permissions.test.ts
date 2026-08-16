@@ -14,6 +14,23 @@ describe("permission resolution compatibility", () => {
         { userId: "user-1", permission: "reports.export", allowed: true },
       ],
     );
-    expect([...result].sort()).toEqual(["reports.export"]);
+    expect([...result].sort()).toEqual([
+      "projects.archive",
+      "projects.create",
+      "projects.delete",
+      "reports.export",
+      "tasks.verify",
+    ]);
+  });
+
+  it("gives Assistant Head the same default workspace capabilities as Head", () => {
+    expect([...resolvePermissions("assistant_head", [], [])].sort()).toEqual([
+      "projects.archive",
+      "projects.create",
+      "projects.delete",
+      "reports.export",
+      "tasks.assign",
+      "tasks.verify",
+    ]);
   });
 });

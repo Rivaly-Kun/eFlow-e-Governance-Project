@@ -5,6 +5,7 @@ describe("role panel compatibility", () => {
   it("preserves persisted role mappings", () => {
     expect(mapRoleToPanel("super_admin")).toBe("superadmin");
     expect(mapRoleToPanel("dept_head")).toBe("depthead");
+    expect(mapRoleToPanel("assistant_head")).toBe("depthead");
     expect(mapRoleToPanel("department_head")).toBe("depthead");
     expect(mapRoleToPanel("team_leader")).toBe("employee");
     expect(mapRoleToPanel("teamleader")).toBe("employee");

@@ -3,6 +3,16 @@ import type { Task, TaskStatus, TaskSubmissionMetadata } from "../taskTypes";
 export const readString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 
+export const readStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(
+    value
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim())
+      .filter(Boolean),
+  ));
+};
+
 export function rowToTask(row: Record<string, unknown>): Task {
   return {
     id: row.id as string,
@@ -15,13 +25,13 @@ export function rowToTask(row: Record<string, unknown>): Task {
     assignedTo: readString(row.assigned_to),
     teamId: readString(row.team_id),
     teamName: readString(row.team_name),
-    teamMemberIds: (row.team_member_ids as string[]) || [],
-    teamMemberNames: (row.team_member_names as string[]) || [],
+    teamMemberIds: readStringArray(row.team_member_ids),
+    teamMemberNames: readStringArray(row.team_member_names),
     department: readString(row.department),
     orgId: readString(row.org_id),
     deadline: readString(row.deadline),
     dueDate: readString(row.due_date),
-    tags: (row.tags as string[]) || [],
+    tags: readStringArray(row.tags),
     createdAt: new Date((row.created_at as string) || Date.now()).getTime(),
     updatedAt: new Date((row.updated_at as string) || Date.now()).getTime(),
     auditHash: readString(row.audit_hash),
@@ -35,15 +45,15 @@ export function rowToTask(row: Record<string, unknown>): Task {
     reopenedAt: row.reopened_at ? new Date(row.reopened_at as string).getTime() : undefined,
     reopenedById: readString(row.reopened_by_id),
     reopenedByName: readString(row.reopened_by_name),
-    recommendedEmployeeIds: (row.recommended_employee_ids as string[]) || [],
+    recommendedEmployeeIds: readStringArray(row.recommended_employee_ids),
     recommendationReasoning: readString(row.recommendation_reasoning),
     recommendationSource: readString(row.recommendation_source) as Task['recommendationSource'],
     recommendationLeadId: readString(row.recommendation_lead_id),
     reviewerId: readString(row.reviewer_id),
     backupReviewerId: readString(row.backup_reviewer_id),
-    acceptanceCriteria: (row.acceptance_criteria as string[]) || [],
+    acceptanceCriteria: readStringArray(row.acceptance_criteria),
     definitionOfDone: readString(row.definition_of_done),
-    dependencyIds: (row.dependency_ids as string[]) || [],
+    dependencyIds: readStringArray(row.dependency_ids),
     cancellationReason: readString(row.cancellation_reason),
     cancelledAt: row.cancelled_at ? new Date(row.cancelled_at as string).getTime() : undefined,
     cancelledBy: readString(row.cancelled_by),

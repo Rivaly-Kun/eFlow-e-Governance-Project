@@ -23,17 +23,26 @@ import { formatDate, relativeDays } from "../../../components/workflow/primitive
 import * as Badges from "../../../components/workflow/StatusBadges";
 import { TaskDetailDrawer } from "../../../components/workflow/TaskDetailDrawer";
 import { MILESTONE_STATUS_META } from "./model";
+import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
 
 export function ProjectDetail({
   project,
   onBack,
   orgs,
   canArchive,
+  canManage,
+  canDelete,
+  onDeleted,
+  canReviewTasks,
 }: {
   project: Project;
   onBack: () => void;
   orgs: Organization[];
   canArchive: boolean;
+  canManage: boolean;
+  canDelete: boolean;
+  onDeleted: () => void;
+  canReviewTasks: boolean;
 }) {
   const { tasks } = useTasks();
   const { users } = useUsers();
@@ -44,6 +53,7 @@ export function ProjectDetail({
   const [openTask, setOpenTask] = React.useState<Task | null>(null);
   const [newMilestone, setNewMilestone] = React.useState("");
   const [newMsDate, setNewMsDate] = React.useState("");
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   const pTasks = React.useMemo(() => tasksForProject(tasks, project.id), [tasks, project.id]);
 
@@ -94,25 +104,31 @@ export function ProjectDetail({
             <p className="text-[13px] font-['Lexend:Regular',_sans-serif] text-neutral-500 mt-1 max-w-2xl">{project.description}</p>
           )}
         </div>
-        {canArchive && (
-          isArchived ? (
-            <UI.WButton icon={<Icons.ArchiveRestore size={14} />} onClick={async () => { await restoreProject(project.id); toast("Project restored.", "success"); }}>
-              Restore
+        <div className="flex items-center gap-2">
+          {canArchive && (
+            isArchived ? (
+              <UI.WButton icon={<Icons.ArchiveRestore size={14} />} onClick={async () => { await restoreProject(project.id); toast("Project restored.", "success"); }}>
+                Restore
+              </UI.WButton>
+            ) : (
+              <UI.WButton
+                icon={<Icons.Archive size={14} />}
+                onClick={async () => {
+                  const reason = window.prompt("Reason for archiving (recorded in audit log):") || undefined;
+                  await archiveProject(project.id, reason);
+                  toast("Project archived. History preserved.", "success");
+                }}
+              >
+                Archive
+              </UI.WButton>
+            )
+          )}
+          {canDelete && (
+            <UI.WButton icon={<Icons.Trash2 size={14} />} variant="danger" onClick={() => setDeleteOpen(true)}>
+              Delete
             </UI.WButton>
-          ) : (
-            <UI.WButton
-              icon={<Icons.Archive size={14} />}
-              variant="danger"
-              onClick={async () => {
-                const reason = window.prompt("Reason for archiving (recorded in audit log):") || undefined;
-                await archiveProject(project.id, reason);
-                toast("Project archived. History preserved.", "success");
-              }}
-            >
-              Archive
-            </UI.WButton>
-          )
-        )}
+          )}
+        </div>
       </div>
 
       {isArchived && (
@@ -186,7 +202,7 @@ export function ProjectDetail({
 
       {tab === "milestones" && (
         <UI.Card>
-          {!isArchived && (
+          {!isArchived && canManage && (
             <div className="flex items-end gap-2 mb-4 pb-4 border-b border-neutral-100">
               <label className="flex-1">
                 <span className="text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-500 mb-1 block">New milestone</span>
@@ -233,7 +249,7 @@ export function ProjectDetail({
                           {m.dueDate ? `Due ${formatDate(m.dueDate)}` : m.description || ""} · {msDone}/{msTasks.length} tasks
                         </div>
                       </div>
-                      {!isArchived && (
+                      {!isArchived && canManage && (
                         <>
                           <select
                             value={m.manualStatus || "auto"}
@@ -307,7 +323,18 @@ export function ProjectDetail({
         </UI.Card>
       )}
 
-      <TaskDetailDrawer task={openTask} onClose={() => setOpenTask(null)} canReview />
+      <TaskDetailDrawer task={openTask} onClose={() => setOpenTask(null)} canReview={canReviewTasks} />
+      <ProjectDeleteDialog
+        projectId={project.id}
+        projectTitle={project.title}
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onDeleted={() => {
+          setDeleteOpen(false);
+          toast("Project permanently deleted. Existing tasks were retained.", "success");
+          onDeleted();
+        }}
+      />
     </div>
   );
 }

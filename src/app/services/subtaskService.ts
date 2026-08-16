@@ -5,12 +5,17 @@ import { supabase } from '../../lib/supabase';
 import { createNotification } from './notificationService';
 
 export type SubtaskSource = 'ai_extracted' | 'template' | 'manual';
+export type SubtaskStatus = 'todo' | 'in_progress' | 'for_review' | 'changes_requested' | 'completed';
 
 export interface Subtask {
   id: string;
   taskId: string;
   title: string;
   isCompleted: boolean;
+  status: SubtaskStatus;
+  percentComplete: number;
+  reviewerId?: string;
+  latestSubmissionId?: string;
   completedBy?: string;
   completedAt?: number;
   assignedTo?: string;
@@ -22,7 +27,7 @@ export interface Subtask {
   updatedAt: number;
 }
 
-function rowToSubtask(row: Record<string, unknown>): Subtask {
+export function rowToSubtask(row: Record<string, unknown>): Subtask {
   const rawIds = row.assigned_to_ids;
   const assignedToIds: string[] = Array.isArray(rawIds)
     ? (rawIds as string[])
@@ -35,6 +40,10 @@ function rowToSubtask(row: Record<string, unknown>): Subtask {
     taskId: row.task_id as string,
     title: row.title as string,
     isCompleted: (row.is_completed as boolean) || false,
+    status: ((row.status as SubtaskStatus) || ((row.is_completed as boolean) ? 'completed' : 'todo')),
+    percentComplete: Number(row.percent_complete ?? ((row.is_completed as boolean) ? 100 : 0)),
+    reviewerId: (row.reviewer_id as string) || undefined,
+    latestSubmissionId: (row.latest_submission_id as string) || undefined,
     completedBy: (row.completed_by as string) || undefined,
     completedAt: row.completed_at ? new Date(row.completed_at as string).getTime() : undefined,
     assignedTo: (row.assigned_to as string) || (assignedToIds[0] || undefined),
@@ -47,18 +56,27 @@ function rowToSubtask(row: Record<string, unknown>): Subtask {
   };
 }
 
+export async function fetchTaskSubtasks(taskId: string): Promise<Subtask[]> {
+  const { data, error } = await supabase
+    .from('subtasks')
+    .select('*')
+    .eq('task_id', taskId)
+    .order('position', { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data || []).map(rowToSubtask);
+}
+
 // ─── subscribeToSubtasks ───────────────────────────────────────────
 export function subscribeToSubtasks(
   taskId: string,
   callback: (subtasks: Subtask[]) => void,
 ): () => void {
   const load = async () => {
-    const { data } = await supabase
-      .from('subtasks')
-      .select('*')
-      .eq('task_id', taskId)
-      .order('position', { ascending: true });
-    if (data) callback(data.map(rowToSubtask));
+    try {
+      callback(await fetchTaskSubtasks(taskId));
+    } catch {
+      callback([]);
+    }
   };
   load();
 
@@ -168,16 +186,10 @@ export async function toggleSubtask(
   isCompleted: boolean,
   actorId?: string,
 ): Promise<void> {
-  const { error } = await supabase
-    .from('subtasks')
-    .update({
-      is_completed: isCompleted,
-      completed_by: isCompleted ? actorId || null : null,
-      completed_at: isCompleted ? new Date().toISOString() : null,
-    })
-    .eq('id', subtaskId);
-  if (error) throw error;
-
+  void subtaskId;
+  void isCompleted;
+  void actorId;
+  throw new Error('Direct subtask check-off is disabled. Open the subtask and submit evidence for Team Leader review.');
 }
 
 // ─── updateSubtask ──────────────────────────────────────────────────

@@ -1,10 +1,14 @@
 import * as React from "react";
-import { assignOrgHead, createOrg, updateOrg } from "../../../../../lib/supabaseService";
+import { createOrg, updateOrg } from "../../../../../lib/supabaseService";
 import { FormField, SelectInput, TextInput } from "../../../../components/ui/FormField";
 import { Modal, ModalButton } from "../../../../components/ui/Modal";
 import { useToast } from "../../../../components/ui/Toast";
 import type { Organization, OrgType, UserProfile } from "../../../../types";
+import {
+  assignOrganizationLeadership,
+} from "../../services/leadershipService";
 import { ORG_TYPE_OPTIONS } from "./orgTreeModel";
+import { LeadershipAssignmentFields } from "./LeadershipAssignmentFields";
 
 export function OrgModal({
   isOpen,
@@ -23,7 +27,14 @@ export function OrgModal({
 }) {
   const { toast } = useToast();
   const isEdit = !!org;
-  const [form, setForm] = React.useState({ name: '', org_type: 'department' as OrgType, description: '', parent_id: '', head_user_id: '' });
+  const [form, setForm] = React.useState({
+    name: '',
+    org_type: 'department' as OrgType,
+    description: '',
+    parent_id: '',
+    head_user_id: '',
+    assistant_head_user_id: '',
+  });
   const [saving, setSaving] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
@@ -35,6 +46,7 @@ export function OrgModal({
         description: org.description,
         parent_id: org.parent_id || '',
         head_user_id: org.head_user_id || '',
+        assistant_head_user_id: org.assistant_head_user_id || '',
       });
     } else {
       setForm({
@@ -43,6 +55,7 @@ export function OrgModal({
         description: '',
         parent_id: parentId || '',
         head_user_id: '',
+        assistant_head_user_id: '',
       });
     }
   }, [org, parentId, isOpen]);
@@ -50,6 +63,9 @@ export function OrgModal({
   const validate = () => {
     const errs: Record<string, string> = {};
     if (!form.name.trim()) errs.name = 'Required';
+    if (form.head_user_id && form.head_user_id === form.assistant_head_user_id) {
+      errs.assistant_head_user_id = 'Head and Assistant Head must be different people';
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -63,8 +79,14 @@ export function OrgModal({
           name: form.name.trim(),
           description: form.description.trim(),
         });
-        if (form.head_user_id !== org.head_user_id) {
-          await assignOrgHead(org.id, form.head_user_id || null);
+        if (
+          form.head_user_id !== org.head_user_id ||
+          form.assistant_head_user_id !== org.assistant_head_user_id
+        ) {
+          await assignOrganizationLeadership(org.id, {
+            headUserId: form.head_user_id || null,
+            assistantHeadUserId: form.assistant_head_user_id || null,
+          });
         }
         toast(`"${form.name}" updated`, 'success');
       } else {
@@ -74,8 +96,11 @@ export function OrgModal({
           org_type: form.org_type,
           description: form.description.trim(),
         });
-        if (form.head_user_id) {
-          await assignOrgHead(newOrg.id, form.head_user_id);
+        if (form.head_user_id || form.assistant_head_user_id) {
+          await assignOrganizationLeadership(newOrg.id, {
+            headUserId: form.head_user_id || null,
+            assistantHeadUserId: form.assistant_head_user_id || null,
+          });
         }
         toast(`"${form.name}" created`, 'success');
       }
@@ -90,10 +115,6 @@ export function OrgModal({
   const parentOptions = orgs
     .filter((o) => o.id !== org?.id)
     .map((o) => ({ value: o.id, label: o.name }));
-
-  const headOptions = profiles
-    .filter((p) => p.is_active)
-    .map((p) => ({ value: p.id, label: `${p.full_name} (${p.email})` }));
 
   return (
     <Modal
@@ -141,13 +162,17 @@ export function OrgModal({
             placeholder="Brief description..."
           />
         </FormField>
-        <FormField label="Department Head">
-          <SelectInput
-            value={form.head_user_id}
-            onChange={(e) => setForm({ ...form, head_user_id: e.target.value })}
-            options={[{ value: '', label: 'No head assigned' }, ...headOptions]}
-          />
-        </FormField>
+        <LeadershipAssignmentFields
+          isOpen={isOpen}
+          orgId={org?.id}
+          organizations={orgs}
+          profiles={profiles}
+          headUserId={form.head_user_id}
+          assistantHeadUserId={form.assistant_head_user_id}
+          onHeadChange={(userId) => setForm({ ...form, head_user_id: userId })}
+          onAssistantHeadChange={(userId) => setForm({ ...form, assistant_head_user_id: userId })}
+          assistantHeadError={errors.assistant_head_user_id}
+        />
       </div>
     </Modal>
   );

@@ -4,6 +4,7 @@ import {
   YouAreLeadingView,
   useDeptHeadTaskBoard,
 } from "../tasks";
+import { SubtasksWorkspace } from "../subtasks";
 import { DeptHeadProjectsWorkspace } from "../projects";
 import { DeptHeadReportsWorkspace } from "../reports";
 import { ForReviewInbox } from "../reviews";
@@ -22,6 +23,8 @@ import {
 } from "../../components/Layout/RolePageRouter";
 import { EmployeeInsights } from "./components/EmployeeInsights";
 import { TeamSupervision } from "./components/TeamSupervision";
+import { useAuth } from "../../contexts/AuthContext";
+import { getHeadWorkspaceLabel } from "../../shared/roles";
 
 export function DeptHeadTaskBoard() {
   const {
@@ -32,6 +35,7 @@ export function DeptHeadTaskBoard() {
     notes,
     userProfile,
   } = useDeptHeadTaskBoard();
+  const workspaceLabel = getHeadWorkspaceLabel(userProfile?.role);
 
   if (isLoading) {
     return (
@@ -63,11 +67,20 @@ export function DeptHeadTaskBoard() {
           name:
             userProfile?.fullName ||
             userProfile?.email ||
-            "Department Head",
+            workspaceLabel,
         })
       }
       onUpdateTask={updateTask}
       onDeleteTask={deleteTask}
+    />
+  );
+}
+
+function HeadAnnouncementCenter() {
+  const { userProfile } = useAuth();
+  return (
+    <AnnouncementCenter
+      eyebrow={`${getHeadWorkspaceLabel(userProfile?.role)} · Updates`}
     />
   );
 }
@@ -87,6 +100,9 @@ export const deptheadPages: RolePageSections = {
   tasks: {
     "Task Board": DeptHeadTaskBoard,
   },
+  subtasks: {
+    "My Subtasks": SubtasksWorkspace,
+  },
   reviews: {
     "For Review": ForReviewInbox,
   },
@@ -103,9 +119,7 @@ export const deptheadPages: RolePageSections = {
     Reports: DeptHeadReportsWorkspace,
   },
   announcements: {
-    Announcements: () => (
-      <AnnouncementCenter eyebrow="Dept. Head · Updates" />
-    ),
+    Announcements: HeadAnnouncementCenter,
   },
 
   // Compatibility aliases for sessions opened before this navigation cleanup.
@@ -115,7 +129,7 @@ export const deptheadPages: RolePageSections = {
     "Pinned — You're Leading": YouAreLeadingView,
     "For Review": ForReviewInbox,
     Reports: DeptHeadReportsWorkspace,
-    Announcements: () => <AnnouncementCenter eyebrow="Dept. Head · Updates" />,
+    Announcements: HeadAnnouncementCenter,
   },
   leader: {
     "Pinned — You're Leading": YouAreLeadingView,
@@ -133,6 +147,7 @@ export const deptheadDefaultPages: Record<string, string> = {
   dashboard: "Dashboard",
   projects: "Projects",
   tasks: "Task Board",
+  subtasks: "My Subtasks",
   reviews: "For Review",
   team: "Team Supervision",
   intelligence: "Team Intelligence",

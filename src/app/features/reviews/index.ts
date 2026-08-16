@@ -14,8 +14,10 @@ export {
   fetchTaskSubmissions,
 } from "./services/reviewService";
 export { canUserReviewTask } from "./selectors";
+export { SubtaskReviewInbox } from "./components/SubtaskReviewInbox";
 export type {
   ReviewAttachment,
   ReviewSubmission,
   SubmissionDecision,
+  TaskSubtaskReviewEvidence,
 } from "./types";

@@ -131,8 +131,12 @@ export function useMondayBoardController({
         attachments: submitFiles,
       });
       closeSubmitModal();
-    } catch {
-      setSubmitError("Failed to submit for review. Please try again.");
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error
+          ? error.message
+          : "Failed to submit for review. Please try again.",
+      );
       setSubmitSaving(false);
     }
   }, [closeSubmitModal, onSubmit, submitFiles, submitModalTask, submitNote]);

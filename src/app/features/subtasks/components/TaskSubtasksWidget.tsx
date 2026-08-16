@@ -2,32 +2,39 @@
 // Standalone subtask checklist with multi-user assignment, completion toggle, and realtime updates.
 // Reused across TaskDetailDrawer, YouAreLeadingView, and MondayBoard.
 
-import { useState, useEffect, useMemo } from "react";
-import { User, Plus, X, CheckSquare, Sparkles, Check } from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { User, Plus, X, CheckSquare, Sparkles, Check, Eye, Clock3 } from "lucide-react";
 import {
   type Subtask,
   subscribeToSubtasks,
   createSubtask,
-  toggleSubtask,
   updateSubtask,
   deleteSubtask,
 } from "../../../services/subtaskService";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../components/ui/Toast";
+import { startTaskIfTodo, type Task } from "../../../services/taskService";
+import { SubtaskWorkDrawer } from "./SubtaskWorkDrawer";
 
 export function TaskSubtasksWidget({
   taskId,
   allowedAssignees,
   canManage = false,
+  parentTask,
+  startParentOnCreate = false,
 }: {
   taskId: string;
   allowedAssignees?: { id: string; name: string; initials?: string }[];
   canManage?: boolean;
+  parentTask?: Task;
+  startParentOnCreate?: boolean;
 }) {
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [newTitle, setNewTitle] = useState("");
   const [adding, setAdding] = useState(false);
   const [pickerOpenFor, setPickerOpenFor] = useState<string | null>(null);
+  const [openSubtask, setOpenSubtask] = useState<Subtask | null>(null);
+  const pickerRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const { user, userProfile } = useAuth();
   const { toast } = useToast();
 
@@ -36,6 +43,20 @@ export function TaskSubtasksWidget({
     const unsub = subscribeToSubtasks(taskId, setSubtasks);
     return unsub;
   }, [taskId]);
+
+  useEffect(() => {
+    if (!pickerOpenFor) return;
+
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      const picker = pickerRefs.current[pickerOpenFor];
+      if (picker && !picker.contains(event.target as Node)) {
+        setPickerOpenFor(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", handleOutsidePointerDown);
+    return () => document.removeEventListener("pointerdown", handleOutsidePointerDown);
+  }, [pickerOpenFor]);
 
   // Subtasks can only be delegated to members already assigned to the task.
   const assigneeOptions = useMemo(() => {
@@ -56,7 +77,16 @@ export function TaskSubtasksWidget({
         createdBy: user?.id,
         actorName: userProfile?.full_name || "Team Lead",
       });
+      const parentStarted = startParentOnCreate && parentTask?.status === "todo"
+        ? await startTaskIfTodo(taskId)
+        : false;
       setNewTitle("");
+      toast(
+        parentStarted
+          ? "Subtask added. The task is now In Progress."
+          : "Subtask added.",
+        "success",
+      );
     } catch (error) {
       toast(error instanceof Error ? error.message : "Failed to add subtask.", "error");
     } finally {
@@ -91,7 +121,7 @@ export function TaskSubtasksWidget({
             .filter((u): u is { id: string; name: string; initials: string } => Boolean(u));
 
           const isMySubtask = Boolean(user?.id && assignedIds.includes(user.id));
-          const canToggle = canManage || isMySubtask;
+          const canOpenDetails = canManage || isMySubtask;
 
           return (
             <div
@@ -102,13 +132,15 @@ export function TaskSubtasksWidget({
                   : "bg-neutral-50/60 border-neutral-100 hover:bg-neutral-100/60"
               }`}
             >
-              <input
-                type="checkbox"
-                checked={st.isCompleted}
-                onChange={(e) => toggleSubtask(st.id, e.target.checked, user?.id)}
-                disabled={!canToggle}
-                className="h-3.5 w-3.5 rounded border-neutral-300 accent-emerald-600 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-              />
+              <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                st.isCompleted
+                  ? "border-emerald-500 bg-emerald-500 text-white"
+                  : st.status === "for_review"
+                    ? "border-amber-300 bg-amber-50 text-amber-600"
+                    : "border-neutral-300 bg-white text-transparent"
+              }`}>
+                {st.status === "for_review" ? <Clock3 size={9} /> : <Check size={9} />}
+              </span>
               <span
                 className={`flex-1 text-[12px] font-['Lexend:Regular',_sans-serif] ${
                   st.isCompleted ? "text-neutral-400 line-through" : "text-neutral-800"
@@ -123,8 +155,34 @@ export function TaskSubtasksWidget({
                 </span>
               )}
 
+              <span className={`rounded-full px-1.5 py-0.5 text-[8.5px] font-['Lexend:Medium',_sans-serif] ${
+                st.status === "completed" ? "bg-emerald-50 text-emerald-700" :
+                st.status === "for_review" ? "bg-amber-50 text-amber-700" :
+                st.status === "changes_requested" ? "bg-rose-50 text-rose-700" :
+                st.status === "in_progress" ? "bg-blue-50 text-blue-700" : "bg-neutral-100 text-neutral-500"
+              }`}>{st.status.replace("_", " ")}</span>
+
+              <span className="text-[9.5px] font-['Lexend:Medium',_sans-serif] tabular-nums text-neutral-500">
+                {st.percentComplete}%
+              </span>
+
+              {canOpenDetails && (
+                <button
+                  type="button"
+                  onClick={() => setOpenSubtask(st)}
+                  className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-1.5 py-1 text-[9.5px] text-neutral-600 hover:border-neutral-400"
+                >
+                  <Eye size={10} /> {canManage ? "Details" : "Open"}
+                </button>
+              )}
+
               {/* Assignee Avatars / Multi-Select Picker */}
-              <div className="relative shrink-0">
+              <div
+                ref={(node) => {
+                  pickerRefs.current[st.id] = node;
+                }}
+                className="relative shrink-0"
+              >
                 <button
                   type="button"
                   onClick={() => setPickerOpenFor(pickerOpenFor === st.id ? null : st.id)}
@@ -238,6 +296,12 @@ export function TaskSubtasksWidget({
           <Plus size={13} /> Add
         </button>
       </div>}
+      <SubtaskWorkDrawer
+        subtask={openSubtask}
+        parentTask={parentTask}
+        readOnly={canManage}
+        onClose={() => setOpenSubtask(null)}
+      />
     </div>
   );
 }

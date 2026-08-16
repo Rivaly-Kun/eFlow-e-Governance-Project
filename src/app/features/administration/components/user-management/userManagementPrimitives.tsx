@@ -1,27 +1,24 @@
 import type { UserRole } from "../../../../types";
+import { getRoleLabel } from "../../../../shared/roles";
 
 export const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "employee", label: "Employee" },
-  { value: "dept_head", label: "Department Head" },
+  { value: "dept_head", label: "Head" },
+  { value: "assistant_head", label: "Assistant Head" },
   { value: "super_admin", label: "Super Admin" },
 ];
-
-const ROLE_LABELS: Record<string, string> = {
-  super_admin: "Super Admin",
-  dept_head: "Dept Head",
-  employee: "Employee",
-};
 
 // ─── Status / Role badges ────────────────────────────────────────
 export function RoleBadge({ role }: { role: string }) {
   const colors: Record<string, string> = {
     super_admin: "bg-red-100 text-red-700",
     dept_head: "bg-violet-100 text-violet-700",
+    assistant_head: "bg-indigo-100 text-indigo-700",
     employee: "bg-emerald-100 text-emerald-700",
   };
   return (
     <span className={`px-2 py-0.5 rounded-full text-[10px] font-['Lexend:Medium',_sans-serif] font-medium ${colors[role] || "bg-neutral-100 text-neutral-600"}`}>
-      {ROLE_LABELS[role] || role.replace(/_/g, " ")}
+      {getRoleLabel(role)}
     </span>
   );
 }

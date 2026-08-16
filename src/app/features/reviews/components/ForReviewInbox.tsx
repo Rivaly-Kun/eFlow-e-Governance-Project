@@ -14,10 +14,11 @@ import {
   Layers,
   ChevronRight,
   Gauge,
+  ClipboardCheck,
 } from "lucide-react";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useTasks } from "../../../hooks/useFirebaseData";
-import { useScopedOrgIds } from "../../../hooks/useSupabaseData";
+import { useProjectsData, useScopedOrgIds } from "../../../hooks/useSupabaseData";
 import type { Task } from "../../../services/taskService";
 import { canUserReviewTask } from "../selectors";
 import {
@@ -35,6 +36,13 @@ import {
 import { InitialsAvatar, PriorityPill } from "../../../components/workflow/StatusBadges";
 import { TaskReviewPanel } from "./TaskReviewPanel";
 import { TaskActivityTimeline } from "../../../components/workflow/TaskActivityTimeline";
+import { getHeadWorkspaceLabel } from "../../../shared/roles";
+import { SubtaskReviewInbox } from "./SubtaskReviewInbox";
+import { ReviewKindSwitch } from "./ReviewKindSwitch";
+import { TaskReviewStandards } from "./TaskReviewStandards";
+import { TaskSubtaskEvidenceSection } from "./TaskSubtaskEvidenceSection";
+import { ReviewDecisionForm } from "./ReviewDecisionForm";
+import { useTaskReviewEvidence } from "../hooks/useTaskReviewEvidence";
 
 function timeAgo(ts: number): string {
   const h = Math.floor((Date.now() - ts) / 3600000);
@@ -56,7 +64,7 @@ function isDepartmentReviewTask(
   scopedOrgIds: string[],
 ): boolean {
   if (role === "super_admin") return true;
-  if (!["dept_head", "department_head"].includes(role || "")) return false;
+  if (!["dept_head", "assistant_head", "department_head"].includes(role || "")) return false;
   if (task.orgId && scopedOrgIds.length > 0) {
     return scopedOrgIds.includes(task.orgId);
   }
@@ -66,10 +74,12 @@ function isDepartmentReviewTask(
 export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
   const { tasks, loading } = useTasks();
   const { scopedOrgIds, isSuperAdmin } = useScopedOrgIds();
+  const { projects } = useProjectsData();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("oldest");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressUpdate[]>([]);
+  const [reviewKind, setReviewKind] = useState<"tasks" | "subtasks">("tasks");
 
   const { user, userProfile } = useAuth();
   const queue = useMemo(() => {
@@ -87,7 +97,7 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
         (t) =>
           t.title.toLowerCase().includes(q) ||
           (t.assigneeName || "").toLowerCase().includes(q) ||
-          (t.projectTitle || "").toLowerCase().includes(q),
+          (projects.find((project) => project.id === t.linkedProjectId)?.title || t.projectTitle || "").toLowerCase().includes(q),
       );
     }
     const submitAt = (t: Task) => t.latestSubmission?.submittedAt || t.updatedAt;
@@ -103,6 +113,7 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
     scopedOrgIds,
     query,
     sort,
+    projects,
   ]);
 
   // Keep a valid selection.
@@ -126,6 +137,15 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
   }, [selected?.id]);
 
   const latestProgress = progress[0];
+  const {
+    evidence: subtaskEvidence,
+    loading: subtaskEvidenceLoading,
+    error: subtaskEvidenceError,
+  } = useTaskReviewEvidence(selected?.id);
+
+  if (reviewKind === "subtasks") {
+    return <SubtaskReviewInbox onShowTasks={() => setReviewKind("tasks")} />;
+  }
 
   if (loading) return <div className="p-8"><LoadingState label="Loading the review queue…" /></div>;
 
@@ -137,13 +157,16 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
             ? "Leader Workspace · Reviews"
             : isSuperAdmin
               ? "Administration · Reviews"
-              : "Dept. Head · Reviews"
+              : `${getHeadWorkspaceLabel(userProfile?.role)} · Reviews`
         }
         title="For Review"
         subtitle="Validate submitted work and keep the pipeline moving."
         actions={
-          <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 text-[12px] font-['Lexend:Medium',_sans-serif] text-amber-700">
-            <Inbox size={14} /> {queue.length} awaiting review
+          <div className="flex items-center gap-2">
+            <ReviewKindSwitch active="tasks" onChange={setReviewKind} />
+            <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 text-[12px] font-['Lexend:Medium',_sans-serif] text-amber-700">
+              <Inbox size={14} /> {queue.length} awaiting review
+            </div>
           </div>
         }
       />
@@ -178,6 +201,7 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
                 queue.map((t) => {
                   const isSel = t.id === selectedId;
                   const submittedAt = t.latestSubmission?.submittedAt || t.updatedAt;
+                  const projectTitle = projects.find((project) => project.id === t.linkedProjectId)?.title || t.projectTitle;
                   return (
                     <button
                       key={t.id}
@@ -194,7 +218,7 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
                         </div>
                         <div className="text-[11px] font-['Lexend:Regular',_sans-serif] text-neutral-500 truncate mt-0.5">
                           {t.assigneeName || "Unassigned"}{t.teamMemberNames && t.teamMemberNames.length > 1 ? ` + ${t.teamMemberNames.length - 1}` : ""}
-                          {t.projectTitle ? ` · ${t.projectTitle}` : ""}
+                          {projectTitle ? ` · ${projectTitle}` : ""}
                         </div>
                         <div className="flex items-center gap-1 text-[10.5px] text-neutral-400 mt-0.5">
                           <Clock size={10} /> {timeAgo(submittedAt)}
@@ -222,7 +246,9 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
                       <div className="flex items-center gap-3 mt-1 text-[11.5px] font-['Lexend:Regular',_sans-serif] text-neutral-500 flex-wrap">
                         <span className="flex items-center gap-1"><InitialsAvatar name={selected.assigneeName} size={18} /> {selected.teamMemberNames && selected.teamMemberNames.length > 0 ? selected.teamMemberNames.join(", ") : selected.assigneeName || "Unassigned"}</span>
                         {selected.teamName && <span className="flex items-center gap-1"><Building2 size={12} /> {selected.teamName}</span>}
-                        {selected.projectTitle && <span className="flex items-center gap-1"><Layers size={12} /> {selected.projectTitle}</span>}
+                        {(projects.find((project) => project.id === selected.linkedProjectId)?.title || selected.projectTitle) && (
+                          <span className="flex items-center gap-1"><Layers size={12} /> {projects.find((project) => project.id === selected.linkedProjectId)?.title || selected.projectTitle}</span>
+                        )}
                         <span className="flex items-center gap-1"><Clock size={12} /> {formatDate(selected.latestSubmission?.submittedAt || selected.updatedAt)}</span>
                       </div>
                     </div>
@@ -249,18 +275,51 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
                     </div>
                   )}
 
+                </div>
+
+                <TaskReviewStandards task={selected} tasks={tasks} />
+
+                <TaskSubtaskEvidenceSection
+                  task={selected}
+                  evidence={subtaskEvidence}
+                  loading={subtaskEvidenceLoading}
+                  error={subtaskEvidenceError}
+                />
+
+                <div className="bg-white border border-neutral-200 rounded-xl p-4">
+                  <div className="mb-3 flex items-start gap-2.5">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+                      <ClipboardCheck size={16} />
+                    </span>
+                    <div>
+                      <div className="text-[13px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">Final task submission</div>
+                      <div className="mt-0.5 text-[11px] text-neutral-500">Review the completion note, parent-task attachments, and all previous attempts.</div>
+                    </div>
+                  </div>
                   <TaskReviewPanel
                     task={selected}
                     compact
                     canReview={canReviewSelected}
+                    showDecision={false}
                     onDone={() => { /* realtime removes it from queue */ }}
                   />
                 </div>
 
                 <div className="bg-white border border-neutral-200 rounded-xl p-4">
-                  <div className="text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-900 mb-2">Activity</div>
+                  <div className="text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-900 mb-0.5">Complete task timeline</div>
+                  <div className="mb-3 text-[11px] text-neutral-500">Status changes and structured parent-task progress updates, newest first.</div>
                   <TaskActivityTimeline taskId={selected.id} />
                 </div>
+
+                {canReviewSelected && (
+                  <div className="rounded-xl border border-neutral-300 bg-white p-4 shadow-sm">
+                    <div className="mb-3">
+                      <div className="text-[13px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">Head review decision</div>
+                      <div className="mt-0.5 text-[11px] text-neutral-500">Approve only after checking the completion standards, subtask execution records, evidence files, and final submission.</div>
+                    </div>
+                    <ReviewDecisionForm taskId={selected.id} onDone={() => { /* realtime removes it from queue */ }} />
+                  </div>
+                )}
               </div>
             ) : (
               <div className="bg-white border border-neutral-200 rounded-xl h-full flex items-center justify-center">

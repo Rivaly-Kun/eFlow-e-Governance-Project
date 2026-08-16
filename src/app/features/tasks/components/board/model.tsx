@@ -207,8 +207,13 @@ export const getHierarchyDisplay = (task: Task): HierarchyDisplay => {
   };
 };
 
-export const uniqueValues = (items: string[]) =>
-  Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)));
+export const uniqueValues = (items: readonly unknown[]): string[] =>
+  Array.from(new Set(
+    items
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean),
+  ));
 
 export const getTaskMemberIds = (task: Task) =>
   uniqueValues([

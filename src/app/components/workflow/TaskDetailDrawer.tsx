@@ -17,6 +17,8 @@ import { ProgressUpdateForm } from "./ProgressUpdateForm";
 import { TaskSubtasksWidget } from "./TaskSubtasksWidget";
 import { SubmitForReviewForm } from "./SubmitForReviewForm";
 import { useTasks } from "../../hooks/useFirebaseData";
+import { useProjectsData } from "../../hooks/useSupabaseData";
+import { isTaskLead } from "../../services/taskSelectors";
 
 type Tab = "overview" | "activity" | "discussion" | "review";
 
@@ -40,6 +42,7 @@ export function TaskDetailDrawer({
   const [starting, setStarting] = useState(false);
   const { user, userProfile } = useAuth();
   const { tasks } = useTasks();
+  const { projects } = useProjectsData();
 
   if (!task) return null;
   const effectiveCanReview = canReview && Boolean(user?.id);
@@ -52,13 +55,14 @@ export function TaskDetailDrawer({
 
   // Rework is now the first-class `changes_requested` state (plan §2.1).
   const rejected = task.status === "changes_requested";
-  const isOwnerOrLead =
-    task.assigneeId === user?.id || task.recommendationLeadId === user?.id;
+  const currentUserIsLead = Boolean(user?.id && isTaskLead(task, user.id));
+  const isOwnerOrLead = task.assigneeId === user?.id || currentUserIsLead;
   const canManageSubtasks = Boolean(
     isOwnerOrLead ||
     task.createdBy === user?.id ||
     userProfile?.role === "super_admin" ||
     userProfile?.role === "dept_head" ||
+    userProfile?.role === "assistant_head" ||
     userProfile?.role === "department_head",
   );
 
@@ -104,6 +108,9 @@ export function TaskDetailDrawer({
   };
   const rel = relativeDays(task.deadline || task.dueDate);
   const percent = task.percentComplete ?? 0;
+  const operationalProject = task.linkedProjectId
+    ? projects.find((project) => project.id === task.linkedProjectId)
+    : undefined;
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode; show: boolean }[] = [
     { id: "overview", label: "Overview", icon: <Info size={13} />, show: true },
@@ -225,7 +232,14 @@ export function TaskDetailDrawer({
                 <Field icon={<User size={13} />} label="Assignee" value={task.teamMemberNames && task.teamMemberNames.length > 0 ? task.teamMemberNames.join(", ") : task.assigneeName || "Unassigned"} />
                 <Field icon={<Calendar size={13} />} label="Deadline" value={formatDate(task.deadline || task.dueDate)} hint={rel.label} hintTone={rel.overdue ? "bad" : undefined} />
                 {task.teamName && <Field icon={<Building2 size={13} />} label="Team" value={task.teamName} />}
-                {task.projectTitle && <Field icon={<Layers size={13} />} label="Program" value={task.projectTitle} />}
+                {(operationalProject?.title || task.projectTitle) && (
+                  <Field
+                    icon={<Layers size={13} />}
+                    label="Project"
+                    value={operationalProject?.title || task.projectTitle || "—"}
+                  />
+                )}
+                {task.programTitle && <Field icon={<Layers size={13} />} label="Program" value={task.programTitle} />}
               </div>
 
               <div className="border-t border-neutral-100 pt-3">
@@ -236,6 +250,8 @@ export function TaskDetailDrawer({
                     name: (task.teamMemberNames || [])[idx] || "Team Member",
                   }))}
                   canManage={canManageSubtasks}
+                  parentTask={task}
+                  startParentOnCreate={currentUserIsLead}
                 />
               </div>
 

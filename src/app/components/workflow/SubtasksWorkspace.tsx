@@ -9,11 +9,14 @@ import {
   Clock,
   Sparkles,
   ChevronRight,
+  Eye,
+  ShieldCheck,
 } from "lucide-react";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTasksData } from "../../hooks/useSupabaseData";
-import { type Subtask, toggleSubtask } from "../../services/subtaskService";
+import { rowToSubtask, type Subtask } from "../../services/subtaskService";
+import { SubtaskWorkDrawer } from "../../features/subtasks/components/SubtaskWorkDrawer";
 import type { Task } from "../../services/taskService";
 import {
   PageHeader,
@@ -35,6 +38,7 @@ export function SubtasksWorkspace() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [activeTaskDetail, setActiveTaskDetail] = useState<Task | null>(null);
+  const [activeSubtask, setActiveSubtask] = useState<(Subtask & { parentTask?: Task }) | null>(null);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -70,21 +74,7 @@ export function SubtasksWorkspace() {
               ? [row.assigned_to as string]
               : [];
 
-            const st: Subtask = {
-              id: row.id as string,
-              taskId: row.task_id as string,
-              title: row.title as string,
-              isCompleted: (row.is_completed as boolean) || false,
-              completedBy: (row.completed_by as string) || undefined,
-              completedAt: row.completed_at ? new Date(row.completed_at as string).getTime() : undefined,
-              assignedTo: (row.assigned_to as string) || (assignedToIds[0] || undefined),
-              assignedToIds,
-              position: (row.position as number) || 0,
-              source: (row.source as "ai_extracted" | "template" | "manual") || "manual",
-              createdBy: (row.created_by as string) || undefined,
-              createdAt: new Date(row.created_at as string).getTime(),
-              updatedAt: new Date(row.updated_at as string).getTime(),
-            };
+            const st = rowToSubtask({ ...row, assigned_to_ids: assignedToIds });
 
             return {
               ...st,
@@ -120,7 +110,9 @@ export function SubtasksWorkspace() {
 
   const filtered = useMemo(() => {
     let rows = subtasks;
-    if (statusFilter === "pending") rows = rows.filter((st) => !st.isCompleted);
+    if (statusFilter === "pending") rows = rows.filter((st) => !st.isCompleted && st.status !== "for_review");
+    else if (statusFilter === "for_review") rows = rows.filter((st) => st.status === "for_review");
+    else if (statusFilter === "changes_requested") rows = rows.filter((st) => st.status === "changes_requested");
     else if (statusFilter === "completed") rows = rows.filter((st) => st.isCompleted);
 
     if (query.trim()) {
@@ -149,7 +141,10 @@ export function SubtasksWorkspace() {
 
   const totalCount = subtasks.length;
   const completedCount = subtasks.filter((st) => st.isCompleted).length;
-  const pendingCount = totalCount - completedCount;
+  const pendingCount = subtasks.filter(
+    (st) => !st.isCompleted && st.status !== "for_review",
+  ).length;
+  const reviewCount = subtasks.filter((st) => st.status === "for_review").length;
 
   if (loading || tasksLoading) {
     return (
@@ -164,10 +159,10 @@ export function SubtasksWorkspace() {
       <PageHeader
         eyebrow="My Workspace · Subtasks"
         title="My Subtask Checklist"
-        subtitle="Track, check off, and manage all action items assigned to you across projects."
+        subtitle="Open assigned work, report progress, attach evidence, and submit it for Team Leader approval."
       />
 
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <StatCard
           label="Total Subtasks"
           value={totalCount}
@@ -185,6 +180,12 @@ export function SubtasksWorkspace() {
           tone="good"
           icon={<CheckCircle2 size={15} />}
         />
+        <StatCard
+          label="For Review"
+          value={reviewCount}
+          tone={reviewCount > 0 ? "warn" : "neutral"}
+          icon={<ShieldCheck size={15} />}
+        />
       </div>
 
       {/* Filters */}
@@ -201,6 +202,8 @@ export function SubtasksWorkspace() {
           options={[
             { value: "all", label: "All Items" },
             { value: "pending", label: "Pending Only" },
+            { value: "for_review", label: "For Review" },
+            { value: "changes_requested", label: "Changes Requested" },
             { value: "completed", label: "Completed" },
           ]}
         />
@@ -245,20 +248,25 @@ export function SubtasksWorkspace() {
                 {/* Subtask items */}
                 <div className="space-y-2">
                   {group.subtasks.map((st) => (
-                    <div
+                    <button
+                      type="button"
                       key={st.id}
-                      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
+                      onClick={() => setActiveSubtask(st)}
+                      className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
                         st.isCompleted
                           ? "bg-neutral-50/70 border-neutral-100"
                           : "bg-white border-neutral-200 hover:border-neutral-300"
                       }`}
                     >
-                      <input
-                        type="checkbox"
-                        checked={st.isCompleted}
-                        onChange={(e) => toggleSubtask(st.id, e.target.checked, user?.id)}
-                        className="h-4 w-4 rounded border-neutral-300 accent-emerald-600 cursor-pointer shrink-0"
-                      />
+                      <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                        st.isCompleted
+                          ? "border-emerald-500 bg-emerald-500 text-white"
+                          : st.status === "for_review"
+                            ? "border-amber-300 bg-amber-50 text-amber-600"
+                            : "border-neutral-300 bg-white text-transparent"
+                      }`}>
+                        <CheckCircle2 size={13} />
+                      </span>
                       <span
                         className={`flex-1 text-[13px] font-['Lexend:Regular',_sans-serif] ${
                           st.isCompleted
@@ -274,7 +282,14 @@ export function SubtasksWorkspace() {
                           <Sparkles size={9} /> AI Extracted
                         </span>
                       )}
-                    </div>
+                      <span className={`rounded-full px-2 py-0.5 text-[9.5px] font-['Lexend:Medium',_sans-serif] ${
+                        st.status === "completed" ? "bg-emerald-50 text-emerald-700" :
+                        st.status === "for_review" ? "bg-amber-50 text-amber-700" :
+                        st.status === "changes_requested" ? "bg-rose-50 text-rose-700" :
+                        st.status === "in_progress" ? "bg-blue-50 text-blue-700" : "bg-neutral-100 text-neutral-600"
+                      }`}>{st.status.replace("_", " ")}</span>
+                      <Eye size={14} className="shrink-0 text-neutral-400" />
+                    </button>
                   ))}
                 </div>
               </Card>
@@ -290,6 +305,11 @@ export function SubtasksWorkspace() {
         canPostProgress
         canDiscuss
         onChanged={() => {}}
+      />
+      <SubtaskWorkDrawer
+        subtask={activeSubtask}
+        parentTask={activeSubtask?.parentTask}
+        onClose={() => setActiveSubtask(null)}
       />
     </div>
   );

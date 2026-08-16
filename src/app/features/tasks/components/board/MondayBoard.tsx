@@ -220,7 +220,7 @@ export function MondayBoard({
       <AssignmentModal
         open={taskEditorAssignOpen && taskEditorOpen}
         onClose={() => setTaskEditorAssignOpen(false)}
-        employees={allEmployees && allEmployees.length > 0 ? allEmployees : deptEmployees}
+        employees={deptEmployees}
         employeeNotes={employeeNotes}
         selectedIds={taskEditorDraft?.teamMemberIds || []}
         leadId={taskEditorDraft?.leadMemberId || null}

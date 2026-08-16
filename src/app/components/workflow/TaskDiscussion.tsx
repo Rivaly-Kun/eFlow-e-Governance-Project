@@ -41,7 +41,10 @@ export function TaskDiscussion({
   const [sending, setSending] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
 
-  const canModerate = userProfile?.role === "super_admin" || userProfile?.role === "dept_head";
+  const canModerate =
+    userProfile?.role === "super_admin" ||
+    userProfile?.role === "dept_head" ||
+    userProfile?.role === "assistant_head";
 
   useEffect(() => {
     const unsub = subscribeToComments(taskId, setComments);

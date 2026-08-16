@@ -43,11 +43,13 @@ import {
 } from "../workflow/StatusBadges";
 import { TaskDetailDrawer } from "../workflow/TaskDetailDrawer";
 import { TaskRow } from "./DeptHeadDashboardTaskRow";
+import { getHeadWorkspaceLabel } from "../../shared/roles";
 
 type FocusList = null | "overdue" | "review" | "unassigned" | "completed";
 
 export function DeptHeadDashboard() {
   const { userProfile } = useAuth();
+  const workspaceLabel = getHeadWorkspaceLabel(userProfile?.role);
   const { tasks, loading: tasksLoading } = useTasks();
   const { projects } = useProjectsData();
   const { scopedOrgIds, isSuperAdmin } = useScopedOrgIds();
@@ -163,7 +165,7 @@ export function DeptHeadDashboard() {
   return (
     <div className="p-6 sm:p-8 min-h-full">
       <PageHeader
-        eyebrow={isSuperAdmin ? "Administration · Command Center" : "Dept. Head · Command Center"}
+        eyebrow={isSuperAdmin ? "Administration · Command Center" : `${workspaceLabel} · Command Center`}
         title={`Good day, ${(userProfile?.full_name || "there").split(" ")[0]}`}
         subtitle="Your department at a glance — manage by exception."
         actions={

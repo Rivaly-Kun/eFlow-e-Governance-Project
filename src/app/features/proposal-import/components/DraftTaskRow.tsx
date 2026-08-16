@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { AlertCircle, Check, ChevronRight, Clock, Edit2, Trash2, Users } from "lucide-react";
+import { AlertCircle, Check, ChevronRight, Clock, Edit2, Trash2 } from "lucide-react";
 import type { Employee } from "../../../services/employeeService";
 import type { EmployeeNotesMap } from "../../../services/employeeNotesService";
-import { getInitials, priorityMeta } from "./draftModel";
+import { priorityMeta } from "./draftModel";
 import type { DraftTask } from "./draftModel";
+import { TaskAssignmentSummary } from "./TaskAssignmentSummary";
 
 export function DraftTaskRow({
   dt,
@@ -135,58 +136,23 @@ export function DraftTaskRow({
           </>
         )}
 
-        {/* Team assignment button */}
+        {/* Team and leader assignment */}
         <button
           onClick={() => onOpenModal(dt.key)}
-          className="mt-2 flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-dashed border-neutral-300 hover:border-violet-400 hover:bg-violet-50/40 transition group/assign w-full max-w-xs text-left"
+          className="group/assign mt-3 flex w-full max-w-md items-center gap-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50/70 px-3 py-2.5 text-left transition hover:border-violet-400 hover:bg-violet-50/50"
+          aria-label={
+            assignedEmps.length === 0
+              ? `Assign team and leader for ${dt.title}`
+              : `Edit team and leader for ${dt.title}`
+          }
         >
-          <Users
-            size={12}
-            className="text-neutral-400 group-hover/assign:text-violet-600 shrink-0"
+          <TaskAssignmentSummary
+            employees={assignedEmps}
+            leadMemberId={dt.leadMemberId}
           />
-          {assignedEmps.length === 0 ? (
-            <span className="text-[11px] text-neutral-400 group-hover/assign:text-violet-600">
-              Assign team members…
-            </span>
-          ) : (
-            <div className="flex items-center gap-1.5 flex-1 min-w-0">
-              {assignedEmps.slice(0, 5).map((emp) => (
-                <span
-                  key={emp.id}
-                  title={emp.name}
-                  className={`w-5 h-5 rounded-full text-[9px] text-white flex items-center justify-center font-['Lexend:SemiBold',_sans-serif] shrink-0 ${
-                    emp.id === dt.leadMemberId
-                      ? "ring-2 ring-amber-400 ring-offset-1"
-                      : ""
-                  } ${
-                    emp.currentWorkload >= 80
-                      ? "bg-red-500"
-                      : emp.currentWorkload >= 60
-                        ? "bg-amber-500"
-                        : "bg-neutral-800"
-                  }`}
-                >
-                  {getInitials(emp.name)}
-                </span>
-              ))}
-              {assignedEmps.length > 5 && (
-                <span className="text-[10px] text-neutral-400">
-                  +{assignedEmps.length - 5}
-                </span>
-              )}
-              <span className="text-[10px] text-neutral-500 ml-1 truncate">
-                Lead:{" "}
-                {assignedEmps
-                  .find((e) => e.id === dt.leadMemberId)
-                  ?.name?.split(" ")[0] ||
-                  assignedEmps[0]?.name?.split(" ")[0] ||
-                  "TBD"}
-              </span>
-            </div>
-          )}
           <ChevronRight
-            size={11}
-            className="text-neutral-300 ml-auto group-hover/assign:text-violet-400 shrink-0"
+            size={13}
+            className="ml-auto shrink-0 text-neutral-300 group-hover/assign:text-violet-500"
           />
         </button>
 

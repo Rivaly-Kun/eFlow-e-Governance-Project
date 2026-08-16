@@ -24,17 +24,24 @@ export function ContextMenu({
   canDelete: boolean;
 }) {
   React.useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('.context-menu')) onClose();
+    const handler = (event: PointerEvent) => {
+      if (event.button > 0) return;
+
+      const target = event.target;
+      if (!(target instanceof Element) || !target.closest('.context-menu')) {
+        onClose();
+      }
     };
     const escHandler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
-    document.addEventListener('mousedown', handler);
+    // Capture phase is deliberate: React Flow consumes some pointer events
+    // while panning/selecting nodes, but a normal left click must still close
+    // this menu.
+    document.addEventListener('pointerdown', handler, true);
     document.addEventListener('keydown', escHandler);
     return () => {
-      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('pointerdown', handler, true);
       document.removeEventListener('keydown', escHandler);
     };
   }, [onClose]);
@@ -62,7 +69,7 @@ export function ContextMenu({
             onClick={() => { onAssignHead(); onClose(); }}
             className="w-full text-left px-3 py-2 text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-700 hover:bg-neutral-50 cursor-pointer flex items-center gap-2"
           >
-            <span className="text-[14px]">👤</span> Assign head
+            <span className="text-[14px]">👤</span> Assign leadership
           </button>
           <div className="border-t border-neutral-100 my-1" />
           <button

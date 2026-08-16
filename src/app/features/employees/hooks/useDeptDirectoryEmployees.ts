@@ -3,8 +3,29 @@ import type { Employee } from "../../../services/employeeService";
 import { useEmployees, useUsers, useDepartments } from "../../../hooks/useFirebaseData";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useOrgs } from "../../../hooks/useSupabaseData";
-import { getDescendantOrgIds } from "../../../../lib/supabaseService";
-export function useDeptDirectoryEmployees() {
+import {
+  getDirectoryProfileId,
+  profileToDirectoryEmployee,
+} from "../services/profileDirectoryAdapter";
+import {
+  getDepartmentEmployeeScopeIds,
+  type DepartmentEmployeeScope,
+} from "../services/departmentScope";
+import { isEligibleDepartmentDirectoryEmployee } from "../services/departmentDirectoryEligibility";
+
+export function useDeptDirectoryEmployees({
+  scope = "with_children",
+  includeCurrentUser = false,
+  includeDepartmentHeads = false,
+  activeOnly = false,
+  excludeSuperAdmins = false,
+}: {
+  scope?: DepartmentEmployeeScope;
+  includeCurrentUser?: boolean;
+  includeDepartmentHeads?: boolean;
+  activeOnly?: boolean;
+  excludeSuperAdmins?: boolean;
+} = {}) {
   const { employees: allEmployees, loading: employeesLoading } = useEmployees();
   const { users, loading: usersLoading } = useUsers();
   const { departments } = useDepartments();
@@ -22,50 +43,19 @@ export function useDeptDirectoryEmployees() {
   }, [departments]);
 
   const usersAsEmployees = useMemo<Employee[]>(() => {
-    const initialsFor = (name: string) =>
-      name
-        .split(" ")
-        .filter(Boolean)
-        .map((part) => part[0])
-        .slice(0, 2)
-        .join("")
-        .toUpperCase();
-
-    const titleForRole = (role?: string) =>
-      role
-        ? role
-            .split("_")
-            .map((part) => part[0]?.toUpperCase() + part.slice(1))
-            .join(" ")
-        : "Employee";
-
-    return users.map((user) => {
-      const name = user.fullName || user.email || "Unnamed User";
-      const departmentId = user.org_id || user.departmentId || "";
-      const skills = (user as unknown as Record<string, unknown>).skills as Record<string, boolean> | undefined;
-      const skillList = skills
-        ? Object.keys(skills).filter((k) => skills[k]).join(", ")
-        : "";
-      return {
-        id: user.uid,
-        name,
-        jobTitle: titleForRole(user.role),
-        jobDescription: skillList || titleForRole(user.role),
-        currentWorkload: typeof user.workload === "number" ? user.workload : 0,
-        department: departmentId || undefined,
-        departmentName: departmentId
-          ? departmentNameById.get(departmentId) || departmentId
-          : undefined,
-        initials: initialsFor(name),
-        email: user.email || undefined,
-      };
-    });
+    return users
+      .map((user) => profileToDirectoryEmployee(user, departmentNameById))
+      .filter((employee): employee is Employee => Boolean(employee));
   }, [users, departmentNameById]);
 
-  const userById = useMemo(
-    () => new Map(users.map((user) => [user.uid, user])),
-    [users],
-  );
+  const userById = useMemo(() => {
+    const map = new Map<string, (typeof users)[number]>();
+    users.forEach((user) => {
+      const id = getDirectoryProfileId(user);
+      if (id) map.set(id, user);
+    });
+    return map;
+  }, [users]);
 
   const userByEmail = useMemo(() => {
     const map = new Map<string, (typeof users)[number]>();
@@ -116,42 +106,48 @@ export function useDeptDirectoryEmployees() {
   }, [allEmployees, usersAsEmployees]);
 
   const scopedOrgIds = useMemo(() => {
-    if (!userProfile?.departmentId) return new Set<string>();
-    return new Set(getDescendantOrgIds(orgs, userProfile.departmentId));
-  }, [orgs, userProfile?.departmentId]);
+    return getDepartmentEmployeeScopeIds(
+      orgs,
+      userProfile?.departmentId,
+      scope,
+    );
+  }, [orgs, scope, userProfile?.departmentId]);
 
   const deptEmployees = useMemo(() => {
     if (!userProfile?.departmentId) return directoryEmployees;
-    const currentEmail = userProfile.email?.toLowerCase();
+    const currentUserId = userProfile.id || userProfile.uid;
 
     return directoryEmployees.filter((emp) => {
-      if (!emp.department || !scopedOrgIds.has(emp.department)) return false;
-      if (userProfile.uid && emp.id === userProfile.uid) return false;
-      if (currentEmail && emp.email?.toLowerCase() === currentEmail) {
-        return false;
-      }
-
       const matchById = userById.get(emp.id);
       const matchByEmail = emp.email
         ? userByEmail.get(emp.email.toLowerCase())
         : undefined;
       const matchedUser = matchById || matchByEmail;
 
-      if (matchedUser?.role === "department_head" || matchedUser?.role === "dept_head") return false;
-      if (headUsers.ids.has(emp.id)) return false;
-      if (emp.email && headUsers.emails.has(emp.email.toLowerCase())) {
-        return false;
-      }
-
-      return true;
+      return isEligibleDepartmentDirectoryEmployee(emp, matchedUser, {
+        scopedOrgIds,
+        currentUserId,
+        currentUserEmail: userProfile.email,
+        headUserIds: headUsers.ids,
+        headUserEmails: headUsers.emails,
+        includeCurrentUser,
+        includeDepartmentHeads,
+        activeOnly,
+        excludeSuperAdmins,
+      });
     });
   }, [
+    activeOnly,
     directoryEmployees,
+    excludeSuperAdmins,
     headUsers,
+    includeCurrentUser,
+    includeDepartmentHeads,
     userByEmail,
     userById,
     userProfile?.departmentId,
     userProfile?.email,
+    userProfile?.id,
     userProfile?.uid,
     scopedOrgIds,
   ]);
@@ -167,5 +163,3 @@ export function useDeptDirectoryEmployees() {
     profilesByEmail: userByEmail,
   };
 }
-
-

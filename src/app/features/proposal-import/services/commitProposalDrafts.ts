@@ -10,15 +10,96 @@ interface CommitProposalDraftsInput {
   departmentFilter: string;
   currentUserId: string;
   employeeById: Record<string, Employee>;
+  planningSource?: "ai_pdf" | "manual";
+  planningDescription?: string;
 }
 
-export async function commitProposalDrafts({ toCreate, pdfFileName, departmentFilter, currentUserId, employeeById }: CommitProposalDraftsInput) {
+interface AuthenticatedCommitScope {
+  userId: string;
+  orgId: string | null;
+}
+
+/**
+ * The draft editor can stay open while a user changes accounts or their
+ * organization assignment is updated. Never use its cached profile values as
+ * an authorization source for a write. Resolve the live Supabase session and
+ * profile immediately before committing so projects and tasks use the exact
+ * scope RLS will evaluate.
+ */
+async function resolveAuthenticatedCommitScope(
+  requestedOrgId: string,
+): Promise<AuthenticatedCommitScope> {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("Your sign-in session has expired. Sign in again, then retry this work plan.");
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, org_id, role, is_active")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profileError || !profile || !profile.is_active) {
+    throw new Error("Your active eFlow profile could not be verified. Sign in again or ask an administrator to check your account.");
+  }
+
+  // A Head/Assistant Head always writes to the organization currently stored
+  // on their authenticated profile. A Super Admin may deliberately select a
+  // department, while a system-wide plan can remain unscoped.
+  const scope = {
+    userId: user.id,
+    orgId: profile.role === "super_admin"
+      ? requestedOrgId || null
+      : (profile.org_id || null),
+  };
+
+  const { data: mayCreate, error: permissionError } = await supabase.rpc(
+    "can_create_scoped_work",
+    {
+      target_org: scope.orgId,
+      caller_id: scope.userId,
+    },
+  );
+  if (permissionError) {
+    throw new Error("The project-creation permission check could not run. Refresh the page and retry.");
+  }
+  if (!mayCreate) {
+    throw new Error("Your current eFlow role is not allowed to create projects in this organization. Use a Super Admin, Head, or Assistant Head account assigned to this organization.");
+  }
+
+  return scope;
+}
+
+function commitErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error) {
+    return String((error as { message: unknown }).message);
+  }
+  return "The server did not provide a reason.";
+}
+
+export async function commitProposalDrafts({
+  toCreate,
+  pdfFileName,
+  departmentFilter,
+  employeeById,
+  planningSource = "ai_pdf",
+  planningDescription = "",
+}: CommitProposalDraftsInput) {
+  try {
+    const writeScope = await resolveAuthenticatedCommitScope(departmentFilter);
   const batchPrefix =
       toCreate[0]?.proposalId ||
-      `proposal-${slugifyFragment(pdfFileName.replace(/\.pdf$/i, ""), "imported")}`;
+      `${planningSource === "manual" ? "manual-plan" : "proposal"}-${slugifyFragment(pdfFileName.replace(/\.pdf$/i, ""), planningSource === "manual" ? "manual" : "imported")}`;
     const importBatchId = `${batchPrefix}-${Date.now()}`;
     let created = 0;
     let failed = 0;
+    const errors: string[] = [];
 
     // Group by the imported hierarchy id, not title alone. Two programs may
     // legitimately contain projects with the same display title.
@@ -82,8 +163,8 @@ export async function commitProposalDrafts({ toCreate, pdfFileName, departmentFi
             .select("id")
             .eq("title", projGroup.projectTitle.trim())
             .is("archived_at", null);
-          existingQuery = departmentFilter
-            ? existingQuery.eq("org_id", departmentFilter)
+          existingQuery = writeScope.orgId
+            ? existingQuery.eq("org_id", writeScope.orgId)
             : existingQuery.is("org_id", null);
           const { data: existingProjs, error: existingError } =
             await existingQuery;
@@ -103,10 +184,14 @@ export async function commitProposalDrafts({ toCreate, pdfFileName, departmentFi
 
             const newProj = await createProject({
               title: projGroup.projectTitle.trim(),
-              description: `Imported via proposal: ${projGroup.proposalTitle}`,
-              orgId: departmentFilter || null,
-              ownerId: currentUserId || null,
-              status: "active",
+              description: planningSource === "manual"
+                ? planningDescription.trim() || `Manual plan: ${projGroup.proposalTitle}`
+                : `Imported via proposal: ${projGroup.proposalTitle}`,
+              orgId: writeScope.orgId,
+              // Preserve the public input for compatibility, but always use
+              // the live authenticated user for a new project's owner record.
+              ownerId: writeScope.userId,
+              status: planningSource === "manual" ? "planning" : "active",
               priority: "medium",
               milestones: milestonesInput,
               memberIds: Array.from(allMemberIds),
@@ -115,6 +200,7 @@ export async function commitProposalDrafts({ toCreate, pdfFileName, departmentFi
           }
         } catch (projErr) {
           console.error("Failed to create/resolve project:", projGroup.projectTitle, projErr);
+          errors.push(`Project “${projGroup.projectTitle || "Untitled project"}”: ${commitErrorMessage(projErr)}`);
           // `project_id` is a legacy hierarchy string, not the UUID foreign key
           // used by operational projects. Never write it into linked_project_id.
           failed += Array.from(projGroup.activities.values()).reduce(
@@ -153,13 +239,13 @@ export async function commitProposalDrafts({ toCreate, pdfFileName, departmentFi
                 priority: dt.priority,
                 tags: dt.requiredSkills,
                 status: leadMember?.id ? "todo" : "pending_assignment",
-                department: departmentFilter || "",
-                orgId: departmentFilter || undefined,
-                teamId: departmentFilter || "",
+                department: writeScope.orgId || "",
+                orgId: writeScope.orgId || undefined,
+                teamId: writeScope.orgId || "",
                 teamName:
                   leadMember?.departmentName ||
                   leadMember?.department ||
-                  departmentFilter ||
+                  writeScope.orgId ||
                   "Imported",
                 teamMemberIds: selectedTeamMembers.map((member) => member.id),
                 teamMemberNames: selectedTeamMembers.map((member) => member.name),
@@ -167,7 +253,9 @@ export async function commitProposalDrafts({ toCreate, pdfFileName, departmentFi
                 assigneeName: leadMember?.name,
                 recommendedEmployeeIds: dt.assignedMemberIds,
                 recommendationReasoning: dt.reasoning,
-                recommendationSource: "import",
+                ...(planningSource === "ai_pdf"
+                  ? { recommendationSource: "import" as const }
+                  : {}),
                 recommendationLeadId: dt.leadMemberId || undefined,
                 burnoutWarning: dt.burnoutWarning,
                 proposalId: dt.proposalId,
@@ -196,6 +284,7 @@ export async function commitProposalDrafts({ toCreate, pdfFileName, departmentFi
               created++;
             } catch (err) {
               console.error("Failed to commit task from draft:", dt.title, err);
+              errors.push(`Task “${dt.title || "Untitled task"}”: ${commitErrorMessage(err)}`);
               failed++;
             }
           }
@@ -203,7 +292,15 @@ export async function commitProposalDrafts({ toCreate, pdfFileName, departmentFi
       }
     } catch (err) {
       console.error("Failed during commit transaction:", err);
+      errors.push(commitErrorMessage(err));
     }
 
-  return { created, failed };
+  return { created, failed, errors: Array.from(new Set(errors)).slice(0, 8) };
+  } catch (scopeError) {
+    return {
+      created: 0,
+      failed: toCreate.filter((task) => task.enabled).length,
+      errors: [commitErrorMessage(scopeError)],
+    };
+  }
 }

@@ -2,6 +2,7 @@ export { seedTasksIfEmpty, subscribeToTasks } from "./taskRealtimeService";
 export { createTask, assignTask, updateTask } from "./taskMutationService";
 export {
   updateTaskStatus,
+  startTaskIfTodo,
   submitTaskForReview,
   verifyTask,
   deleteTask,

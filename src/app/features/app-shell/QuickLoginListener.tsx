@@ -4,7 +4,7 @@ import { useToast } from "../../components/ui/Toast";
 
 const QUICK_ACCOUNTS: Record<string, { email: string; pass: string; label: string }> = {
   "1": { email: "admin@gmail.com", pass: "admin123", label: "Super Admin (admin@gmail.com)" },
-  "2": { email: "bplo.head@gmail.com", pass: "123456", label: "Dept Head (bplo.head@gmail.com)" },
+  "2": { email: "bplo.head@gmail.com", pass: "123456", label: "Head (bplo.head@gmail.com)" },
   "3": { email: "tdfro.staff1@gmail.com", pass: "123456", label: "Employee (tdfro.staff1@gmail.com)" },
   "4": { email: "gabzcah@gmail.com", pass: "123456", label: "Gabriel (gabzcah@gmail.com)" },
 };

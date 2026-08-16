@@ -8,6 +8,8 @@ import type {
   TaskUndoInput,
 } from "../taskTypes";
 import { notifyTaskListeners } from "./taskRealtimeService";
+import { assertLeadershipReviewReady } from "./leadershipReviewReadinessService";
+import { getReviewDecisionErrorMessage } from "./taskReviewError";
 
 export const updateTaskStatus = async (
   taskId: string,
@@ -25,6 +27,41 @@ export const updateTaskStatus = async (
   await notifyTaskListeners();
 };
 
+// Starts newly delegated work without making callers reproduce lifecycle
+// rules. The status read keeps this idempotent when realtime data is stale;
+// the RPC remains the authority for permissions, history, audit, and notices.
+export const startTaskIfTodo = async (taskId: string): Promise<boolean> => {
+  const readStatus = async (): Promise<TaskStatus | null> => {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('status')
+      .eq('id', taskId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return (data?.status as TaskStatus | undefined) || null;
+  };
+
+  const currentStatus = await readStatus();
+  if (currentStatus !== 'todo') return false;
+
+  const { error } = await supabase.rpc('transition_task_status', {
+    p_task_id: taskId,
+    p_to_status: 'in_progress',
+    p_feedback: null,
+    p_reason: null,
+  });
+
+  if (error) {
+    // Another client may have started the task between the read and the RPC.
+    // Treat that race as success while preserving every other lifecycle error.
+    if ((await readStatus()) === 'in_progress') return false;
+    throw new Error(error.message);
+  }
+
+  await notifyTaskListeners();
+  return true;
+};
+
 // â”€â”€â”€ submitTaskForReview â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const submitTaskForReview = async (
@@ -33,6 +70,7 @@ export const submitTaskForReview = async (
 ): Promise<void> => {
   const trimmedNote = submission.note.trim();
   if (!trimmedNote) throw new Error("Submission note is required.");
+  await assertLeadershipReviewReady(taskId);
 
   const attachments = submission.attachments || [];
 
@@ -112,7 +150,12 @@ export const verifyTask = async (
     p_feedback: reason || null,
     p_audit_hash: null,
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    // A deployment that received the UI but not the review RPC otherwise
+    // surfaces as an opaque browser 404. Keep the next action explicit while
+    // preserving all successful review behaviour.
+    throw new Error(getReviewDecisionErrorMessage(error));
+  }
 
   await notifyTaskListeners();
 };

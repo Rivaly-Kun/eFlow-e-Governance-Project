@@ -13,6 +13,7 @@ import {
   subscribeToNotifications,
   type Notification,
 } from "../../services/notificationService";
+import { getNotificationDetail, type NotificationDetailTone } from "../../features/notifications";
 
 const formatNotificationTime = (value?: number) => {
   if (!value) return "";
@@ -24,6 +25,14 @@ const formatNotificationTime = (value?: number) => {
     hour: "2-digit",
     minute: "2-digit",
   });
+};
+
+const DETAIL_TONE: Record<NotificationDetailTone, string> = {
+  neutral: "border-neutral-200 bg-neutral-50 text-neutral-700",
+  info: "border-blue-100 bg-blue-50 text-blue-700",
+  success: "border-emerald-100 bg-emerald-50 text-emerald-700",
+  warning: "border-amber-100 bg-amber-50 text-amber-700",
+  danger: "border-rose-100 bg-rose-50 text-rose-700",
 };
 
 export function NotificationBell({
@@ -264,6 +273,7 @@ export function NotificationBell({
             ) : (
               notifications.map((notification) => {
                 const time = formatNotificationTime(notification.createdAt);
+                const detail = getNotificationDetail(notification);
                 return (
                   <button
                     key={notification.id}
@@ -288,9 +298,10 @@ export function NotificationBell({
                         <span className="mt-0.5 block text-[11px] leading-relaxed text-neutral-600">
                           {notification.message}
                         </span>
-                        {notification.reason && (
-                          <span className="mt-1 block rounded-lg border border-amber-100 bg-amber-50 px-2 py-1 text-[10px] text-amber-700">
-                            Reason: {notification.reason}
+                        {detail && (
+                          <span className={`mt-1 block rounded-lg border px-2 py-1 text-[10px] ${DETAIL_TONE[detail.tone]}`}>
+                            <strong className="font-['Lexend:SemiBold',_sans-serif]">{detail.label}:</strong>{" "}
+                            {detail.text}
                           </span>
                         )}
                         {time && (

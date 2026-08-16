@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from "react";
-import { useEmployees, useEmployeeNotes } from "../../../hooks/useFirebaseData";
+import { useEmployeeNotes } from "../../../hooks/useFirebaseData";
 import { useOrgs } from "../../../hooks/useSupabaseData";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../components/ui/Toast";
 import type { Employee } from "../../../services/employeeService";
+import { useDeptDirectoryEmployees } from "../../employees";
 import { decomposeProposal, type ProposalDecompositionResult } from "../../../services/proposalDecompositionService";
 import { extractTextFromPdf } from "../services/pdfTextExtractor";
 import { commitProposalDrafts } from "../services/commitProposalDrafts";
@@ -12,15 +13,24 @@ import { buildHierarchyIds, type DraftTask, type PdfPhase } from "../components/
 import type { AiQueueUpdate } from "../../ai";
 
 export function useProposalImportController(onClose?: () => void) {
-  const { employees: allEmployees } = useEmployees();
+  const { deptEmployees: scopedDepartmentEmployees } = useDeptDirectoryEmployees({
+    scope: "exact",
+    includeCurrentUser: true,
+    includeDepartmentHeads: true,
+    activeOnly: true,
+    excludeSuperAdmins: true,
+  });
   const { notes: employeeNotes } = useEmployeeNotes();
   const { userProfile } = useAuth();
   const { orgs } = useOrgs();
   const { toast } = useToast();
 
-  const deptEmployees = useMemo(() => {
-    return allEmployees || [];
-  }, [allEmployees]);
+  // Proposal drafts can only assign employees directly in the requester's
+  // department, never a child unit or unrelated office.
+  const deptEmployees = userProfile?.departmentId
+    ? scopedDepartmentEmployees
+    : [];
+  const allEmployees = deptEmployees;
 
   const deptEmployeesWithNotes = useMemo(
     () => deptEmployees.filter((emp) => Boolean(employeeNotes?.[emp.id])),

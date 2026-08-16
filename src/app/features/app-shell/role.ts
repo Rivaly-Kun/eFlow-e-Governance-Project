@@ -4,6 +4,7 @@ export function mapRoleToPanel(role: string): string {
     case "super_admin":
       return "superadmin";
     case "dept_head":
+    case "assistant_head":
     case "department_head":
       return "depthead";
     case "team_leader":

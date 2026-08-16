@@ -21,7 +21,7 @@ import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { OrgModal } from "./OrgModal";
 import { UsersPanel } from "./UsersPanel";
 import { UndoNotifications, type UndoItem } from "./UndoNotifications";
-import { buildGraph, layoutNodes, nodeTypes } from "./orgTreeModel";
+import { buildGraph, layoutNodes, nodeTypes, resolveNodeCollisions } from "./orgTreeModel";
 
 function OrgTreeBuilderInner() {
   const { orgs, loading: orgsLoading } = useOrgs();
@@ -70,6 +70,10 @@ function OrgTreeBuilderInner() {
     setNodes((nds) => layoutNodes(nds, edges));
   }, [setNodes, edges]);
 
+  const closeContextMenu = React.useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
   // Auto-layout after operations
   React.useEffect(() => {
     if (pendingLayoutRef.current) {
@@ -93,6 +97,21 @@ function OrgTreeBuilderInner() {
       setContextMenu({ x: (event as React.MouseEvent).clientX, y: (event as React.MouseEvent).clientY });
     },
     []
+  );
+
+  const handleNodeDragStop = React.useCallback(
+    (_: unknown, node: Node) => {
+      setNodes((currentNodes) => {
+        const nodesAtDrop = currentNodes.map((currentNode) =>
+          currentNode.id === node.id
+            ? { ...currentNode, position: { ...node.position } }
+            : currentNode,
+        );
+
+        return resolveNodeCollisions(nodesAtDrop, node.id);
+      });
+    },
+    [setNodes],
   );
 
   const handleAddChild = React.useCallback(() => {
@@ -288,6 +307,9 @@ function OrgTreeBuilderInner() {
             nodeTypes={nodeTypes}
             onNodeContextMenu={handleNodeContext}
             onPaneContextMenu={handlePaneContext}
+            onPaneClick={closeContextMenu}
+            onNodeClick={closeContextMenu}
+            onNodeDragStop={handleNodeDragStop}
             onDrop={onNodeDrop}
             onDragOver={onDragOverNode}
             fitView
@@ -314,7 +336,7 @@ function OrgTreeBuilderInner() {
       {contextMenu && (
         <ContextMenu
           menu={contextMenu}
-          onClose={() => setContextMenu(null)}
+          onClose={closeContextMenu}
           onAddChild={handleAddChild}
           onEdit={handleEdit}
           onAssignHead={handleAssignHead}
@@ -336,6 +358,7 @@ function OrgTreeBuilderInner() {
         isOpen={showHeadModal}
         onClose={() => { setShowHeadModal(false); setHeadOrg(null); }}
         org={headOrg}
+        orgs={orgs}
         profiles={profiles}
       />
     </div>

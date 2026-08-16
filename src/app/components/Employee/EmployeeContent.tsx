@@ -14,6 +14,7 @@ import {
 } from "./EmployeeCoreWork";
 import { EmployeePerformanceView } from "./EmployeePerformanceView";
 import { EmployeeTaskWorkspace } from "./EmployeeTaskWorkspace";
+import { EmployeeProjectsWorkspace } from "../../features/projects";
 
 /**
  * Thin employee route manifest. The previous file mixed routing with more than
@@ -23,6 +24,9 @@ import { EmployeeTaskWorkspace } from "./EmployeeTaskWorkspace";
 export const employeePages: RolePageSections = {
   tasks: {
     "My Tasks": EmployeeTaskWorkspace,
+  },
+  projects: {
+    Projects: EmployeeProjectsWorkspace,
   },
   subtasks: {
     "My Subtasks": SubtasksWorkspace,
@@ -73,6 +77,7 @@ export const employeePages: RolePageSections = {
 
 export const employeeDefaultPages: Record<string, string> = {
   tasks: "My Tasks",
+  projects: "Projects",
   subtasks: "My Subtasks",
   leading: "Leading Work",
   reviews: "Leader Reviews",

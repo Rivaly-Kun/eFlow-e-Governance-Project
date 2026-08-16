@@ -16,6 +16,14 @@ export function DraftCockpit({
   onCommit,
   committing,
   commitMessage,
+  source = "ai",
+  proposalTitle: proposalTitleOverride,
+  onAddProgram,
+  onAddProject,
+  onAddActivity,
+  onRenameProgram,
+  onRenameProject,
+  onUpdateActivity,
 }: {
   draftTasks: DraftTask[];
   employees: Employee[];
@@ -28,6 +36,20 @@ export function DraftCockpit({
   onCommit: () => void;
   committing: boolean;
   commitMessage: string;
+  source?: "ai" | "manual";
+  proposalTitle?: string;
+  onAddProgram?: () => void;
+  onAddProject?: (programIdx: number) => void;
+  onAddActivity?: (programIdx: number, projectIdx: number) => void;
+  onRenameProgram?: (programIdx: number, title: string) => void;
+  onRenameProject?: (programIdx: number, projectIdx: number, title: string) => void;
+  onUpdateActivity?: (
+    programIdx: number,
+    projectIdx: number,
+    activityIdx: number,
+    title: string,
+    schedule: string,
+  ) => void;
 }) {
   type ActivityGroup = {
     title: string;
@@ -79,27 +101,47 @@ export function DraftCockpit({
   }, [draftTasks]);
 
   const enabledCount = draftTasks.filter((t) => t.enabled).length;
-  const proposalTitle = draftTasks[0]?.proposalTitle || "Imported Proposal";
+  const isManual = source === "manual";
+  const proposalTitle = proposalTitleOverride || draftTasks[0]?.proposalTitle || "Untitled plan";
 
   return (
     <div className="space-y-4">
       {/* Summary bar */}
       <div className="flex items-center justify-between bg-gradient-to-br from-neutral-900 to-neutral-800 rounded-2xl p-4">
         <div>
-          <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-['Lexend:Medium',_sans-serif]">
+          {isManual && (
+            <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-['Lexend:Medium',_sans-serif]">
+              Manual plan - local state
+            </div>
+          )}
+          <div className={isManual ? "hidden" : "text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-['Lexend:Medium',_sans-serif]"}>
             AI Draft — Local State
           </div>
-          <div className="text-[15px] font-['Lexend:SemiBold',_sans-serif] text-white mt-0.5">
+          {isManual && (
+            <div className="text-[15px] font-['Lexend:SemiBold',_sans-serif] text-white mt-0.5">
+              Build, review, and create when ready
+            </div>
+          )}
+          <div className={isManual ? "hidden" : "text-[15px] font-['Lexend:SemiBold',_sans-serif] text-white mt-0.5"}>
             Review & edit before committing
           </div>
           <div className="text-[11px] text-violet-200 mt-1">
-            Proposal: {proposalTitle}
+            {isManual ? "Plan" : "Proposal"}: {proposalTitle}
           </div>
           <div className="text-[12px] text-neutral-400 mt-0.5">
             {enabledCount} of {draftTasks.length} tasks selected · not yet saved
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {isManual && onAddProgram && (
+            <button
+              onClick={onAddProgram}
+              disabled={committing}
+              className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-['Lexend:Medium',_sans-serif] text-white border border-white/25 rounded-xl hover:bg-white/10 disabled:opacity-50 transition"
+            >
+              <Plus size={13} /> Add Program
+            </button>
+          )}
           {commitMessage && (
             <div className="text-[12px] text-emerald-400 font-['Lexend:Medium',_sans-serif]">
               {commitMessage}
@@ -116,7 +158,7 @@ export function DraftCockpit({
               </>
             ) : (
               <>
-                <Check size={13} /> Commit {enabledCount} Tasks & Projects
+                <Check size={13} /> {isManual ? "Create" : "Commit"} {enabledCount} Tasks & Projects
               </>
             )}
           </button>
@@ -132,9 +174,27 @@ export function DraftCockpit({
           {/* Program header */}
           <div className="flex items-center gap-3 px-5 py-3.5 bg-gradient-to-r from-violet-600 to-violet-500">
             <Layers size={14} className="text-violet-200 shrink-0" />
-            <div className="text-[13px] font-['Lexend:SemiBold',_sans-serif] text-white">
-              {program.title}
-            </div>
+            {isManual && onRenameProgram ? (
+              <input
+                aria-label={`Program ${program.pi + 1} title`}
+                value={program.title}
+                onChange={(event) => onRenameProgram(program.pi, event.target.value)}
+                className="min-w-0 flex-1 bg-transparent text-[13px] font-['Lexend:SemiBold',_sans-serif] text-white outline-none placeholder:text-violet-200"
+                placeholder={`Program ${program.pi + 1}`}
+              />
+            ) : (
+              <div className="text-[13px] font-['Lexend:SemiBold',_sans-serif] text-white">
+                {program.title}
+              </div>
+            )}
+            {isManual && onAddProject && (
+              <button
+                onClick={() => onAddProject(program.pi)}
+                className="flex items-center gap-1 text-[10px] font-['Lexend:Medium',_sans-serif] text-white/85 hover:text-white transition"
+              >
+                <Plus size={11} /> Add Project
+              </button>
+            )}
             <span className="ml-auto text-[10px] text-violet-200 uppercase tracking-[0.15em]">
               Program
             </span>
@@ -146,9 +206,27 @@ export function DraftCockpit({
                 {/* Project header */}
                 <div className="flex items-center gap-2 px-5 py-2.5 bg-neutral-50 border-b border-neutral-100">
                   <ChevronRight size={12} className="text-neutral-400" />
-                  <div className="text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-700">
-                    {project.title}
-                  </div>
+                  {isManual && onRenameProject ? (
+                    <input
+                      aria-label={`Project ${project.pj + 1} title`}
+                      value={project.title}
+                      onChange={(event) => onRenameProject(program.pi, project.pj, event.target.value)}
+                      className="min-w-0 flex-1 bg-transparent text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-700 outline-none placeholder:text-neutral-400"
+                      placeholder={`Project ${project.pj + 1}`}
+                    />
+                  ) : (
+                    <div className="text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-700">
+                      {project.title}
+                    </div>
+                  )}
+                  {isManual && onAddActivity && (
+                    <button
+                      onClick={() => onAddActivity(program.pi, project.pj)}
+                      className="flex items-center gap-1 text-[10px] font-['Lexend:Medium',_sans-serif] text-neutral-500 hover:text-neutral-800 transition"
+                    >
+                      <Plus size={11} /> Add Activity
+                    </button>
+                  )}
                   <span className="ml-auto text-[10px] text-neutral-400 uppercase tracking-wide">
                     Project
                   </span>
@@ -159,14 +237,35 @@ export function DraftCockpit({
                     {/* Activity header */}
                     <div className="flex items-center gap-2 px-6 py-2 bg-neutral-50/70">
                       <div className="w-1.5 h-1.5 rounded-full bg-violet-400 shrink-0" />
-                      <div className="text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-600">
-                        {activity.title}
-                      </div>
-                      {activity.schedule && (
-                        <span className="inline-flex items-center gap-1 ml-2 text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
-                          <Clock size={9} />
-                          {activity.schedule}
-                        </span>
+                      {isManual && onUpdateActivity ? (
+                        <>
+                          <input
+                            aria-label={`Activity ${activity.ai + 1} title`}
+                            value={activity.title}
+                            onChange={(event) => onUpdateActivity(program.pi, project.pj, activity.ai, event.target.value, activity.schedule)}
+                            className="min-w-0 flex-1 bg-transparent text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-600 outline-none placeholder:text-neutral-400"
+                            placeholder={`Activity ${activity.ai + 1}`}
+                          />
+                          <input
+                            aria-label={`${activity.title || `Activity ${activity.ai + 1}`} target date`}
+                            type="date"
+                            value={activity.schedule}
+                            onChange={(event) => onUpdateActivity(program.pi, project.pj, activity.ai, activity.title, event.target.value)}
+                            className="w-[126px] rounded-md border border-neutral-200 bg-white px-2 py-1 text-[10px] text-neutral-600 outline-none focus:border-violet-400"
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-600">
+                            {activity.title}
+                          </div>
+                          {activity.schedule && (
+                            <span className="inline-flex items-center gap-1 ml-2 text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+                              <Clock size={9} />
+                              {activity.schedule}
+                            </span>
+                          )}
+                        </>
                       )}
                       <button
                         onClick={() =>

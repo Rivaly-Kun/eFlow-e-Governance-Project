@@ -191,7 +191,14 @@ export function DashboardOverview() {
           primary: u.full_name,
           secondary: u.email,
           badge: u.role.replace("_", " "),
-          badgeColor: u.role === "super_admin" ? "#ef4444" : u.role === "dept_head" ? "#6366f1" : "#10b981",
+          badgeColor:
+            u.role === "super_admin"
+              ? "#ef4444"
+              : u.role === "dept_head"
+                ? "#6366f1"
+                : u.role === "assistant_head"
+                  ? "#4f46e5"
+                  : "#10b981",
         })),
     [profiles]
   );
@@ -250,7 +257,7 @@ export function DashboardOverview() {
       <div className="grid grid-cols-5 gap-4 mb-6">
         <MetricCardWide label="Pending Tasks" value={metrics.pendingTasks} color="#f59e0b" loading={loading} />
         <MetricCardWide label="Completed Tasks" value={metrics.completedTasks} color="#10b981" loading={loading} />
-        <MetricCardWide label="Dept. Heads" value={metrics.departmentHeads} color="#6366f1" loading={loading} />
+        <MetricCardWide label="Heads" value={metrics.departmentHeads} color="#6366f1" loading={loading} />
         <MetricCardWide label="Overloaded" value={metrics.overloadedEmployees} color="#ef4444" loading={loading} />
         <MetricCardWide label="Avg. Workload" value={metrics.averageWorkload} suffix="%" color="#3b82f6" loading={loading} />
       </div>

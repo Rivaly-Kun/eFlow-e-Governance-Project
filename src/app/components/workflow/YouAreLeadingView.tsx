@@ -279,6 +279,8 @@ export function YouAreLeadingView() {
                       name: memberNames[idx] || "Team Member",
                     }))}
                     canManage
+                    parentTask={t}
+                    startParentOnCreate
                   />
                 </div>
               </div>

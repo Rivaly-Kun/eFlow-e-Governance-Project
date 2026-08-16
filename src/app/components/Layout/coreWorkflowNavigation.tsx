@@ -120,6 +120,13 @@ const CORE_WORKFLOW_NAVIGATION: Record<string, CoreRoleNavigation> = {
         group: "My Work",
       },
       {
+        id: "projects",
+        icon: <FolderOpen size={16} />,
+        label: "Projects",
+        page: "Projects",
+        group: "My Work",
+      },
+      {
         id: "leading",
         icon: <StarFilled size={16} />,
         label: "Work I'm Leading",

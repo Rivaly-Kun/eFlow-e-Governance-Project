@@ -28,7 +28,8 @@ import {
 import { InitialsAvatar } from "../workflow/StatusBadges";
 
 const ROLES = [
-  { key: "dept_head", label: "Department Head" },
+  { key: "dept_head", label: "Head" },
+  { key: "assistant_head", label: "Assistant Head" },
   { key: "employee", label: "Employee" },
   { key: "super_admin", label: "Super Admin" },
 ];
@@ -47,7 +48,7 @@ export function AdminPermissions() {
     if (row) return row.allowed;
     // fall back to seeded defaults for display before the table is populated
     if (role === "super_admin") return true;
-    if (role === "dept_head") return ["projects.create", "projects.archive", "tasks.assign", "tasks.verify", "reports.export"].includes(perm);
+    if (role === "dept_head" || role === "assistant_head") return ["projects.create", "projects.archive", "projects.delete", "tasks.assign", "tasks.verify", "reports.export"].includes(perm);
     if (role === "employee") return perm === "reports.export";
     return false;
   };

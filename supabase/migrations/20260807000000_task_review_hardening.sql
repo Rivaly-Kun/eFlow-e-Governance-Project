@@ -216,6 +216,12 @@ create policy task_submissions_read on public.task_submissions
 
 -- Storage is uploaded first; this RPC records the submission, its attachment
 -- rows, status/history/audit, and reviewer notification in one transaction.
+-- Some early eFlow deployments created this exact signature with a different
+-- return type. PostgreSQL cannot change a function return type through
+-- CREATE OR REPLACE, so remove only the legacy signature before installing the
+-- current contract. No task or submission rows are affected.
+drop function if exists public.submit_task_for_review(uuid, jsonb);
+
 create or replace function public.submit_task_for_review(
   p_task_id uuid,
   p_submission jsonb
@@ -408,6 +414,11 @@ begin
   return t;
 end;
 $$;
+
+-- Keep this migration compatible with databases that still have the original
+-- review-decision RPC return type. This is the exact function signature only;
+-- CASCADE is intentionally not used.
+drop function if exists public.decide_task_review(uuid, boolean, text, text);
 
 create or replace function public.decide_task_review(
   p_task_id uuid,

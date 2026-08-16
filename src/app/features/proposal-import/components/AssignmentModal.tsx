@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Crown, Search, X } from "lucide-react";
 import type { Employee } from "../../../services/employeeService";
 import type { EmployeeNotesMap } from "../../../services/employeeNotesService";
+import {
+  normalizeDraftAssignment,
+  selectDraftAssignmentLead,
+  toggleDraftAssignmentMember,
+} from "../services/draftAssignment";
 import { getInitials } from "./draftModel";
 
 export function AssignmentModal({
@@ -12,6 +17,7 @@ export function AssignmentModal({
   selectedIds,
   leadId,
   onConfirm,
+  loading = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -20,16 +26,17 @@ export function AssignmentModal({
   selectedIds: string[];
   leadId: string | null;
   onConfirm: (memberIds: string[], leadId: string | null) => void;
+  loading?: boolean;
 }) {
   const [search, setSearch] = useState("");
-  const [draft, setDraft] = useState<string[]>(selectedIds);
-  const [draftLead, setDraftLead] = useState<string | null>(leadId);
+  const [draftAssignment, setDraftAssignment] = useState(() =>
+    normalizeDraftAssignment(selectedIds, leadId),
+  );
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
-      setDraft(selectedIds);
-      setDraftLead(leadId);
+      setDraftAssignment(normalizeDraftAssignment(selectedIds, leadId));
       setSearch("");
       setTimeout(() => searchRef.current?.focus(), 50);
     }
@@ -47,14 +54,14 @@ export function AssignmentModal({
   }, [employees, search]);
 
   const toggle = (id: string) => {
-    setDraft((prev) => {
-      const next = prev.includes(id)
-        ? prev.filter((x) => x !== id)
-        : [...prev, id];
-      if (draftLead && !next.includes(draftLead)) setDraftLead(next[0] || null);
-      return next;
-    });
+    setDraftAssignment((current) =>
+      toggleDraftAssignmentMember(current, id),
+    );
   };
+
+  const draft = draftAssignment.memberIds;
+  const draftLead = draftAssignment.leadId;
+  const selectedLeader = employees.find((employee) => employee.id === draftLead);
 
   if (!open) return null;
 
@@ -77,7 +84,10 @@ export function AssignmentModal({
               Team Assignment
             </div>
             <div className="text-[16px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900 mt-0.5">
-              Select Team Members
+              Select Team &amp; Leader
+            </div>
+            <div className="mt-1 text-[11px] text-neutral-400">
+              Only members assigned directly to your department are shown. The first selected member becomes leader.
             </div>
           </div>
           <button
@@ -139,9 +149,13 @@ export function AssignmentModal({
 
         {/* Employee list */}
         <div className="flex-1 overflow-y-auto px-4 py-2">
-          {filtered.length === 0 ? (
+          {loading ? (
             <div className="text-center text-[12px] text-neutral-400 py-10">
-              No employees match "{search}"
+              Loading eligible employeesâ€¦
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center text-[12px] text-neutral-400 py-10">
+              {search ? `No employees match "${search}"` : "No eligible employees are available."}
             </div>
           ) : (
             <div className="space-y-1">
@@ -183,14 +197,16 @@ export function AssignmentModal({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setDraftLead(isLead ? null : emp.id);
+                              setDraftAssignment((current) =>
+                                selectDraftAssignmentLead(current, emp.id),
+                              );
                             }}
                             className={`p-1 rounded-lg transition shrink-0 ${
                               isLead
                                 ? "text-amber-500 hover:text-neutral-400"
                                 : "text-neutral-300 hover:text-amber-500"
                             }`}
-                            title={isLead ? "Demote from lead" : "Promote to lead"}
+                            title={isLead ? "Current team leader" : "Make team leader"}
                           >
                             <Crown size={12} />
                           </button>
@@ -231,8 +247,14 @@ export function AssignmentModal({
 
         {/* Footer */}
         <div className="px-5 py-3.5 bg-neutral-50 border-t border-neutral-100 flex items-center justify-between shrink-0">
-          <div className="text-[11px] text-neutral-400">
-            {draft.length} member{draft.length !== 1 ? "s" : ""} selected
+          <div className="min-w-0 text-[11px] text-neutral-500">
+            <div>{draft.length} member{draft.length !== 1 ? "s" : ""} selected</div>
+            {selectedLeader && (
+              <div className="mt-0.5 flex items-center gap-1 truncate font-['Lexend:Medium',_sans-serif] text-amber-700">
+                <Crown size={10} className="shrink-0" />
+                Leader: {selectedLeader.name}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button

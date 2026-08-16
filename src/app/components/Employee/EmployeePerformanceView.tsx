@@ -41,7 +41,7 @@ export function EmployeePerformanceView() {
     },
     high: {
       label: "Workload needs attention",
-      description: "Ask your Department Head to rebalance active assignments.",
+      description: "Ask your Head to rebalance active assignments.",
       card: "border-red-200 bg-red-50",
       text: "text-red-800",
       bar: "bg-red-500",
@@ -113,7 +113,7 @@ export function EmployeePerformanceView() {
           <Sparkles size={16} className="text-violet-600" />
           <div>
             <div className="text-[10px] uppercase tracking-wider text-neutral-400">
-              Department Head profile
+              Head profile
             </div>
             <h2 className="text-[15px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">
               Strengths and coaching context
@@ -155,7 +155,7 @@ export function EmployeePerformanceView() {
           </div>
         ) : (
           <p className="mt-5 rounded-lg bg-neutral-50 px-4 py-5 text-[12px] text-neutral-500">
-            Your Department Head has not added a performance profile yet.
+            Your Head has not added a performance profile yet.
           </p>
         )}
       </section>

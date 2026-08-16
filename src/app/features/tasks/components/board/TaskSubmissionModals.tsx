@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { RotateCcw, Upload, X } from "lucide-react";
+import { CheckCircle2, RotateCcw, Upload, X } from "lucide-react";
 import type { Task } from "../../../../services/taskService";
 import { RichTextEditor } from "../../../../components/ui/RichTextEditor";
 import { SimpleTableEditor } from "../../../../components/ui/SimpleTableEditor";
@@ -34,6 +34,11 @@ export function SubmitForReviewModal({
 
   if (!open || !task) return null;
 
+  const subtaskCount = task.subtaskCount || 0;
+  const approvedSubtaskCount = task.subtaskCompletedCount || 0;
+  const remainingSubtasks = Math.max(0, subtaskCount - approvedSubtaskCount);
+  const subtasksReady = remainingSubtasks === 0;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
@@ -64,6 +69,26 @@ export function SubmitForReviewModal({
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          <div
+            className={`rounded-xl border px-3 py-2.5 ${
+              subtasksReady
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-amber-200 bg-amber-50 text-amber-800"
+            }`}
+          >
+            <div className="flex items-center gap-2 text-[11.5px] font-['Lexend:Medium',_sans-serif]">
+              <CheckCircle2 size={14} />
+              {subtaskCount === 0
+                ? "No subtasks require approval"
+                : `${approvedSubtaskCount} of ${subtaskCount} subtasks approved`}
+            </div>
+            <p className="mt-1 text-[10.5px] leading-relaxed opacity-80">
+              {subtasksReady
+                ? "Add the Team Lead’s final completion summary, then submit the complete task to the Department Head."
+                : `${remainingSubtasks} subtask${remainingSubtasks === 1 ? " is" : "s are"} still waiting for Team Leader approval. The task cannot be submitted to the Department Head yet.`}
+            </p>
+          </div>
+
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-[10px] uppercase tracking-[0.12em] text-neutral-400">
@@ -160,7 +185,7 @@ export function SubmitForReviewModal({
           </button>
           <button
             onClick={onSubmit}
-            disabled={submitting}
+            disabled={submitting || !subtasksReady}
             className="px-4 py-2 text-[12px] font-['Lexend:SemiBold',_sans-serif] text-white bg-violet-600 rounded-xl hover:bg-violet-700 disabled:opacity-50 transition"
           >
             {submitting ? "Submitting..." : "Submit for Review"}
