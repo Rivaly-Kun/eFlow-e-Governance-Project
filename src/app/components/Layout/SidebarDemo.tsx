@@ -8,6 +8,8 @@ import { getProfileAvatarUrl } from "../../services/userSettingsService";
 import { getRoleLabel } from "../../shared/roles";
 import {
   getRoleNavigation,
+  getRoleNavigationCandidates,
+  canOpenNavigationSection,
   RoleContent,
   useRoleNavigationState,
 } from "../../features/navigation";
@@ -273,7 +275,12 @@ function UnifiedSidebar({
         {/* Quick action buttons (bell, chat) */}
         {user?.id && (
           <div data-tour-id="communications" className={`flex items-center ${isCollapsed ? "flex-col gap-2 justify-center" : "gap-4 px-2"}`}>
-            <NotificationBell userId={user.id} compact />
+            <NotificationBell
+              userId={user.id}
+              role={role}
+              onNavigate={onPageSelect}
+              compact
+            />
             <ChatListDrawer
               userId={user.id}
               userName={userProfile?.fullName}
@@ -348,11 +355,12 @@ function TwoLevelSidebar({ role }: { role: string }) {
     return undefined;
   }, [role]);
   const { activePage, activeSection, selectPage } = useRoleNavigationState(role, getInitialPage);
-  const { user, userProfile } = useAuth();
+  const { user, userProfile, can } = useAuth();
   const { tasks } = useTasksData();
   const hasLeadingWork = !!user?.id && tasks.some((task) => isTaskLead(task, user.id));
-  const visibleNavItems = getRoleNavigation(role).navItems.filter(
-    (item) => !item.requiresLeadership || hasLeadingWork,
+  const visibleNavItems = getRoleNavigationCandidates(role).filter(
+    (item) => (!item.requiresLeadership || hasLeadingWork)
+      && canOpenNavigationSection(role, item.id, can),
   );
   const tourSections = visibleNavItems.map((item) => ({
     id: item.id,

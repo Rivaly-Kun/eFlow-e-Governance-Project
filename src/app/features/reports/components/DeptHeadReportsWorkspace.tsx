@@ -29,6 +29,7 @@ import { buildDepartmentReportRows, filterDepartmentReportRows } from "../select
 import type { DepartmentReportKind, DepartmentReportRow } from "../types";
 import { DepartmentReportTable } from "./DepartmentReportTable";
 import { ManagementBriefPanel } from "./ManagementBriefPanel";
+import { buildMonthlyContributionLeaderboard, ContributionSummaryCard } from "../../productivity";
 
 const DAY = 86_400_000;
 
@@ -82,6 +83,10 @@ export function DeptHeadReportsWorkspace() {
   const uniquePeople = new Set(rows.map((row) => row.personId).filter(Boolean)).size;
   const uniqueProjects = new Set(rows.map((row) => row.projectId).filter(Boolean)).size;
   const urgent = rows.filter((row) => ["critical", "high", "overdue", "blocked"].includes(row.priority.toLowerCase()) || ["overdue", "changes requested"].includes(row.status.toLowerCase())).length;
+  const contributionRows = useMemo(
+    () => buildMonthlyContributionLeaderboard(analytics.deptEmployees, analytics.tasks, analytics.facts),
+    [analytics.deptEmployees, analytics.facts, analytics.tasks],
+  );
 
   const changeKind = (next: DepartmentReportKind) => {
     setKind(next);
@@ -137,6 +142,8 @@ export function DeptHeadReportsWorkspace() {
       />
 
       {analytics.error && <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-[11.5px] text-red-700">Some workflow facts could not be loaded: {analytics.error}</div>}
+
+      <div className="mb-4"><ContributionSummaryCard rows={contributionRows} title="Department contribution this month" /></div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[250px_minmax(0,1fr)] gap-4">
         <Card title="Report library" subtitle="Select a live operational lens" bodyClassName="p-2 h-fit">

@@ -2,6 +2,7 @@ import type { Employee } from '../../../services/employeeService';
 import { createProject, fetchMilestones } from '../../../services/projectService';
 import { createTask, type CreateTaskPayload } from '../../../services/taskService';
 import { supabase } from '../../../../lib/supabase';
+import { resolveScheduleDateInput } from '../../../shared/scheduling/relativeSchedule';
 import { slugifyFragment, type DraftTask } from '../components/draftModel';
 
 interface CommitProposalDraftsInput {
@@ -97,6 +98,7 @@ export async function commitProposalDrafts({
       toCreate[0]?.proposalId ||
       `${planningSource === "manual" ? "manual-plan" : "proposal"}-${slugifyFragment(pdfFileName.replace(/\.pdf$/i, ""), planningSource === "manual" ? "manual" : "imported")}`;
     const importBatchId = `${batchPrefix}-${Date.now()}`;
+    const planningAnchor = Date.now();
     let created = 0;
     let failed = 0;
     const errors: string[] = [];
@@ -147,21 +149,25 @@ export async function commitProposalDrafts({
     try {
       for (const projGroup of projectGroups.values()) {
         const milestonesInput = Array.from(projGroup.activities.values()).map((act) => {
-          const isDate = act.schedule && !/month|phase|week/i.test(act.schedule) && !isNaN(Date.parse(act.schedule));
+          const dueDate = resolveScheduleDateInput(act.schedule, planningAnchor);
           return {
             title: act.activityTitle.trim(),
-            dueDate: isDate ? act.schedule : null,
-            description: act.schedule && !isDate ? `Schedule: ${act.schedule}` : "",
+            dueDate,
+            description: act.schedule ? `Original schedule: ${act.schedule}` : "",
           };
         });
 
         let dbProjectId = "";
         try {
           // Check for existing project to prevent duplicate imports
+          const projectDescription = planningSource === "manual"
+            ? planningDescription.trim() || `Manual plan: ${projGroup.proposalTitle}`
+            : `Imported via proposal: ${projGroup.proposalTitle}`;
           let existingQuery = supabase
             .from("projects")
             .select("id")
             .eq("title", projGroup.projectTitle.trim())
+            .eq("description", projectDescription)
             .is("archived_at", null);
           existingQuery = writeScope.orgId
             ? existingQuery.eq("org_id", writeScope.orgId)
@@ -184,15 +190,19 @@ export async function commitProposalDrafts({
 
             const newProj = await createProject({
               title: projGroup.projectTitle.trim(),
-              description: planningSource === "manual"
-                ? planningDescription.trim() || `Manual plan: ${projGroup.proposalTitle}`
-                : `Imported via proposal: ${projGroup.proposalTitle}`,
+              description: projectDescription,
               orgId: writeScope.orgId,
               // Preserve the public input for compatibility, but always use
               // the live authenticated user for a new project's owner record.
               ownerId: writeScope.userId,
               status: planningSource === "manual" ? "planning" : "active",
               priority: "medium",
+              proposalId: projGroup.proposalId,
+              proposalTitle: projGroup.proposalTitle,
+              programId: projGroup.programId,
+              programTitle: projGroup.programTitle,
+              sourceType: planningSource,
+              sourceFileName: planningSource === "ai_pdf" ? pdfFileName : null,
               milestones: milestonesInput,
               memberIds: Array.from(allMemberIds),
             });
@@ -235,7 +245,13 @@ export async function commitProposalDrafts({
               const payload: CreateTaskPayload = {
                 title: dt.title,
                 description: dt.description || "No description provided.",
-                deadline: dt.deadline || "",
+                deadline:
+                  resolveScheduleDateInput(
+                    dt.deadline || dt.activitySchedule,
+                    planningAnchor,
+                  )
+                  || dt.deadline
+                  || "",
                 priority: dt.priority,
                 tags: dt.requiredSkills,
                 status: leadMember?.id ? "todo" : "pending_assignment",

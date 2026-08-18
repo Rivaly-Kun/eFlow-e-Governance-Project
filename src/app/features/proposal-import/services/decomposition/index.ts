@@ -4,6 +4,7 @@ import type { AiQueueUpdate } from "../../../ai";
 import type { ProposalDecompositionResult } from "../../types";
 import { decomposeProposalByPart } from "./partDecomposition";
 import { decomposeWholeDocument } from "./wholeDocumentDecomposition";
+import { applyBalancedProposalAssignments } from "./assignmentBalancer";
 
 export type {
   ProposalDecompositionActivity,
@@ -21,21 +22,21 @@ export async function decomposeProposal(
   onProgress?: (current: number, total: number, partTitle: string) => void,
   onQueueUpdate?: (update: AiQueueUpdate) => void,
 ): Promise<ProposalDecompositionResult> {
-  if (/Part\s+\d+/i.test(proposalText)) {
-    return decomposeProposalByPart(
+  const result = /Part\s+\d+/i.test(proposalText)
+    ? await decomposeProposalByPart(
       proposalText,
       proposalTitle,
       employees,
       employeeNotes,
       onProgress,
       onQueueUpdate,
-    );
-  }
-  return decomposeWholeDocument(
-    proposalText,
-    proposalTitle,
-    employees,
-    employeeNotes,
-    onQueueUpdate,
-  );
+    )
+    : await decomposeWholeDocument(
+        proposalText,
+        proposalTitle,
+        employees,
+        employeeNotes,
+        onQueueUpdate,
+      );
+  return applyBalancedProposalAssignments(result, employees, employeeNotes);
 }

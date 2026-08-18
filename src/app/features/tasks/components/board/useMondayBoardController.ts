@@ -3,6 +3,9 @@ import { type Task, type UpdateTaskPayload, undoCompletedTask } from "../../../.
 import type { Employee } from "../../../../services/employeeService";
 import { cancelTask } from "../../services/taskLifecycleService";
 import { archiveTask, unarchiveTask } from "../../services/taskArchiveService";
+import {
+  offerEmptyProjectCleanup,
+} from "../../../projects";
 import { buildTaskEditorDraft, uniqueValues, type BoardView, type MondayBoardProps, type TaskEditorDraft } from "./model";
 
 export function useMondayBoardController({
@@ -298,7 +301,7 @@ export function useMondayBoardController({
     async (task: Task) => {
       if (!onDeleteTask) return;
       const confirmed = window.confirm(
-        `Delete task "${task.title}"? This cannot be undone.`,
+        `Delete task "${task.title}"?\n\nThis removes the task only. Its operational project remains unless it becomes empty and you separately confirm project deletion.`,
       );
       if (!confirmed) return;
       try {
@@ -307,6 +310,26 @@ export function useMondayBoardController({
       } catch {
         setTaskEditorError("Failed to delete task. Please try again.");
         setTaskEditorOpen(true);
+        return;
+      }
+
+      if (!task.linkedProjectId) return;
+      try {
+        const outcome = await offerEmptyProjectCleanup(
+          task.linkedProjectId,
+          (emptyProject) => window.confirm(
+            `Task deleted. The operational project "${emptyProject.title}" now has no remaining tasks.\n\nPermanently delete this empty project container, its milestones, and membership list too?`,
+          ),
+        );
+        if (outcome.status === "deleted") {
+          window.alert(`Empty project "${outcome.project.title}" was permanently deleted.`);
+        }
+      } catch (error) {
+        window.alert(
+          `The task was deleted, but the empty project container could not be removed. ${
+            error instanceof Error ? error.message : "Open Projects and retry the permanent deletion."
+          }`,
+        );
       }
     },
     [onDeleteTask, taskEditorTaskId, closeTaskEditor],

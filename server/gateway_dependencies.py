@@ -1,6 +1,7 @@
 """Supabase clients, authentication dependencies, and internal secrets."""
 
 from dataclasses import dataclass
+from datetime import datetime
 import time
 from typing import Optional
 
@@ -9,6 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from supabase import Client, create_client
 
 from gateway_config import settings
+from services.recent_auth import is_recent_sign_in
 
 
 supabase_admin: Client = create_client(
@@ -25,6 +27,7 @@ class AuthenticatedUser:
     email: str
     role: str
     org_id: Optional[str]
+    last_sign_in_at: Optional[str | datetime] = None
 
 
 def require_user(
@@ -77,6 +80,7 @@ def require_user(
         email=profile.get("email") or getattr(auth_user, "email", "") or "",
         role=profile.get("role") or "employee",
         org_id=profile.get("org_id"),
+        last_sign_in_at=getattr(auth_user, "last_sign_in_at", None),
     )
 
 
@@ -87,6 +91,64 @@ def require_super_admin(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Super Admin access is required.",
+        )
+    return user
+
+
+def require_database_backup(
+    user: AuthenticatedUser = Depends(require_super_admin),
+) -> AuthenticatedUser:
+    """Require the explicit database.backup capability in addition to role."""
+    try:
+        override_result = (
+            supabase_admin.table("user_permission_overrides")
+            .select("allowed")
+            .eq("user_id", user.id)
+            .eq("permission", "database.backup")
+            .limit(1)
+            .execute()
+        )
+        override_rows = override_result.data or []
+        if override_rows:
+            allowed = override_rows[0].get("allowed") is True
+        else:
+            role_result = (
+                supabase_admin.table("role_permissions")
+                .select("allowed")
+                .eq("role", user.role)
+                .eq("permission", "database.backup")
+                .limit(1)
+                .execute()
+            )
+            role_rows = role_result.data or []
+            allowed = bool(role_rows and role_rows[0].get("allowed") is True)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Backup authorization could not be verified.",
+        ) from exc
+
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The database.backup capability is required.",
+        )
+    return user
+
+
+def require_recent_database_backup(
+    user: AuthenticatedUser = Depends(require_database_backup),
+) -> AuthenticatedUser:
+    """Require password reauthentication within five minutes for new exports."""
+    if not user.last_sign_in_at:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Confirm your password again before starting a database export.",
+        )
+    if not is_recent_sign_in(user.last_sign_in_at):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="For security, confirm your password again before starting a database export.",
         )
     return user
 

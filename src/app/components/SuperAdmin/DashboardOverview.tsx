@@ -215,10 +215,6 @@ export function DashboardOverview() {
         <h2 className="font-['Lexend:SemiBold',_sans-serif] font-semibold text-[20px] text-neutral-900">
           Dashboard Overview
         </h2>
-        <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[11px] font-['Lexend:Regular',_sans-serif] text-neutral-500">Live data</span>
-        </div>
       </div>
 
       {/* Primary Metrics */}

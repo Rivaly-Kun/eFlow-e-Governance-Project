@@ -61,6 +61,35 @@ export async function deleteMilestone(id: string): Promise<void> {
   await recordAudit({ entityType: 'milestone', entityId: id, action: 'milestone.deleted' });
 }
 
+export async function updateMilestone(
+  id: string,
+  changes: { title?: string; description?: string; dueDate?: string | null; sortOrder?: number },
+): Promise<void> {
+  const row: Record<string, unknown> = {};
+  if (changes.title !== undefined) {
+    const title = changes.title.trim();
+    if (!title) throw new Error('Milestone title is required.');
+    row.title = title;
+  }
+  if (changes.description !== undefined) row.description = changes.description.trim();
+  if (changes.dueDate !== undefined) row.due_date = changes.dueDate || null;
+  if (changes.sortOrder !== undefined) row.sort_order = changes.sortOrder;
+  const { error } = await supabase.from('milestones').update(row).eq('id', id);
+  if (error) throw error;
+  await recordAudit({ entityType: 'milestone', entityId: id, action: 'milestone.updated', afterData: changes });
+}
+
+export async function reorderMilestones(projectId: string, orderedIds: string[]): Promise<void> {
+  const existing = await fetchMilestones(projectId);
+  if (existing.length !== orderedIds.length || orderedIds.some((id) => !existing.some((milestone) => milestone.id === id))) {
+    throw new Error('Every project milestone must be included once.');
+  }
+  const results = await Promise.all(orderedIds.map((id, sortOrder) => supabase.from('milestones').update({ sort_order: sortOrder }).eq('id', id).eq('project_id', projectId)));
+  const failed = results.find((result) => result.error);
+  if (failed?.error) throw failed.error;
+  await recordAudit({ entityType: 'project', entityId: projectId, action: 'project.milestones_reordered', afterData: { orderedIds } });
+}
+
 // ─── Derived milestone status from its tasks ─────────────────────
 // A milestone's effective status is calculated from its tasks unless a manual
 // override is set. Callers pass the tasks already scoped to the milestone.

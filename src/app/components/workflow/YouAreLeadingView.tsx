@@ -33,6 +33,7 @@ import {
 import { TaskStatusBadge, PriorityPill, InitialsAvatar } from "./StatusBadges";
 import { TaskSubtasksWidget } from "./TaskSubtasksWidget";
 import { TaskDetailDrawer } from "./TaskDetailDrawer";
+import { useNotificationNavigationIntent } from "../../features/notifications";
 
 export function YouAreLeadingView() {
   const { user } = useAuth();
@@ -46,6 +47,17 @@ export function YouAreLeadingView() {
     if (!user?.id) return [];
     return tasks.filter((t) => !t.archivedAt && isTaskLead(t, user.id));
   }, [tasks, user?.id]);
+
+  useNotificationNavigationIntent(
+    (intent) => intent.kind === "leading_task",
+    (intent) => {
+      if (loading) return false;
+      const match = leadingTasks.find((task) => task.id === intent.taskId);
+      if (match) setSelectedTask(match);
+      return true;
+    },
+    [leadingTasks, loading],
+  );
 
   const filteredTasks = useMemo(() => {
     let rows = leadingTasks;

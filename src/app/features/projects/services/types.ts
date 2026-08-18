@@ -1,6 +1,7 @@
 export type ProjectStatus = 'planning' | 'active' | 'on_hold' | 'completed' | 'archived';
 export type ProjectPriority = 'low' | 'medium' | 'high';
 export type MilestoneStatus = 'auto' | 'not_started' | 'in_progress' | 'at_risk' | 'completed';
+export type ProjectSourceType = 'ai_pdf' | 'manual' | 'standalone';
 
 export interface Project {
   id: string;
@@ -8,6 +9,12 @@ export interface Project {
   title: string;
   description: string;
   ownerId?: string;
+  proposalId?: string;
+  proposalTitle?: string;
+  programId?: string;
+  programTitle?: string;
+  sourceType?: ProjectSourceType;
+  sourceFileName?: string;
   status: ProjectStatus;
   priority: ProjectPriority;
   startDate?: string;
@@ -43,6 +50,12 @@ export interface CreateProjectInput {
   description?: string;
   orgId?: string | null;
   ownerId?: string | null;
+  proposalId?: string | null;
+  proposalTitle?: string | null;
+  programId?: string | null;
+  programTitle?: string | null;
+  sourceType?: ProjectSourceType;
+  sourceFileName?: string | null;
   status?: ProjectStatus;
   priority?: ProjectPriority;
   startDate?: string | null;

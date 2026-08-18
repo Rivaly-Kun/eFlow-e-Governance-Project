@@ -40,12 +40,12 @@ export const decomposeWholeDocument = async (
 
   const recommendationInstruction =
     employees && employees.length > 0
-      ? `\n10. For each task, include "recommendedEmployeeIds" as an array of employee IDs best suited for the task based on their strengths, and "recommendationReasoning" explaining why.`
+      ? `\n10. For each task, include "recommendedEmployeeIds" as an ordered array where the first ID is the proposed Team Lead. Determine the minimum sufficient team independently for each task: select one person only when they can genuinely cover the task alone, or select multiple contributors for complementary skills, parallel work, field coordination, documentation, facilitation, analysis, or review. There is NO maximum team size; every eligible department member may be selected when genuinely necessary. Do not default to one person and do not add people without a distinct contribution. Match required skills to strengths and tags, treat weaknesses as assignment risks rather than skills, consider current workload, and use qualified alternatives instead of repeatedly selecting one person across most of the proposal. Do not force equal distribution when one person is uniquely qualified. Include "recommendationReasoning" explaining the team size and each member's contribution, or why the task is safely solo.`
       : "";
 
   const recommendationSchema =
     employees && employees.length > 0
-      ? `,\n          "recommendedEmployeeIds": ["employee_id_1"],\n          "recommendationReasoning": "Why this employee fits"`
+      ? `,\n          "recommendedEmployeeIds": ["lead_employee_id", "support_employee_id_if_needed", "additional_employee_ids_if_needed"],\n          "recommendationReasoning": "Why this team size is sufficient and what each person contributes, or why this is a solo assignment"`
       : "";
 
   const subtaskSchema = `,\n          "subtasks": ["Checklist step 1", "Checklist step 2", "Checklist step 3"]`;

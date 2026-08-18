@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import tempfile
 
 from dotenv import load_dotenv
 
@@ -32,6 +33,10 @@ class GatewaySettings:
     internal_ai_base_url: str
     ai_timeout_seconds: float
     allowed_origins: list[str]
+    database_url: str | None
+    pg_dump_path: str
+    backup_root: Path
+    backup_retention_hours: int
 
 
 def load_settings() -> GatewaySettings:
@@ -46,6 +51,18 @@ def load_settings() -> GatewaySettings:
         ).rstrip("/"),
         ai_timeout_seconds=float(os.getenv("EFLOW_AI_TIMEOUT_SECONDS", "7200")),
         allowed_origins=_allowed_origins(),
+        database_url=os.getenv("EFLOW_DATABASE_URL", "").strip() or None,
+        pg_dump_path=os.getenv("EFLOW_PG_DUMP_PATH", "pg_dump").strip() or "pg_dump",
+        backup_root=Path(
+            os.getenv(
+                "EFLOW_BACKUP_ROOT",
+                str(Path(tempfile.gettempdir()) / "eflow-backups"),
+            )
+        ).resolve(),
+        backup_retention_hours=max(
+            1,
+            min(168, int(os.getenv("EFLOW_BACKUP_RETENTION_HOURS", "24"))),
+        ),
     )
 
 

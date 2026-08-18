@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../components/ui/Toast";
+import { SESSION_NOTICE_KEY } from "../session-security/constants";
+import { clearAllSessionActivity } from "../session-security/services/sessionActivityStorage";
 
 const QUICK_ACCOUNTS: Record<string, { email: string; pass: string; label: string }> = {
   "1": { email: "admin@gmail.com", pass: "admin123", label: "Super Admin (admin@gmail.com)" },
@@ -21,6 +23,8 @@ export function QuickLoginListener() {
       toast("Quick switching to " + account.label + "...", "info");
       try {
         await logout();
+        clearAllSessionActivity(localStorage);
+        localStorage.removeItem(SESSION_NOTICE_KEY);
         await login(account.email, account.pass);
         toast("Logged in as " + account.label, "success");
       } catch (error: unknown) {

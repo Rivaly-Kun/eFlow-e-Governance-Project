@@ -2,6 +2,7 @@ import { Activity, CheckCircle2, Clock3, RotateCcw, ShieldAlert, Sparkles } from
 import type { Employee, EmployeeNote } from "../../../employees";
 import type { Task } from "../../../tasks";
 import type { TeamMemberMetrics, TeamWorkflowFacts } from "../../types";
+import { TEAM_WORKLOAD_ELEVATED_THRESHOLD, TEAM_WORKLOAD_HIGH_THRESHOLD } from "../../constants";
 import { EmployeeCoachingEditor } from "./EmployeeCoachingEditor";
 
 export function EmployeeIntelligencePanel({
@@ -32,7 +33,7 @@ export function EmployeeIntelligencePanel({
       <section className="rounded-xl border border-neutral-200 bg-white p-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-center gap-3"><div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-neutral-900 text-[13px] font-['Lexend:SemiBold',_sans-serif] text-white">{employee.initials || "??"}</div><div><h2 className="text-[16px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">{employee.name}</h2><p className="mt-0.5 text-[10.5px] text-neutral-400">{employee.jobTitle} · {employee.email || employee.departmentName || "Department team"}</p></div></div>
-          <div className="text-left sm:text-right"><div className="text-[9px] uppercase tracking-wide text-neutral-400">Workload signal</div><div className={`mt-0.5 text-[20px] font-['Lexend:SemiBold',_sans-serif] ${metric.workloadSignal >= 80 ? "text-red-600" : metric.workloadSignal >= 55 ? "text-amber-600" : "text-emerald-600"}`}>{metric.workloadSignal}/100</div><div className="text-[9px] text-neutral-400">Derived from current work</div></div>
+          <div className="text-left sm:text-right"><div className="text-[9px] uppercase tracking-wide text-neutral-400">Workload signal</div><div className={`mt-0.5 text-[20px] font-['Lexend:SemiBold',_sans-serif] ${metric.workloadSignal >= TEAM_WORKLOAD_HIGH_THRESHOLD ? "text-red-600" : metric.workloadSignal >= TEAM_WORKLOAD_ELEVATED_THRESHOLD ? "text-amber-600" : "text-emerald-600"}`}>{metric.workloadSignal}/100</div><div className="text-[9px] text-neutral-400">Derived from current work</div></div>
         </div>
         <div className="mt-5 grid grid-cols-2 gap-2 lg:grid-cols-6">
           <Metric icon={<Activity size={13} />} label="Active tasks" value={metric.activeTasks} />

@@ -26,11 +26,17 @@ vi.mock('../../src/lib/supabase', () => ({
         eq: vi.fn(() => ({ single })),
       })),
     })),
+    channel: vi.fn(() => ({
+      on: vi.fn().mockReturnThis(),
+      subscribe: vi.fn().mockReturnThis(),
+    })),
+    removeChannel: vi.fn(),
   },
 }));
 
 vi.mock('../../src/app/services/permissionService', () => ({
   fetchEffectivePermissions: vi.fn(async () => new Set<string>()),
+  resolvePermissions: vi.fn(() => new Set<string>()),
 }));
 
 vi.mock('../../src/app/shared/controlPanelClient', () => ({

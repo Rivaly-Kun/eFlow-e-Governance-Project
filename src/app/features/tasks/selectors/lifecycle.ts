@@ -1,4 +1,5 @@
 import type { Task } from "../../../services/taskService";
+import { resolveScheduleTimestamp } from "../../../shared/scheduling/relativeSchedule";
 
 export function isArchived(task: Task): boolean {
   return !!task.archivedAt;
@@ -22,10 +23,10 @@ export function isForReview(task: Task): boolean {
 
 export function parseDueDate(task: Task): number | null {
   const raw = task.dueDate || task.deadline;
-  if (!raw || typeof raw !== "string") return null;
-  if (/month|phase|week|quarter|ongoing|tbd|q[1-4]/i.test(raw)) return null;
-  const ms = new Date(raw).getTime();
-  return Number.isFinite(ms) ? ms : null;
+  const anchor = Number.isFinite(task.createdAt) ? task.createdAt : Date.now();
+  const fromDeadline = resolveScheduleTimestamp(raw, anchor);
+  if (fromDeadline !== null) return fromDeadline;
+  return resolveScheduleTimestamp(task.activitySchedule, anchor);
 }
 
 export function isOverdue(task: Task, now: number = Date.now()): boolean {

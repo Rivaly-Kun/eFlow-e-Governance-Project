@@ -7,10 +7,12 @@ import { AssignmentModal } from "../../src/app/features/proposal-import/componen
 
 describe("proposal draft team assignment modal", () => {
   it("selects an employee and automatically designates the team leader", () => {
+    const onClose = vi.fn();
+    const onConfirm = vi.fn();
     render(
       createElement(AssignmentModal, {
         open: true,
-        onClose: vi.fn(),
+        onClose,
         employees: [
           {
             id: "profile-1",
@@ -25,7 +27,7 @@ describe("proposal draft team assignment modal", () => {
         ],
         selectedIds: [],
         leadId: null,
-        onConfirm: vi.fn(),
+        onConfirm,
       }),
     );
 
@@ -33,5 +35,10 @@ describe("proposal draft team assignment modal", () => {
 
     expect(document.body.textContent).toContain("1 member selected");
     expect(document.body.textContent).toContain("Leader: Planning Staff One");
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+    expect(onConfirm).toHaveBeenCalledWith(["profile-1"], "profile-1");
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });

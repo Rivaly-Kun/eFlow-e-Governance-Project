@@ -5,6 +5,8 @@ import type { EmployeeNotesMap } from "../../../services/employeeNotesService";
 import { priorityMeta } from "./draftModel";
 import type { DraftTask } from "./draftModel";
 import { TaskAssignmentSummary } from "./TaskAssignmentSummary";
+import { AssignmentExceptionNote } from "./AssignmentExceptionNote";
+import { TeamCompositionNote } from "./TeamCompositionNote";
 
 export function DraftTaskRow({
   dt,
@@ -156,7 +158,15 @@ export function DraftTaskRow({
           />
         </button>
 
-        {dt.reasoning && !editing && (
+        {dt.assignmentException && !editing && (
+          <AssignmentExceptionNote exception={dt.assignmentException} />
+        )}
+
+        {dt.teamComposition && !editing && (
+          <TeamCompositionNote composition={dt.teamComposition} />
+        )}
+
+        {dt.reasoning && !dt.assignmentException && !dt.teamComposition && !editing && (
           <div className="mt-1.5 text-[10px] text-violet-600 italic line-clamp-1">
             {dt.reasoning}
           </div>

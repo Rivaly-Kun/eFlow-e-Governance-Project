@@ -43,6 +43,10 @@ import { TaskReviewStandards } from "./TaskReviewStandards";
 import { TaskSubtaskEvidenceSection } from "./TaskSubtaskEvidenceSection";
 import { ReviewDecisionForm } from "./ReviewDecisionForm";
 import { useTaskReviewEvidence } from "../hooks/useTaskReviewEvidence";
+import {
+  useNotificationNavigationIntent,
+  type NotificationNavigationIntent,
+} from "../../notifications";
 
 function timeAgo(ts: number): string {
   const h = Math.floor((Date.now() - ts) / 3600000);
@@ -80,6 +84,7 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressUpdate[]>([]);
   const [reviewKind, setReviewKind] = useState<"tasks" | "subtasks">("tasks");
+  const [subtaskFocus, setSubtaskFocus] = useState<NotificationNavigationIntent | null>(null);
 
   const { user, userProfile } = useAuth();
   const queue = useMemo(() => {
@@ -126,6 +131,23 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
   }, [queue, selectedId]);
 
   const selected = queue.find((t) => t.id === selectedId) || null;
+
+  useNotificationNavigationIntent(
+    (intent) => intent.kind === "task_review" || intent.kind === "subtask_review",
+    (intent) => {
+      if (loading) return false;
+      if (intent.kind === "subtask_review") {
+        setSubtaskFocus(intent);
+        setReviewKind("subtasks");
+      } else {
+        setReviewKind("tasks");
+        const match = queue.find((task) => task.id === intent.taskId);
+        if (match) setSelectedId(match.id);
+      }
+      return true;
+    },
+    [loading, queue],
+  );
   const canReviewSelected = Boolean(
     selected &&
       canUserReviewTask(selected, user?.id, userProfile?.role),
@@ -144,7 +166,12 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
   } = useTaskReviewEvidence(selected?.id);
 
   if (reviewKind === "subtasks") {
-    return <SubtaskReviewInbox onShowTasks={() => setReviewKind("tasks")} />;
+    return (
+      <SubtaskReviewInbox
+        focus={subtaskFocus}
+        onShowTasks={() => setReviewKind("tasks")}
+      />
+    );
   }
 
   if (loading) return <div className="p-8"><LoadingState label="Loading the review queue…" /></div>;

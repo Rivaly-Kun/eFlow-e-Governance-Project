@@ -1,14 +1,21 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useEmployeeNotes } from "../../hooks/useFirebaseData";
 import { useCurrentUserTasks } from "../../hooks/useCurrentUserTasks";
 import { PageHeader } from "../workflow/primitives";
+import { MyMonthlyContributionCard } from "../../features/productivity";
+import { subscribeToTeamWorkflowFacts, type TeamWorkflowFacts } from "../../features/team-management";
+
+const EMPTY_FACTS: TeamWorkflowFacts = { subtasks: [], progress: [], submissions: [], statusHistory: [], evidence: [] };
 
 export function EmployeePerformanceView() {
   const { userProfile } = useAuth();
   const { notes, loading: notesLoading } = useEmployeeNotes();
   const { tasks, loading: tasksLoading } = useCurrentUserTasks();
+  const [contributionFacts, setContributionFacts] = useState<TeamWorkflowFacts>(EMPTY_FACTS);
+  const taskKey = useMemo(() => tasks.map((task) => task.id).sort().join(","), [tasks]);
+  useEffect(() => subscribeToTeamWorkflowFacts(taskKey ? taskKey.split(",") : [], setContributionFacts, () => setContributionFacts(EMPTY_FACTS)), [taskKey]);
 
   const totals = useMemo(
     () => ({
@@ -107,6 +114,23 @@ export function EmployeePerformanceView() {
           />
         </div>
       </section>
+
+      {userProfile?.id && (
+        <MyMonthlyContributionCard
+          employee={{
+            id: userProfile.id,
+            name: userProfile.full_name || userProfile.fullName || userProfile.email || "Employee",
+            jobTitle: String(userProfile.role || "Employee").replace(/_/g, " "),
+            jobDescription: "",
+            currentWorkload: workload,
+            department: userProfile.org_id || userProfile.departmentId,
+            departmentName: userProfile.departmentId || "",
+            email: userProfile.email,
+          }}
+          tasks={tasks}
+          facts={contributionFacts}
+        />
+      )}
 
       <section className="mt-5 rounded-xl border border-neutral-200 bg-white p-5">
         <div className="flex items-center gap-2">

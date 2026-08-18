@@ -15,7 +15,7 @@ export const deptheadSidebar: Record<string, SidebarContent> = {
               },
               {
                 icon: <Carbon.FolderOpen size={16} className="text-neutral-900" />,
-                label: "Projects",
+                label: "Plans & Projects",
               },
               {
                 icon: <Carbon.StarFilled size={16} className="text-neutral-900" />,

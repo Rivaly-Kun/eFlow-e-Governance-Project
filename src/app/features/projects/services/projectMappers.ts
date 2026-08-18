@@ -1,4 +1,4 @@
-import type { Milestone, MilestoneStatus, Project, ProjectPriority, ProjectStatus } from './types';
+import type { Milestone, MilestoneStatus, Project, ProjectPriority, ProjectSourceType, ProjectStatus } from './types';
 
 export function rowToProject(row: Record<string, unknown>): Project {
   return {
@@ -7,6 +7,12 @@ export function rowToProject(row: Record<string, unknown>): Project {
     title: (row.title as string) || 'Untitled project',
     description: (row.description as string) || '',
     ownerId: (row.owner_id as string) || undefined,
+    proposalId: (row.proposal_id as string) || undefined,
+    proposalTitle: (row.proposal_title as string) || undefined,
+    programId: (row.program_id as string) || undefined,
+    programTitle: (row.program_title as string) || undefined,
+    sourceType: (row.source_type as ProjectSourceType) || undefined,
+    sourceFileName: (row.source_file_name as string) || undefined,
     status: (row.status as ProjectStatus) || 'planning',
     priority: (row.priority as ProjectPriority) || 'medium',
     startDate: (row.start_date as string) || undefined,

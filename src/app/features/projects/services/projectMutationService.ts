@@ -33,6 +33,12 @@ export async function createProject(input: CreateProjectInput): Promise<Project>
       description: input.description || '',
       org_id: orgId,
       owner_id: input.ownerId || user.id,
+      proposal_id: input.proposalId || null,
+      proposal_title: input.proposalTitle || null,
+      program_id: input.programId || null,
+      program_title: input.programTitle || null,
+      source_type: input.sourceType || 'standalone',
+      source_file_name: input.sourceFileName || null,
       status: input.status || 'planning',
       priority: input.priority || 'medium',
       start_date: input.startDate || null,
@@ -160,7 +166,16 @@ export async function deleteProject(
     if (error.code === 'PGRST202' || error.message.includes('delete_project_permanently')) {
       throw new Error('The project deletion database upgrade has not been applied yet.');
     }
-    throw new Error(error.message);
+    if (
+      error.code === '23514'
+      && error.message.includes('milestone link requires a canonical project link')
+    ) {
+      throw new Error('The project deletion task-link fix has not been applied yet. Apply migration 20260819000003, then retry.');
+    }
+    const details = [error.message, error.details, error.hint]
+      .filter((value): value is string => Boolean(value && value !== error.message))
+      .join(' ');
+    throw new Error(details ? `${error.message} ${details}` : error.message);
   }
   await notifyProjectListeners();
 }

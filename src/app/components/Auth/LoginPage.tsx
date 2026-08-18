@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import type { UserRole } from "../../types";
 import { supabase } from "../../../lib/supabase";
+import { SESSION_NOTICE_KEY } from "../../features/session-security/constants";
+import { clearAllSessionActivity } from "../../features/session-security/services/sessionActivityStorage";
 
 // ─── Ormoc City seal SVG (simplified shield) ─────────────────────
 function OrmocSeal() {
@@ -115,6 +117,14 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "error" | "success" } | null>(null);
   const [canSetupAdmin, setCanSetupAdmin] = useState<boolean | null>(null);
+  const [sessionNotice] = useState(() => {
+    const notice = localStorage.getItem(SESSION_NOTICE_KEY) || "";
+    if (notice) {
+      clearAllSessionActivity(localStorage);
+      localStorage.removeItem(SESSION_NOTICE_KEY);
+    }
+    return notice;
+  });
 
   // Check if any super_admin exists — if not, show "First-Time Setup" option
   useEffect(() => {
@@ -154,6 +164,8 @@ export function LoginPage() {
     }
     setSubmitting(true);
     try {
+      clearAllSessionActivity(localStorage);
+      localStorage.removeItem(SESSION_NOTICE_KEY);
       await login(email.trim(), password);
     } catch {
       // error is handled via toast
@@ -231,6 +243,8 @@ export function LoginPage() {
               <p className="text-[12px] font-['Lexend:Regular',_sans-serif] text-[#676879] mb-6">
                 Enter your credentials to access the dashboard
               </p>
+
+              {sessionNotice && <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] leading-5 text-amber-800">{sessionNotice}</div>}
 
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>

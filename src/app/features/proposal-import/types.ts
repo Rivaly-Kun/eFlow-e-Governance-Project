@@ -1,3 +1,31 @@
+export interface ProposalAssignmentException {
+  bypassedEmployeeId: string;
+  bypassedEmployeeName: string;
+  selectedEmployeeId: string;
+  selectedEmployeeName: string;
+  bypassedWorkloadSignal: number;
+  selectedWorkloadSignal: number;
+  bypassedSkillMatch: number;
+  selectedSkillMatch: number;
+  severity: "elevated" | "high";
+  message: string;
+}
+
+export interface ProposalTeamMemberReason {
+  employeeId: string;
+  employeeName: string;
+  role: "lead" | "support";
+  contribution: string;
+}
+
+export interface ProposalTeamComposition {
+  mode: "solo" | "team";
+  selectedCount: number;
+  eligibleCount: number;
+  rationale: string;
+  memberReasons: ProposalTeamMemberReason[];
+}
+
 export interface ProposalDecompositionTask {
   title: string;
   description: string;
@@ -9,6 +37,8 @@ export interface ProposalDecompositionTask {
   burnoutWarning?: boolean;
   subtasks?: string[];
   recommendationSource?: "llm" | "fallback" | "import";
+  assignmentException?: ProposalAssignmentException;
+  teamComposition?: ProposalTeamComposition;
 }
 
 export interface ProposalDecompositionActivity {

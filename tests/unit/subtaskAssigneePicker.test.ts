@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
 import { createElement } from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { createSubtaskMock, startTaskIfTodoMock } = vi.hoisted(() => ({
+const { createSubtaskMock, startTaskIfTodoMock, updateSubtaskMock } = vi.hoisted(() => ({
   createSubtaskMock: vi.fn(),
   startTaskIfTodoMock: vi.fn(),
+  updateSubtaskMock: vi.fn(),
 }));
 
 vi.mock("../../src/app/services/subtaskService", () => ({
@@ -21,6 +22,7 @@ vi.mock("../../src/app/services/subtaskService", () => ({
         percentComplete: 0,
         assignedToIds: ["employee-1"],
         position: 0,
+        isStandalone: false,
         source: "manual",
         createdAt: 0,
         updatedAt: 0,
@@ -29,8 +31,9 @@ vi.mock("../../src/app/services/subtaskService", () => ({
     return vi.fn();
   },
   createSubtask: createSubtaskMock,
-  updateSubtask: vi.fn(),
+  updateSubtask: updateSubtaskMock,
   deleteSubtask: vi.fn(),
+  reorderSubtasks: vi.fn(),
 }));
 
 vi.mock("../../src/app/services/taskService", () => ({
@@ -49,6 +52,11 @@ vi.mock("../../src/app/components/ui/Toast", () => ({
 }));
 
 import { TaskSubtasksWidget } from "../../src/app/features/subtasks/components/TaskSubtasksWidget";
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 describe("subtask assignee picker", () => {
   it("closes when the manager left-clicks outside the picker", async () => {
@@ -112,6 +120,28 @@ describe("subtask assignee picker", () => {
         expect.objectContaining({ source: "manual" }),
       );
       expect(startTaskIfTodoMock).toHaveBeenCalledWith("task-1");
+    });
+  });
+
+  it("lets the Team Lead create independent work with no ordered prerequisite", async () => {
+    createSubtaskMock.mockResolvedValueOnce({ id: "subtask-standalone" });
+    const view = render(createElement(TaskSubtasksWidget, {
+      taskId: "task-1",
+      canManage: true,
+    }));
+    const widget = within(view.container);
+    fireEvent.change(widget.getByPlaceholderText("Add a subtask for team members…"), {
+      target: { value: "Arrange refreshments" },
+    });
+    fireEvent.click(widget.getByRole("button", { name: "Standalone" }));
+    fireEvent.click(widget.getByRole("button", { name: "Add" }));
+
+    await waitFor(() => {
+      expect(createSubtaskMock).toHaveBeenCalledWith(
+        "task-1",
+        "Arrange refreshments",
+        expect.objectContaining({ isStandalone: true }),
+      );
     });
   });
 });

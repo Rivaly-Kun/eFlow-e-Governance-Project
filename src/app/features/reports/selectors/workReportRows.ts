@@ -104,10 +104,13 @@ export function buildOperationRows(tasks: Task[], projects: Project[], employees
       progress: task.percentComplete || 0,
       eventAt: task.lastActivityAt || task.updatedAt,
       dueAt: due,
-      metric: due ? (isOverdue(task, now) ? `${Math.abs(days || 0)}d overdue` : `${days}d remaining`) : "Schedule not measurable",
+      metric: due
+        ? (isOverdue(task, now)
+          ? `Overdue by ${Math.max(1, Math.abs(days || 0))}d`
+          : days === 0 ? "Due today" : `${days}d remaining`)
+        : "Schedule not measurable",
       detail: `${task.subtaskCompletedCount || 0}/${task.subtaskCount || 0} subtasks approved`,
       taskId: task.id,
     };
   });
 }
-

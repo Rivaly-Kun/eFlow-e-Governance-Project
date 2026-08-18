@@ -57,10 +57,15 @@ export const buildCompactEmployeesContext = (
   employees
     .map((employee) => {
       const notes = employeeNotes?.[employee.id];
-      const profileSkills = employee.jobDescription || "";
-      const noteSkills = notes?.strengths || "";
-      const combinedSkills = [profileSkills, noteSkills].filter(Boolean).join(", ") || "General";
-      return `- ID: ${employee.id} | ${employee.name} | Workload: ${employee.currentWorkload}% | Skills: ${combinedSkills}`;
+      const profileSkills = employee.jobDescription || "General";
+      return [
+        `- ID: ${employee.id} | Name: ${employee.name} | Role: ${employee.jobTitle}`,
+        `  Workload: ${employee.currentWorkload}% | Skills: ${profileSkills}`,
+        `  Strengths: ${notes?.strengths || "No manager strengths recorded"}`,
+        `  Weakness/risk constraints: ${notes?.weaknesses || "None recorded"}`,
+        `  Manager notes: ${notes?.notes || "None"}`,
+        `  Tags: ${(notes?.tags || []).join(", ") || "None"}`,
+      ].join("\n");
     })
     .join("\n");
 
@@ -75,22 +80,17 @@ export const selectFallbackTeam = (scored: ReturnType<typeof scoreEmployees>) =>
     (candidate) => candidate.breakdown.skillMatch >= MIN_SKILL_FLOOR,
   );
 
-  let team = (qualified.length ? qualified : scored).slice(0, 3);
-
-  if (team.length >= 2) {
-    const skillGapToSecond =
-      team[0].breakdown.skillMatch - team[1].breakdown.skillMatch;
-    if (skillGapToSecond >= 10) {
-      team = skillGapToSecond >= 20 ? team.slice(0, 1) : team.slice(0, 2);
-    } else if (team.length === 3) {
-      const skillGapToThird =
-        team[0].breakdown.skillMatch - team[2].breakdown.skillMatch;
-      if (skillGapToThird >= 10) {
-        team = team.slice(0, 2);
-      }
-    }
-  }
-
+  const candidates = qualified.length ? qualified : scored;
+  const team = [candidates[0]];
+  const coveredSkills = new Set(candidates[0].matchedSkills);
+  candidates.slice(1).forEach((candidate) => {
+    const addsCoverage = candidate.matchedSkills.some(
+      (skill) => !coveredSkills.has(skill),
+    );
+    if (!addsCoverage) return;
+    team.push(candidate);
+    candidate.matchedSkills.forEach((skill) => coveredSkills.add(skill));
+  });
   return team;
 };
 

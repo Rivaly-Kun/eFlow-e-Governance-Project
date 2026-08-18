@@ -1,6 +1,6 @@
 import type { Employee } from "../../employees";
 import type { Project } from "../../projects";
-import type { Task } from "../../tasks";
+import { parseDueDate, type Task } from "../../tasks";
 
 export const displayStatus = (value?: string) => (value?.trim() || "—").replace(/_/g, " ");
 
@@ -19,9 +19,5 @@ export function taskProject(task: Task, projects: Project[]) {
 }
 
 export function taskDue(task: Task): number | undefined {
-  const value = task.dueDate || task.deadline;
-  if (!value) return undefined;
-  const parsed = new Date(value).getTime();
-  return Number.isFinite(parsed) ? parsed : undefined;
+  return parseDueDate(task) ?? undefined;
 }
-

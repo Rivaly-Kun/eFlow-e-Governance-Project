@@ -21,6 +21,7 @@ export interface Subtask {
   assignedTo?: string;
   assignedToIds: string[];
   position: number;
+  isStandalone: boolean;
   source: SubtaskSource;
   createdBy?: string;
   createdAt: number;
@@ -49,6 +50,7 @@ export function rowToSubtask(row: Record<string, unknown>): Subtask {
     assignedTo: (row.assigned_to as string) || (assignedToIds[0] || undefined),
     assignedToIds,
     position: (row.position as number) || 0,
+    isStandalone: row.is_standalone === true,
     source: (row.source as SubtaskSource) || 'manual',
     createdBy: (row.created_by as string) || undefined,
     createdAt: new Date(row.created_at as string).getTime(),
@@ -105,6 +107,7 @@ export async function createSubtask(
     assignedToIds?: string[];
     assignedTo?: string;
     actorName?: string;
+    isStandalone?: boolean;
   },
 ): Promise<Subtask> {
   const assignedIds = opts?.assignedToIds || (opts?.assignedTo ? [opts.assignedTo] : []);
@@ -112,17 +115,20 @@ export async function createSubtask(
   const createdBy = authData.user?.id || opts?.createdBy;
   if (!createdBy) throw new Error('You must be signed in to create a subtask.');
 
+  const insertRow: Record<string, unknown> = {
+    task_id: taskId,
+    title,
+    source: opts?.source || 'manual',
+    position: opts?.position ?? 0,
+    created_by: createdBy,
+    assigned_to: assignedIds[0] || null,
+    assigned_to_ids: assignedIds,
+  };
+  if (opts?.isStandalone) insertRow.is_standalone = true;
+
   const { data, error } = await supabase
     .from('subtasks')
-    .insert({
-      task_id: taskId,
-      title,
-      source: opts?.source || 'manual',
-      position: opts?.position ?? 0,
-      created_by: createdBy,
-      assigned_to: assignedIds[0] || null,
-      assigned_to_ids: assignedIds,
-    })
+    .insert(insertRow)
     .select()
     .single();
   if (error) throw error;
@@ -195,7 +201,13 @@ export async function toggleSubtask(
 // ─── updateSubtask ──────────────────────────────────────────────────
 export async function updateSubtask(
   subtaskId: string,
-  updates: { title?: string; position?: number; assignedTo?: string; assignedToIds?: string[] },
+  updates: {
+    title?: string;
+    position?: number;
+    assignedTo?: string;
+    assignedToIds?: string[];
+    isStandalone?: boolean;
+  },
   actor?: { id: string; name: string },
 ): Promise<void> {
   const { data: current } = await supabase
@@ -207,6 +219,7 @@ export async function updateSubtask(
   const row: Record<string, unknown> = {};
   if (updates.title !== undefined) row.title = updates.title;
   if (updates.position !== undefined) row.position = updates.position;
+  if (updates.isStandalone !== undefined) row.is_standalone = updates.isStandalone;
 
   let newAssignedIds: string[] | undefined = updates.assignedToIds;
   if (newAssignedIds === undefined && updates.assignedTo !== undefined) {
@@ -270,11 +283,20 @@ export async function deleteSubtask(subtaskId: string): Promise<void> {
 
 // ─── reorderSubtasks ────────────────────────────────────────────────
 export async function reorderSubtasks(orderedIds: string[]): Promise<void> {
-  const results = await Promise.all(
-    orderedIds.map((id, idx) =>
-      supabase.from('subtasks').update({ position: idx }).eq('id', id),
-    ),
-  );
-  const failed = results.find((result) => result.error);
-  if (failed?.error) throw failed.error;
+  if (orderedIds.length === 0) return;
+  const { data: rows, error: lookupError } = await supabase
+    .from('subtasks')
+    .select('id,task_id')
+    .in('id', orderedIds);
+  if (lookupError) throw lookupError;
+  const taskIds = new Set((rows || []).map((row) => row.task_id as string));
+  if ((rows || []).length !== orderedIds.length || taskIds.size !== 1) {
+    throw new Error('Every reordered subtask must belong to the same parent task.');
+  }
+  const taskId = Array.from(taskIds)[0];
+  const { error } = await supabase.rpc('reorder_task_subtasks', {
+    p_task_id: taskId,
+    p_ordered_ids: orderedIds,
+  });
+  if (error) throw error;
 }

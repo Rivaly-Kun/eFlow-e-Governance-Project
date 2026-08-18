@@ -1,3 +1,8 @@
+import type {
+  ProposalAssignmentException,
+  ProposalTeamComposition,
+} from "../types";
+
 export type PdfPhase =
   | "idle"
   | "extracting"
@@ -31,6 +36,8 @@ export interface DraftTask {
   leadMemberId: string | null;
   burnoutWarning: boolean;
   reasoning: string;
+  assignmentException?: ProposalAssignmentException;
+  teamComposition?: ProposalTeamComposition;
   enabled: boolean;
 }
 

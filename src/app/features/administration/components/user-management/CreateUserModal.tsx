@@ -3,17 +3,23 @@ import { useAuth } from "../../../../contexts/AuthContext";
 import { FormField, SelectInput, TextInput } from "../../../../components/ui/FormField";
 import { Modal, ModalButton } from "../../../../components/ui/Modal";
 import { useToast } from "../../../../components/ui/Toast";
-import type { UserRole } from "../../../../types";
+import type { Organization, UserProfile, UserRole } from "../../../../types";
+import { assignOrganizationLeadership } from "../../../organization/services/leadershipService";
+import { getLeadershipSlotConflict, isManagedLeadershipRole } from "../../services/leadershipConstraints";
 import { ROLE_OPTIONS } from "./userManagementPrimitives";
 
 export function CreateUserModal({
   isOpen,
   onClose,
   orgOptions,
+  organizations,
+  profiles,
 }: {
   isOpen: boolean;
   onClose: () => void;
   orgOptions: { value: string; label: string }[];
+  organizations: Organization[];
+  profiles: UserProfile[];
 }) {
   const { createManagedUser } = useAuth();
   const { toast } = useToast();
@@ -31,6 +37,12 @@ export function CreateUserModal({
   const [activeTab, setActiveTab] = useState<"basic" | "skills">("basic");
   const [skillInput, setSkillInput] = useState("");
   const [skills, setSkills] = useState<Record<string, boolean>>({});
+  const leadershipConflict = getLeadershipSlotConflict({
+    role: form.role,
+    orgId: form.orgId,
+    organizations,
+    profiles,
+  });
 
   const resetForm = () => {
     setForm({ fullName: "", email: "", password: "", role: "employee", orgId: "", workload: 0 });
@@ -61,6 +73,7 @@ export function CreateUserModal({
     if (!form.email.trim()) errs.email = "Required";
     if (!form.password || form.password.length < 6) errs.password = "Min 6 characters";
     if (!form.orgId) errs.orgId = "Required";
+    if (leadershipConflict) errs.role = leadershipConflict;
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -69,17 +82,34 @@ export function CreateUserModal({
     if (!validate()) return;
     setSaving(true);
     try {
-      await createManagedUser(
+      const requestedLeadershipRole = isManagedLeadershipRole(form.role);
+      const userId = await createManagedUser(
         form.email.trim(),
         form.password,
         {
           full_name: form.fullName.trim(),
-          role: form.role,
+          role: requestedLeadershipRole ? "employee" : form.role,
           org_id: form.orgId,
           employee_id: null,
           skills,
         },
       );
+
+      if (requestedLeadershipRole) {
+        const organization = organizations.find((candidate) => candidate.id === form.orgId);
+        if (!organization) throw new Error("The selected organization is no longer available.");
+        try {
+          await assignOrganizationLeadership(organization.id, {
+            headUserId: form.role === "assistant_head" ? organization.head_user_id : userId,
+            assistantHeadUserId: form.role === "assistant_head" ? userId : organization.assistant_head_user_id,
+          });
+        } catch (leadershipError) {
+          toast(`The account was created safely as Employee, but leadership was not assigned: ${leadershipError instanceof Error ? leadershipError.message : "unknown error"}`, "error");
+          onClose();
+          resetForm();
+          return;
+        }
+      }
 
       toast(`User "${form.fullName}" created successfully`, "success");
       onClose();
@@ -169,11 +199,12 @@ export function CreateUserModal({
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <FormField label="Role" required>
+              <FormField label="Role" error={errors.role || leadershipConflict || undefined} required>
                 <SelectInput
                   value={form.role}
                   onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}
                   options={ROLE_OPTIONS}
+                  hasError={Boolean(errors.role || leadershipConflict)}
                 />
               </FormField>
               <FormField label="Organization" error={errors.orgId} required>

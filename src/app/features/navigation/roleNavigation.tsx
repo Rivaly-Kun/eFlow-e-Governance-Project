@@ -14,6 +14,7 @@ import {
   UserMultiple,
 } from "@carbon/icons-react";
 import { getCoreRoleNavigation } from "../../components/Layout/coreWorkflowNavigation";
+import { ADMINISTRATIVE_NAVIGATION_SECTIONS } from "./navigationPermissions";
 
 export interface RoleNavItem {
   id: string;
@@ -33,16 +34,15 @@ const compatibilityNavigation: Record<string, RoleNavigation> = {
     defaultSection: "dashboard",
     navItems: [
       { id: "dashboard", icon: <Dashboard size={16} />, label: "Dashboard" },
-      { id: "projects", icon: <FolderOpen size={16} />, label: "Projects" },
-      { id: "tasks", icon: <Task size={16} />, label: "Tasks" },
+      { id: "projects", icon: <FolderOpen size={16} />, label: "Plans & Projects" },
+      { id: "tasks", icon: <Task size={16} />, label: "Task Oversight" },
       { id: "reports", icon: <ChartBar size={16} />, label: "Reports" },
       { id: "announcements", icon: <Notification size={16} />, label: "Announcements" },
       { id: "users", icon: <UserMultiple size={16} />, label: "User Management" },
       { id: "org_tree", icon: <Folder size={16} />, label: "Org Structure" },
-      { id: "permissions", icon: <Security size={16} />, label: "Permissions" },
-      { id: "audit", icon: <Report size={16} />, label: "Audit Log" },
+      { id: "audit", icon: <Report size={16} />, label: "Audit Trail" },
       { id: "administration", icon: <Settings size={16} />, label: "System Settings" },
-      { id: "migration", icon: <Renew size={16} />, label: "Migration Tool" },
+      { id: "migration", icon: <Renew size={16} />, label: "Data Tools" },
     ],
   },
   executive: {
@@ -144,6 +144,22 @@ const compatibilityNavigation: Record<string, RoleNavigation> = {
 
 export function getRoleNavigation(role: string): RoleNavigation {
   return getCoreRoleNavigation(role) || compatibilityNavigation[role] || compatibilityNavigation.superadmin;
+}
+
+/**
+ * Core workspaces keep their stable role manifest. Permission-managed roles
+ * can additionally receive administrative destinations through Role Defaults
+ * or a user-specific exception.
+ */
+export function getRoleNavigationCandidates(role: string): RoleNavItem[] {
+  const base = getRoleNavigation(role).navItems;
+  if (!["depthead", "teamleader", "employee"].includes(role)) return base;
+  const existing = new Set(base.map((item) => item.id));
+  const supplementalIds = new Set<string>(ADMINISTRATIVE_NAVIGATION_SECTIONS);
+  const supplemental = compatibilityNavigation.superadmin.navItems.filter(
+    (item) => supplementalIds.has(item.id) && !existing.has(item.id),
+  );
+  return [...base, ...supplemental];
 }
 
 export function getDefaultSection(role: string): string {

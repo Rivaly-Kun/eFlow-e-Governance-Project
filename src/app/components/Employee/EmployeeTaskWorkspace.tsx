@@ -13,12 +13,26 @@ import {
   type Notification,
 } from "../../services/notificationService";
 import { useProjectsData } from "../../hooks/useSupabaseData";
+import { TaskDetailDrawer } from "../workflow/TaskDetailDrawer";
+import { useNotificationNavigationIntent } from "../../features/notifications";
 
 export function EmployeeTaskWorkspace() {
   const { tasks, loading } = useCurrentUserTasks();
   const { user, userProfile } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const { projects } = useProjectsData();
+  const [notificationTask, setNotificationTask] = useState<(typeof tasks)[number] | null>(null);
+
+  useNotificationNavigationIntent(
+    (intent) => intent.kind === "task",
+    (intent) => {
+      if (loading) return false;
+      const match = tasks.find((task) => task.id === intent.taskId);
+      if (match) setNotificationTask(match);
+      return true;
+    },
+    [loading, tasks],
+  );
 
   useEffect(() => {
     if (!user?.id) {
@@ -126,6 +140,13 @@ export function EmployeeTaskWorkspace() {
           onSubmit={submitTask}
         />
       )}
+      <TaskDetailDrawer
+        task={notificationTask}
+        onClose={() => setNotificationTask(null)}
+        canPostProgress
+        canDiscuss
+        onChanged={() => {}}
+      />
     </div>
   );
 }

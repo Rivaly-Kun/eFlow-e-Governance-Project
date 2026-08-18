@@ -61,7 +61,7 @@ export function SystemSettings() {
   return (
     <div>
       <div className="text-[11px] font-['Lexend:Regular',_sans-serif] text-neutral-400 mb-3">
-        Super Admin <span className="mx-1.5">/</span> <span className="text-neutral-700">Settings</span>
+        Administration <span className="mx-1.5">/</span> <span className="text-neutral-700">Settings</span>
       </div>
 
       <h2 className="font-['Lexend:SemiBold',_sans-serif] font-semibold text-[20px] text-neutral-900 mb-6">

@@ -69,6 +69,15 @@ begin
   from public.tasks
   where linked_project_id = p_project_id and deleted_at is null;
 
+  -- Clear both planning links in the same row update. Relying on the two
+  -- independent FK actions during project deletion creates a transient state
+  -- where linked_project_id is null but milestone_id is still populated; the
+  -- task planning guard correctly rejects that inconsistent intermediate row.
+  update public.tasks
+  set linked_project_id = null,
+      milestone_id = null
+  where linked_project_id = p_project_id;
+
   insert into public.audit_events (
     actor_id, actor_name, entity_type, entity_id, action, reason,
     before_data, after_data, org_id

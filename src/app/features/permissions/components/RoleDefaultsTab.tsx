@@ -1,0 +1,120 @@
+import { useCallback, useEffect, useState } from "react";
+import { Check, LockKeyhole, MonitorCog, ShieldCheck } from "lucide-react";
+import { useToast } from "../../../components/ui/Toast";
+import { ACTION_PERMISSION_KEYS, MANAGED_ROLES, PAGE_PERMISSION_KEYS, PERMISSION_LABELS } from "../constants";
+import { rolePermissionAllowed } from "../selectors";
+import { fetchRolePermissions, setRolePermission } from "../services/permissionService";
+import type { RolePermissionRow } from "../types";
+
+function PermissionSection({
+  title,
+  description,
+  permissions,
+  rows,
+  onToggle,
+}: {
+  title: string;
+  description: string;
+  permissions: readonly string[];
+  rows: RolePermissionRow[];
+  onToggle: (role: string, permission: string) => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
+      <div className="flex items-start gap-3 border-b border-neutral-100 bg-neutral-50/70 px-5 py-4">
+        <div className="rounded-xl border border-neutral-200 bg-white p-2 text-neutral-700">
+          {title === "Page access" ? <MonitorCog size={17} /> : <ShieldCheck size={17} />}
+        </div>
+        <div>
+          <h3 className="text-[14px] font-semibold text-neutral-900">{title}</h3>
+          <p className="mt-0.5 text-[11px] text-neutral-500">{description}</p>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px]">
+          <thead>
+            <tr className="border-b border-neutral-100">
+              <th className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.13em] text-neutral-400">Capability</th>
+              {MANAGED_ROLES.map((role) => (
+                <th key={role.key} className="px-4 py-3 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-400">{role.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {permissions.map((permission) => (
+              <tr key={permission} className="border-b border-neutral-50 last:border-0 hover:bg-neutral-50/60">
+                <td className="px-5 py-3">
+                  <div className="text-[12px] font-medium text-neutral-900">{PERMISSION_LABELS[permission as keyof typeof PERMISSION_LABELS]}</div>
+                  <div className="mt-0.5 font-mono text-[9.5px] text-neutral-400">{permission}</div>
+                </td>
+                {MANAGED_ROLES.map((role) => {
+                  const enabled = rolePermissionAllowed(role.key, permission, rows);
+                  const locked = role.key === "super_admin";
+                  return (
+                    <td key={role.key} className="px-4 py-3 text-center">
+                      <button
+                        type="button"
+                        disabled={locked}
+                        onClick={() => onToggle(role.key, permission)}
+                        className={`relative h-6 w-11 rounded-full transition-all duration-200 ${enabled ? "bg-neutral-900" : "bg-neutral-200"} ${locked ? "cursor-not-allowed opacity-55" : "hover:scale-105"}`}
+                        title={locked ? "Super Admin access is immutable" : enabled ? "Allowed — click to deny" : "Denied — click to allow"}
+                      >
+                        <span className={`absolute top-1 flex h-4 w-4 items-center justify-center rounded-full bg-white shadow-sm transition-transform duration-200 ${enabled ? "translate-x-6" : "translate-x-1"}`}>
+                          {enabled ? <Check size={9} className="text-neutral-900" /> : null}
+                        </span>
+                      </button>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+export function RoleDefaultsTab() {
+  const [rows, setRows] = useState<RolePermissionRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  const load = useCallback(async () => {
+    setRows(await fetchRolePermissions());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const toggle = async (role: string, permission: string) => {
+    if (role === "super_admin") {
+      toast("Super Admin core access cannot be revoked.", "info");
+      return;
+    }
+    const next = !rolePermissionAllowed(role, permission, rows);
+    try {
+      await setRolePermission(role, permission, next);
+      await load();
+      toast(`${MANAGED_ROLES.find((item) => item.key === role)?.label || role} default updated.`, "success");
+    } catch (error: any) {
+      toast(error?.message || "Failed to update the role default.", "error");
+    }
+  };
+
+  if (loading) return <div className="h-64 animate-pulse rounded-2xl border border-neutral-200 bg-white" />;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3">
+        <LockKeyhole size={17} className="mt-0.5 shrink-0 text-blue-700" />
+        <div>
+          <div className="text-[12px] font-semibold text-blue-950">Role defaults are the baseline</div>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-blue-800/80">Individual allows or denies can be added from User Access. Those exceptions never change anyone else with the same role.</p>
+        </div>
+      </div>
+      <PermissionSection title="Page access" description="Controls which workspaces appear and whether direct navigation is allowed." permissions={PAGE_PERMISSION_KEYS} rows={rows} onToggle={toggle} />
+      <PermissionSection title="Actions" description="Controls what a user can do after entering an authorized workspace." permissions={ACTION_PERMISSION_KEYS} rows={rows} onToggle={toggle} />
+    </div>
+  );
+}

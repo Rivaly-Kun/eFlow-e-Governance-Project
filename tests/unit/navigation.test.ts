@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { getRoleNavigation } from "../../src/app/features/navigation/roleNavigation";
+import { getRoleNavigation, getRoleNavigationCandidates } from "../../src/app/features/navigation/roleNavigation";
+import { canOpenNavigationSection, getNavigationPermission } from "../../src/app/features/navigation/navigationPermissions";
 
 describe("role navigation compatibility", () => {
   it("keeps active workflow section identifiers and defaults stable", () => {
@@ -37,5 +38,35 @@ describe("role navigation compatibility", () => {
     expect(getRoleNavigation("councilor_pad").defaultSection).toBe("councilor");
     expect(getRoleNavigation("finance").defaultPages?.liquidation).toBe("Receipt Verification");
     expect(getRoleNavigation("missing").defaultSection).toBe("dashboard");
+  });
+
+  it("applies the same entitlement to sidebar and direct page resolution", () => {
+    const allowed = new Set(["navigation.projects"]);
+    const can = (permission: string) => allowed.has(permission);
+    expect(canOpenNavigationSection("depthead", "projects", can)).toBe(true);
+    expect(canOpenNavigationSection("depthead", "reports", can)).toBe(false);
+    expect(getNavigationPermission("depthead", "reports")).toBe("navigation.reports");
+    expect(canOpenNavigationSection("depthead", "dashboard", can)).toBe(true);
+    expect(canOpenNavigationSection("executive", "portfolio", () => false)).toBe(true);
+  });
+
+  it("moves permissions into User Management without changing the legacy route contract", () => {
+    const superAdmin = getRoleNavigation("superadmin");
+    expect(superAdmin.navItems.some((item) => item.id === "permissions")).toBe(false);
+    expect(superAdmin.navItems.some((item) => item.id === "users")).toBe(true);
+    expect(getNavigationPermission("superadmin", "permissions")).toBe("navigation.user_management");
+  });
+
+  it("offers administrative destinations to permission-managed roles", () => {
+    const candidates = getRoleNavigationCandidates("depthead");
+    expect(candidates.some((item) => item.id === "users")).toBe(true);
+    expect(candidates.some((item) => item.id === "org_tree")).toBe(true);
+    expect(candidates.some((item) => item.id === "migration")).toBe(true);
+    expect(candidates.filter((item) => canOpenNavigationSection(
+      "depthead",
+      item.id,
+      (permission) => permission === "navigation.user_management",
+    )).map((item) => item.id)).toContain("users");
+    expect(getRoleNavigationCandidates("executive")).toEqual(getRoleNavigation("executive").navItems);
   });
 });

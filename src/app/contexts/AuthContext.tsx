@@ -8,7 +8,14 @@ import React, {
 } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
-import { fetchEffectivePermissions } from '../services/permissionService';
+import {
+  fetchEffectivePermissions,
+  resolvePermissions,
+} from '../services/permissionService';
+import {
+  PERMISSIONS_CHANGED_EVENT,
+  PERMISSIONS_CHANGED_STORAGE_KEY,
+} from '../features/permissions/constants';
 import { controlPanelFetch } from '../shared/controlPanelClient';
 import type { UserProfile, UserRole } from '../types';
 
@@ -79,17 +86,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [permissions, setPermissions] = useState<Set<string>>(new Set());
   const activeUserIdRef = useRef<string | null>(null);
 
-  // Load effective permissions whenever the signed-in profile (id/role) changes.
+  // Load effective permissions whenever the signed-in profile changes, then
+  // keep role defaults and this user's overrides live across open clients.
   useEffect(() => {
     let active = true;
     if (!userProfile?.id) {
       setPermissions(new Set());
       return;
     }
-    fetchEffectivePermissions(userProfile.id, userProfile.role)
-      .then((perms) => { if (active) setPermissions(perms); })
-      .catch(() => { if (active) setPermissions(new Set()); });
-    return () => { active = false; };
+    const userId = userProfile.id;
+    const role = userProfile.role;
+    setPermissions(resolvePermissions(role, [], []));
+    const refreshPermissions = () => {
+      void fetchEffectivePermissions(userId, role)
+        .then((perms) => { if (active) setPermissions(perms); })
+        .catch(() => { if (active) setPermissions(resolvePermissions(role, [], [])); });
+    };
+    refreshPermissions();
+
+    const channel = supabase
+      .channel(`effective-access:${userId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'role_permissions', filter: `role=eq.${role}` }, refreshPermissions)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_permission_overrides', filter: `user_id=eq.${userId}` }, refreshPermissions)
+      .subscribe();
+
+    const refreshFromAppEvent = () => refreshPermissions();
+    const refreshFromStorage = (event: StorageEvent) => {
+      if (event.key === PERMISSIONS_CHANGED_STORAGE_KEY) refreshPermissions();
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshPermissions();
+    };
+    window.addEventListener(PERMISSIONS_CHANGED_EVENT, refreshFromAppEvent);
+    window.addEventListener('storage', refreshFromStorage);
+    window.addEventListener('focus', refreshFromAppEvent);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      active = false;
+      window.removeEventListener(PERMISSIONS_CHANGED_EVENT, refreshFromAppEvent);
+      window.removeEventListener('storage', refreshFromStorage);
+      window.removeEventListener('focus', refreshFromAppEvent);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      void supabase.removeChannel(channel);
+    };
   }, [userProfile?.id, userProfile?.role]);
 
   const can = useCallback(
@@ -302,9 +342,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUserProfile(null);
         return;
       }
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: 'local' });
     } catch (err: any) {
       setError('Failed to sign out. Please try again.');
+    } finally {
+      activeUserIdRef.current = null;
+      setUser(null);
+      setUserProfile(null);
+      setPermissions(new Set());
     }
   }, [userProfile]);
 

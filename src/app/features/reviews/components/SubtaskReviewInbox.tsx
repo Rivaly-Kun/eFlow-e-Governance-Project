@@ -16,8 +16,15 @@ import {
 import type { SubtaskReviewItem } from "../../subtasks/types";
 import { SubtaskEvidenceLink } from "../../subtasks/components/SubtaskEvidenceLink";
 import { ReviewKindSwitch } from "./ReviewKindSwitch";
+import type { NotificationNavigationIntent } from "../../notifications";
 
-export function SubtaskReviewInbox({ onShowTasks }: { onShowTasks: () => void }) {
+export function SubtaskReviewInbox({
+  onShowTasks,
+  focus,
+}: {
+  onShowTasks: () => void;
+  focus?: NotificationNavigationIntent | null;
+}) {
   const { user, userProfile } = useAuth();
   const { toast } = useToast();
   const [items, setItems] = useState<SubtaskReviewItem[]>([]);
@@ -56,6 +63,16 @@ export function SubtaskReviewInbox({ onShowTasks }: { onShowTasks: () => void })
   }, [filtered, selectedId]);
 
   const selected = filtered.find((item) => item.subtask.id === selectedId) || null;
+
+  useEffect(() => {
+    if (!focus || loading || items.length === 0) return;
+    const label = focus.entityLabel?.trim().toLowerCase();
+    const match = items.find((item) =>
+      (!focus.taskId || item.subtask.taskId === focus.taskId)
+      && (!label || item.subtask.title.trim().toLowerCase() === label),
+    );
+    if (match) setSelectedId(match.subtask.id);
+  }, [focus, items, loading]);
   const decide = async (approve: boolean) => {
     if (!selected) return;
     setDeciding(true);

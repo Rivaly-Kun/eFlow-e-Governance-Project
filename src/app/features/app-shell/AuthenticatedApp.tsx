@@ -6,6 +6,7 @@ import { Frame760 } from "../../components/Layout/SidebarDemo";
 import { LoadingScreen } from "./LoadingScreen";
 import { mapRoleToPanel } from "./role";
 import { runTaskMaintenance } from "../tasks";
+import { SessionSecurityProvider } from "../session-security";
 
 export function AuthenticatedApp() {
   const { user, userProfile, loading } = useAuth();
@@ -22,8 +23,8 @@ export function AuthenticatedApp() {
   if (!user || !userProfile) return <LoginPage />;
 
   return (
-    <>
+    <SessionSecurityProvider>
       <Frame760 role={mapRoleToPanel(userProfile.role)} />
-    </>
+    </SessionSecurityProvider>
   );
 }

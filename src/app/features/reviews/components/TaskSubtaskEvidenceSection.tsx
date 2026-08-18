@@ -97,7 +97,7 @@ export function TaskSubtaskEvidenceSection({
                 <header className="border-b border-neutral-100 bg-neutral-50/80 p-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-[9.5px] uppercase tracking-wider text-neutral-400">Subtask {index + 1} of {evidence.length}</div>
+                      <div className="text-[9.5px] uppercase tracking-wider text-neutral-400">Step {subtask.position + 1} · {index + 1} of {evidence.length}</div>
                       <h4 className="mt-0.5 text-[13px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">{subtask.title}</h4>
                       <div className="mt-1 flex items-center gap-1.5 text-[10.5px] text-neutral-500">
                         <UsersRound size={12} /> {names.join(", ") || "Assigned team member"}

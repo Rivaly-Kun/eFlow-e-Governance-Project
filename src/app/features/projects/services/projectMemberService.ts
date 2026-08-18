@@ -29,4 +29,29 @@ export async function removeProjectMember(projectId: string, userId: string): Pr
   await recordAudit({ entityType: 'project', entityId: projectId, action: 'project.member_removed', beforeData: { userId } });
 }
 
+export async function updateProjectMemberRole(projectId: string, userId: string, role: ProjectMember['role']): Promise<void> {
+  const { data: before, error: readError } = await supabase
+    .from('project_members')
+    .select('role')
+    .eq('project_id', projectId)
+    .eq('user_id', userId)
+    .single();
+  if (readError) throw readError;
+
+  const { error } = await supabase
+    .from('project_members')
+    .update({ role })
+    .eq('project_id', projectId)
+    .eq('user_id', userId);
+  if (error) throw error;
+
+  await recordAudit({
+    entityType: 'project',
+    entityId: projectId,
+    action: 'project.member_role_changed',
+    beforeData: { userId, role: before?.role },
+    afterData: { userId, role },
+  });
+}
+
 // ─── Milestones ──────────────────────────────────────────────────

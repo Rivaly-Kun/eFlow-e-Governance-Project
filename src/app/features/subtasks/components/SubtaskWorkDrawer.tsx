@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Calendar, CheckCircle2, Eye, ListChecks, UsersRound, X } from "lucide-react";
+import { Calendar, CheckCircle2, Eye, ListChecks, LockKeyhole, Unlink2, UsersRound, X } from "lucide-react";
 import type { Task } from "../../../services/taskService";
 import type { Subtask } from "../../../services/subtaskService";
 import { formatDate, ProgressBar, relativeDays } from "../../../components/workflow/primitives";
@@ -24,11 +24,13 @@ const statusMeta = {
 export function SubtaskWorkDrawer({
   subtask,
   parentTask,
+  prerequisite,
   readOnly = false,
   onClose,
 }: {
   subtask: Subtask | null;
   parentTask?: Task;
+  prerequisite?: Subtask | null;
   readOnly?: boolean;
   onClose: () => void;
 }) {
@@ -67,11 +69,24 @@ export function SubtaskWorkDrawer({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-['Lexend:Medium',_sans-serif] ${status.tone}`}>{status.label}</span>
+              <span className={`ml-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-['Lexend:Medium',_sans-serif] ${current.isStandalone ? "bg-violet-50 text-violet-700" : "bg-neutral-100 text-neutral-600"}`}>
+                {current.isStandalone ? <><Unlink2 size={10} /> Standalone</> : <>Ordered step</>}
+              </span>
               <h2 className="mt-2 text-[16px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">{current.title}</h2>
               <p className="mt-0.5 truncate text-[11px] text-neutral-500">Subtask of {parentTask?.title || "parent task"}</p>
             </div>
             <button onClick={onClose} className="p-1 text-neutral-400 hover:text-neutral-800"><X size={18} /></button>
           </div>
+
+          {prerequisite && !["for_review", "completed"].includes(current.status) && (
+            <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11.5px] text-amber-900">
+              <LockKeyhole size={15} className="mt-0.5 shrink-0" />
+              <div>
+                <strong className="font-['Lexend:SemiBold',_sans-serif]">Waiting for an earlier step.</strong>
+                <p className="mt-0.5 text-amber-700">“{prerequisite.title}” must be approved by the Team Lead before this subtask can start.</p>
+              </div>
+            </div>
+          )}
         </header>
 
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
@@ -105,7 +120,7 @@ export function SubtaskWorkDrawer({
               <span><strong className="font-['Lexend:SemiBold',_sans-serif]">Team Leader view.</strong> Progress is read-only here; the assigned employee owns these updates.</span>
             </div>
           ) : (
-            <SubtaskProgressForm subtask={current} onSaved={reload} />
+            <SubtaskProgressForm subtask={current} prerequisite={prerequisite} onSaved={reload} />
           )}
           <SubtaskProgressHistory updates={progressUpdates} />
           <SubtaskSubmissionHistory submissions={submissions} />

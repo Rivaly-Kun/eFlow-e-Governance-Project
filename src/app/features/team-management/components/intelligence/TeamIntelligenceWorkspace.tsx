@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BrainCircuit, Search, Sparkles, UsersRound } from "lucide-react";
+import { BrainCircuit, Search, Sparkles, Trophy, UsersRound } from "lucide-react";
 import { PageHeader } from "../../../../components/workflow/primitives";
 import { useEmployeeNotes } from "../../../../hooks/useFirebaseData";
 import type { Employee } from "../../../employees";
@@ -8,8 +8,10 @@ import { useDepartmentTeamAnalytics } from "../../hooks/useDepartmentTeamAnalyti
 import { EmployeeIntelligencePanel } from "./EmployeeIntelligencePanel";
 import { SkillCoveragePanel } from "./SkillCoveragePanel";
 import { TeamHealthOverview } from "./TeamHealthOverview";
+import { MonthlyLeaderboard } from "../../../productivity";
+import { TEAM_WORKLOAD_ELEVATED_THRESHOLD, TEAM_WORKLOAD_HIGH_THRESHOLD } from "../../constants";
 
-type View = "overview" | "people" | "skills";
+type View = "overview" | "people" | "skills" | "leaderboard";
 
 export function TeamIntelligenceWorkspace() {
   const analytics = useDepartmentTeamAnalytics();
@@ -46,7 +48,7 @@ export function TeamIntelligenceWorkspace() {
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex rounded-lg border border-neutral-200 bg-white p-1">
-          {[ { id: "overview", label: "Department health", icon: <Sparkles size={13} /> }, { id: "people", label: "Employee 360", icon: <UsersRound size={13} /> }, { id: "skills", label: "Skills coverage", icon: <BrainCircuit size={13} /> } ].map((tab) => <button key={tab.id} type="button" onClick={() => setView(tab.id as View)} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium transition ${view === tab.id ? "bg-neutral-900 text-white" : "text-neutral-500 hover:bg-neutral-50"}`}>{tab.icon}{tab.label}</button>)}
+          {[ { id: "overview", label: "Department health", icon: <Sparkles size={13} /> }, { id: "people", label: "Employee 360", icon: <UsersRound size={13} /> }, { id: "skills", label: "Skills coverage", icon: <BrainCircuit size={13} /> }, { id: "leaderboard", label: "Monthly contribution", icon: <Trophy size={13} /> } ].map((tab) => <button key={tab.id} type="button" onClick={() => setView(tab.id as View)} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium transition ${view === tab.id ? "bg-neutral-900 text-white" : "text-neutral-500 hover:bg-neutral-50"}`}>{tab.icon}{tab.label}</button>)}
         </div>
         {view === "people" && <div className="relative"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search people or skills…" className="h-9 w-64 rounded-lg border border-neutral-200 bg-white pl-9 pr-3 text-[11px] outline-none focus:border-neutral-400" /></div>}
       </div>
@@ -56,7 +58,7 @@ export function TeamIntelligenceWorkspace() {
       {view === "people" && (
         <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[250px_minmax(0,1fr)]">
           <aside className="rounded-xl border border-neutral-200 bg-white p-2 xl:sticky xl:top-4">
-            {filteredEmployees.map((employee) => { const metric = analytics.memberMetrics.find((row) => row.employeeId === employee.id); return <button key={employee.id} type="button" onClick={() => setSelectedEmployeeId(employee.id)} className={`mb-1 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition ${selectedEmployeeId === employee.id ? "bg-neutral-100" : "hover:bg-neutral-50"}`}><div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-neutral-900 text-[9px] font-medium text-white">{employee.initials || "??"}</div><div className="min-w-0 flex-1"><div className="truncate text-[10.5px] font-medium text-neutral-800">{employee.name}</div><div className="truncate text-[9px] text-neutral-400">{employee.jobTitle}</div></div><span className={`text-[9.5px] font-medium ${metric && metric.workloadSignal >= 80 ? "text-red-600" : metric && metric.workloadSignal >= 55 ? "text-amber-600" : "text-emerald-600"}`}>{metric?.workloadSignal ?? 0}</span></button>; })}
+            {filteredEmployees.map((employee) => { const metric = analytics.memberMetrics.find((row) => row.employeeId === employee.id); return <button key={employee.id} type="button" onClick={() => setSelectedEmployeeId(employee.id)} className={`mb-1 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition ${selectedEmployeeId === employee.id ? "bg-neutral-100" : "hover:bg-neutral-50"}`}><div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-neutral-900 text-[9px] font-medium text-white">{employee.initials || "??"}</div><div className="min-w-0 flex-1"><div className="truncate text-[10.5px] font-medium text-neutral-800">{employee.name}</div><div className="truncate text-[9px] text-neutral-400">{employee.jobTitle}</div></div><span className={`text-[9.5px] font-medium ${metric && metric.workloadSignal >= TEAM_WORKLOAD_HIGH_THRESHOLD ? "text-red-600" : metric && metric.workloadSignal >= TEAM_WORKLOAD_ELEVATED_THRESHOLD ? "text-amber-600" : "text-emerald-600"}`}>{metric?.workloadSignal ?? 0}</span></button>; })}
             {filteredEmployees.length === 0 && <p className="py-10 text-center text-[10.5px] text-neutral-400">No matching people.</p>}
           </aside>
           {selectedEmployee && selectedMetric ? <EmployeeIntelligencePanel employee={selectedEmployee} metric={selectedMetric} note={notes[selectedEmployee.id]} storedSkills={storedSkillsFor(selectedEmployee)} facts={analytics.facts} tasks={analytics.tasks} updatedBy={analytics.userProfile?.uid} /> : <div className="rounded-xl border border-dashed border-neutral-200 py-20 text-center text-[12px] text-neutral-400">Select an employee.</div>}
@@ -64,6 +66,7 @@ export function TeamIntelligenceWorkspace() {
       )}
 
       {view === "skills" && <SkillCoveragePanel rows={skills} />}
+      {view === "leaderboard" && <div className="space-y-3"><div className="rounded-xl border border-violet-100 bg-violet-50 px-4 py-3 text-[10px] leading-5 text-violet-700"><strong>Governance note:</strong> this ranking is a recognition and supervision aid. It is not added to the AI employee-recommendation inputs and must not be used as the sole assignment or personnel decision signal.</div><MonthlyLeaderboard employees={analytics.deptEmployees} tasks={analytics.tasks} facts={analytics.facts} currentUserId={analytics.userProfile?.id || analytics.userProfile?.uid} /></div>}
     </div>
   );
 }

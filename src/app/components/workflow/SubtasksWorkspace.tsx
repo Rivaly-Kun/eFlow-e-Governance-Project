@@ -11,12 +11,15 @@ import {
   ChevronRight,
   Eye,
   ShieldCheck,
+  LockKeyhole,
+  Unlink2,
 } from "lucide-react";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTasksData } from "../../hooks/useSupabaseData";
 import { rowToSubtask, type Subtask } from "../../services/subtaskService";
 import { SubtaskWorkDrawer } from "../../features/subtasks/components/SubtaskWorkDrawer";
+import { useNotificationNavigationIntent } from "../../features/notifications";
 import type { Task } from "../../services/taskService";
 import {
   PageHeader,
@@ -29,6 +32,10 @@ import {
 } from "./primitives";
 import { TaskStatusBadge, PriorityPill } from "./StatusBadges";
 import { TaskDetailDrawer } from "./TaskDetailDrawer";
+import {
+  getSequentialStepNumber,
+  getSubtaskPrerequisite,
+} from "../../features/subtasks/selectors/sequencing";
 
 export function SubtasksWorkspace() {
   const { user } = useAuth();
@@ -40,6 +47,21 @@ export function SubtasksWorkspace() {
   const [activeTaskDetail, setActiveTaskDetail] = useState<Task | null>(null);
   const [activeSubtask, setActiveSubtask] = useState<(Subtask & { parentTask?: Task }) | null>(null);
 
+  useNotificationNavigationIntent(
+    (intent) => intent.kind === "subtask",
+    (intent) => {
+      if (loading || tasksLoading) return false;
+      const label = intent.entityLabel?.trim().toLowerCase();
+      const match = subtasks.find((subtask) =>
+        (!intent.taskId || subtask.taskId === intent.taskId)
+        && (!label || subtask.title.trim().toLowerCase() === label),
+      );
+      if (match) setActiveSubtask(match);
+      return true;
+    },
+    [loading, tasksLoading, subtasks],
+  );
+
   useEffect(() => {
     if (!user?.id) return;
 
@@ -49,7 +71,8 @@ export function SubtasksWorkspace() {
         const { data, error } = await supabase
           .from("subtasks")
           .select("*")
-          .order("created_at", { ascending: false });
+          .order("task_id", { ascending: true })
+          .order("position", { ascending: true });
 
         if (error) throw error;
 
@@ -136,7 +159,10 @@ export function SubtasksWorkspace() {
       }
       map.get(key)!.subtasks.push(st);
     });
-    return Array.from(map.values());
+    return Array.from(map.values()).map((group) => ({
+      ...group,
+      subtasks: [...group.subtasks].sort((a, b) => a.position - b.position),
+    }));
   }, [filtered]);
 
   const totalCount = subtasks.length;
@@ -247,7 +273,10 @@ export function SubtasksWorkspace() {
 
                 {/* Subtask items */}
                 <div className="space-y-2">
-                  {group.subtasks.map((st) => (
+                  {group.subtasks.map((st) => {
+                    const prerequisite = getSubtaskPrerequisite(st, subtasks);
+                    const stepNumber = getSequentialStepNumber(st, subtasks);
+                    return (
                     <button
                       type="button"
                       key={st.id}
@@ -255,6 +284,8 @@ export function SubtasksWorkspace() {
                       className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
                         st.isCompleted
                           ? "bg-neutral-50/70 border-neutral-100"
+                          : prerequisite
+                            ? "border-neutral-200 bg-neutral-100/80 hover:bg-neutral-100"
                           : "bg-white border-neutral-200 hover:border-neutral-300"
                       }`}
                     >
@@ -277,6 +308,23 @@ export function SubtasksWorkspace() {
                         {st.title}
                       </span>
 
+                      <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8.5px] font-semibold uppercase tracking-wide ${
+                        st.isStandalone
+                          ? "border-violet-200 bg-violet-50 text-violet-700"
+                          : "border-neutral-200 bg-neutral-50 text-neutral-500"
+                      }`}>
+                        {st.isStandalone ? <span className="inline-flex items-center gap-1"><Unlink2 size={9} /> Standalone</span> : `Step ${stepNumber}`}
+                      </span>
+
+                      {prerequisite && (
+                        <span
+                          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-neutral-200 px-2 py-0.5 text-[9px] text-neutral-600"
+                          title={`Complete “${prerequisite.title}” first`}
+                        >
+                          <LockKeyhole size={9} /> Step {getSequentialStepNumber(prerequisite, subtasks)} first
+                        </span>
+                      )}
+
                       {st.source === "ai_extracted" && (
                         <span className="inline-flex items-center gap-0.5 text-[9px] uppercase tracking-wider text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full font-['Lexend:SemiBold',_sans-serif] shrink-0">
                           <Sparkles size={9} /> AI Extracted
@@ -290,7 +338,7 @@ export function SubtasksWorkspace() {
                       }`}>{st.status.replace("_", " ")}</span>
                       <Eye size={14} className="shrink-0 text-neutral-400" />
                     </button>
-                  ))}
+                  );})}
                 </div>
               </Card>
             );
@@ -309,6 +357,7 @@ export function SubtasksWorkspace() {
       <SubtaskWorkDrawer
         subtask={activeSubtask}
         parentTask={activeSubtask?.parentTask}
+        prerequisite={activeSubtask ? getSubtaskPrerequisite(activeSubtask, subtasks) : null}
         onClose={() => setActiveSubtask(null)}
       />
     </div>

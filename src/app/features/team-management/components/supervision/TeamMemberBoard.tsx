@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, Clock3, Search, ShieldAlert } from "lucide-react";
 import type { Employee } from "../../../employees";
 import type { TeamMemberMetrics } from "../../types";
+import { TEAM_WORKLOAD_ELEVATED_THRESHOLD, TEAM_WORKLOAD_HIGH_THRESHOLD } from "../../constants";
 
 export function TeamMemberBoard({
   employees,
@@ -31,8 +32,8 @@ export function TeamMemberBoard({
         {filtered.map((employee) => {
           const metric = metricById.get(employee.id);
           if (!metric) return null;
-          const high = metric.workloadSignal >= 80;
-          const medium = metric.workloadSignal >= 55;
+          const high = metric.workloadSignal >= TEAM_WORKLOAD_HIGH_THRESHOLD;
+          const medium = metric.workloadSignal >= TEAM_WORKLOAD_ELEVATED_THRESHOLD;
           const selected = selectedEmployeeId === employee.id;
           return (
             <button key={employee.id} type="button" onClick={() => onSelect(employee.id)} className={`rounded-xl border bg-white p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm motion-reduce:transform-none ${selected ? "border-neutral-900 ring-1 ring-neutral-900/10" : "border-neutral-200 hover:border-neutral-300"}`}>

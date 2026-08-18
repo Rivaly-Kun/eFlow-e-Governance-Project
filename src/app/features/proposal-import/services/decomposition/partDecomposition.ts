@@ -9,6 +9,7 @@ import type {
 import { callDecompositionLLM } from "./llmClient";
 import { extractPartSections, type PartSection } from "./textAnalysis";
 import {
+  buildCompactEmployeesContext,
   getRecommendedValues,
   mapNamesToIds,
 } from "./recommendations";
@@ -16,12 +17,10 @@ import {
 export async function decomposeSinglePart(
   part: PartSection,
   employees?: Employee[],
-  _employeeNotes?: EmployeeNotesMap,
+  employeeNotes?: EmployeeNotesMap,
   onQueueUpdate?: (update: AiQueueUpdate) => void,
 ): Promise<ProposalDecompositionActivity> {
-  const employeeList = (employees || [])
-    .map((e) => `- ${e.name} (${e.id}): ${e.jobDescription || "no listed skills"}`)
-    .join("\n");
+  const employeeList = buildCompactEmployeesContext(employees || [], employeeNotes);
 
   const prompt = `Break down ONE section of a government project proposal into actionable tasks.
 
@@ -32,6 +31,16 @@ Schedule: "${part.schedule || "not specified"}"
 Available team:
 ${employeeList || "No employees provided — omit recommendedEmployeeIds."}
 
+Assignment rules:
+- The first recommended ID is the proposed Team Lead.
+- Choose the minimum sufficient team for EACH task: one person when that person can genuinely deliver it alone, or multiple people when the task needs complementary skills, parallel work, field coordination, documentation, facilitation, analysis, or review.
+- There is NO maximum team size. You may recommend every eligible department member when the work genuinely requires them. Do not default to one person and do not add unnecessary people.
+- When recommending one person, explicitly explain why a solo assignment is sufficient. When recommending a team, explain the distinct contribution of every selected member.
+- Match required skills to strengths and tags.
+- Treat weaknesses as assignment risks, never as positive skills.
+- Consider current workload and spread leadership when alternatives have similar task fit.
+- Do not use an equal quota or pick a weaker person merely for variety.
+
 Respond with JSON only, no preamble, no markdown fences:
 {
   "tasks": [{
@@ -39,8 +48,8 @@ Respond with JSON only, no preamble, no markdown fences:
     "estimatedDuration": "2 days",
     "requiredSkills": ["skill1", "skill2"],
     "priority": "high",
-    "recommendedEmployeeIds": ["exact-id-from-list-above"],
-    "recommendationReasoning": "Why this person fits, referencing their actual listed skills.",
+    "recommendedEmployeeIds": ["lead-exact-id", "support-exact-id-if-needed", "additional-exact-id-if-needed"],
+    "recommendationReasoning": "Why this team size is sufficient and what each selected person contributes, or why one person can deliver it solo.",
     "subtasks": ["step 1", "step 2", "step 3"]
   }]
 }

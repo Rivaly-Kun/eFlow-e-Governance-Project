@@ -4,18 +4,22 @@ import { ManualPlanBuilder, ProposalImport } from "../../proposal-import";
 import { useDeptDirectoryEmployees } from "../../employees";
 import { isTaskLead } from "../../tasks";
 import { ProjectTemplatesModal } from "../../work-templates";
-import { useProjectsData, useOrgs } from "../../../hooks/useSupabaseData";
+import { useProjectsData, useOrgs, useProfiles } from "../../../hooks/useSupabaseData";
 import { useTasks } from "../../../hooks/useFirebaseData";
 import { useAuth } from "../../../contexts/AuthContext";
 import * as UI from "../../../components/workflow/primitives";
 import { ProjectCard } from "./ProjectCard";
 import { ProjectDetail } from "./ProjectDetail";
-import type { ProjectScope } from "./model";
+import { ProposalPortfolio } from "./ProposalPortfolio";
+import { resolveProjectWorkspaceAccess, type ProjectScope } from "./model";
+import { buildProjectPortfolioSummary } from "../selectors/projectCommandSelectors";
+import { buildProposalPortfolioGroups, organizationTypeLabel, projectMatchesProposalQuery } from "../selectors/proposalPortfolioSelectors";
 
-export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eyebrow: string }) {
+export function ProjectsWorkspace({ scope, eyebrow, proposalGrouping = true, readOnly = false }: { scope: ProjectScope; eyebrow: string; proposalGrouping?: boolean; readOnly?: boolean }) {
   const { projects: dbProjects, loading: projectsLoading } = useProjectsData();
   const { tasks, loading: tasksLoading } = useTasks();
   const { orgs } = useOrgs();
+  const { profiles } = useProfiles();
   const { can, user, userProfile } = useAuth();
   const { deptEmployees } = useDeptDirectoryEmployees({
     scope: "exact",
@@ -31,24 +35,55 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
   const [query, setQuery] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("active");
   const [orgFilter, setOrgFilter] = React.useState("all");
+  const [orgTypeFilter, setOrgTypeFilter] = React.useState("all");
+  const [healthFilter, setHealthFilter] = React.useState("all");
+  const [ownerFilter, setOwnerFilter] = React.useState("all");
+  const [leadFilter, setLeadFilter] = React.useState("all");
+  const [dateFilter, setDateFilter] = React.useState("all");
+  const [view, setView] = React.useState<"grid" | "list">(() => window.localStorage.getItem("eflow-project-view") === "list" ? "list" : "grid");
+  const access = resolveProjectWorkspaceAccess(readOnly, can);
 
   const inScope = React.useMemo(() => {
-    if (scope.isSuperAdmin || scope.scopedOrgIds.length === 0) return dbProjects;
-    return dbProjects.filter((p) => !p.orgId || scope.scopedOrgIds.includes(p.orgId));
+    if (scope.isSuperAdmin || !scope.enforceOrgScope) return dbProjects;
+    if (scope.scopedOrgIds.length === 0) return [];
+    return dbProjects.filter((project) => Boolean(project.orgId && scope.scopedOrgIds.includes(project.orgId)));
   }, [dbProjects, scope]);
 
+  const summaries = React.useMemo(() => new Map(inScope.map((project) => [project.id, buildProjectPortfolioSummary(project, tasks)])), [inScope, tasks]);
   const filtered = React.useMemo(() => {
     let rows = inScope;
     if (statusFilter === "active") rows = rows.filter((p) => p.status !== "archived" && p.status !== "completed");
     else if (statusFilter === "archived") rows = rows.filter((p) => p.status === "archived");
     else if (statusFilter !== "all") rows = rows.filter((p) => p.status === statusFilter);
     if (scope.isSuperAdmin && orgFilter !== "all") rows = rows.filter((p) => p.orgId === orgFilter);
+    if (scope.isSuperAdmin && orgTypeFilter !== "all") {
+      const matchingOrgIds = new Set(orgs.filter((org) => org.org_type === orgTypeFilter).map((org) => org.id));
+      rows = rows.filter((project) => Boolean(project.orgId && matchingOrgIds.has(project.orgId)));
+    }
+    if (healthFilter === "empty") rows = rows.filter((project) => summaries.get(project.id)?.isEmpty);
+    else if (healthFilter !== "all") rows = rows.filter((project) => summaries.get(project.id)?.health === healthFilter);
+    if (ownerFilter !== "all") rows = rows.filter((project) => project.ownerId === ownerFilter);
+    if (leadFilter !== "all") rows = rows.filter((project) => summaries.get(project.id)?.leadIds.includes(leadFilter));
+    if (dateFilter !== "all") rows = rows.filter((project) => {
+      const summary = summaries.get(project.id);
+      if (dateFilter === "overdue") return summary?.health === "overdue";
+      if (dateFilter === "unscheduled") return !summary?.nextDeadline;
+      const deadline = summary?.nextDeadline ? new Date(summary.nextDeadline).getTime() : 0;
+      return dateFilter === "next30" && deadline >= Date.now() && deadline <= Date.now() + 30 * 86_400_000;
+    });
     if (query.trim()) {
       const q = query.toLowerCase();
-      rows = rows.filter((p) => p.title.toLowerCase().includes(q) || p.description.toLowerCase().includes(q));
+      rows = rows.filter((project) => projectMatchesProposalQuery(project, tasks, q));
     }
     return rows;
-  }, [inScope, statusFilter, orgFilter, query, scope.isSuperAdmin]);
+  }, [dateFilter, healthFilter, inScope, leadFilter, orgFilter, orgTypeFilter, orgs, ownerFilter, query, scope.isSuperAdmin, statusFilter, summaries, tasks]);
+
+  const proposalGroups = React.useMemo(
+    () => buildProposalPortfolioGroups(filtered, tasks),
+    [filtered, tasks],
+  );
+
+  React.useEffect(() => { window.localStorage.setItem("eflow-project-view", view); }, [view]);
 
   const detail = detailId ? dbProjects.find((p) => p.id === detailId) : null;
   const loading = projectsLoading || tasksLoading;
@@ -75,29 +110,37 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
         onBack={() => setDetailId(null)}
         onDeleted={() => setDetailId(null)}
         orgs={orgs}
-        canManage={can("projects.create")}
-        canArchive={can("projects.archive")}
-        canDelete={can("projects.delete")}
-        canReviewTasks={can("tasks.verify")}
+        canManage={access.canManage}
+        canArchive={access.canArchive}
+        canDelete={access.canDelete}
+        canReviewTasks={access.canReviewTasks}
+        canExport={access.canExport}
       />
     );
   }
 
   const active = inScope.filter((p) => p.status !== "archived");
-  const orgOptions = [{ value: "all", label: "All departments" }, ...orgs.map((o) => ({ value: o.id, label: o.name }))];
+  const orgOptions = [{ value: "all", label: "All organizations" }, ...orgs.filter((org) => org.is_active).map((org) => ({ value: org.id, label: `${org.name} · ${organizationTypeLabel(org.org_type)}` }))];
+  const ownerOptions = [{ value: "all", label: "All owners" }, ...profiles.filter((profile) => inScope.some((project) => project.ownerId === profile.id)).map((profile) => ({ value: profile.id, label: profile.full_name }))];
+  const leadIds = Array.from(new Set(Array.from(summaries.values()).flatMap((summary) => summary.leadIds)));
+  const leadOptions = [{ value: "all", label: "All Task Leads" }, ...profiles.filter((profile) => leadIds.includes(profile.id)).map((profile) => ({ value: profile.id, label: profile.full_name }))];
 
   return (
     <div className="p-6 sm:p-8 min-h-full">
       <UI.PageHeader
         eyebrow={eyebrow}
-        title="Projects"
-        subtitle={can("projects.create")
-          ? "Create, track, and manage projects from one operational workspace."
+        title={proposalGrouping ? "Proposals & Projects" : "Projects"}
+        subtitle={readOnly
+          ? "View organization proposals, programs, projects, delivery health, people, evidence, and reports without changing operational records."
+          : access.canCreate
+          ? proposalGrouping
+            ? "Manage complete proposals, their programs, operational projects, milestones, and delivery work from one workspace."
+            : "Create, track, and manage projects from one operational workspace."
           : "View the same operational projects, milestones, members, and tasks used by management."}
         actions={
-          can("projects.create") || canUseTemplates ? (
+          access.canCreate || (!readOnly && canUseTemplates) ? (
             <div className="flex flex-wrap items-center justify-end gap-2">
-              {can("projects.create") && (
+              {access.canCreate && (
               <button
                 onClick={() => setManualPlanOpen(true)}
                 className="inline-flex h-[34px] items-center gap-1.5 rounded-lg bg-neutral-900 px-3 py-2 text-[12px] font-['Lexend:Medium',_sans-serif] text-white transition-colors hover:bg-neutral-800"
@@ -106,7 +149,7 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
                 Build work plan
               </button>
               )}
-              {can("projects.create") && (
+              {access.canCreate && (
               <button
                 onClick={() => setImportOpen(true)}
                 className="inline-flex h-[34px] items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-700 transition-colors hover:bg-neutral-50"
@@ -115,7 +158,7 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
                 Import PDF with AI
               </button>
               )}
-              {canUseTemplates && (
+              {!readOnly && canUseTemplates && (
                 <button
                   onClick={() => setTemplatesOpen(true)}
                   className="inline-flex h-[34px] items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[12px] font-['Lexend:Medium',_sans-serif] text-violet-700 transition-colors hover:bg-violet-100"
@@ -129,7 +172,8 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      <div className={`grid grid-cols-2 gap-3 mb-4 ${proposalGrouping ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
+        {proposalGrouping && <UI.StatCard label="Visible proposals" value={proposalGroups.length} icon={<Icons.Files size={15} />} />}
         <UI.StatCard label="Active" value={active.filter((p) => p.status === "active").length} tone="info" icon={<Icons.FolderKanban size={15} />} />
         <UI.StatCard label="Planning" value={active.filter((p) => p.status === "planning").length} icon={<Icons.Flag size={15} />} />
         <UI.StatCard label="On hold" value={active.filter((p) => p.status === "on_hold").length} tone="warn" icon={<Icons.Target size={15} />} />
@@ -137,7 +181,7 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
       </div>
 
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <UI.SearchInput value={query} onChange={setQuery} placeholder="Search projects…" className="w-[260px]" />
+        <UI.SearchInput value={query} onChange={setQuery} placeholder={proposalGrouping ? "Search proposals, programs, or projects…" : "Search projects…"} className="w-[290px]" />
         <UI.WSelect
           value={statusFilter}
           onChange={setStatusFilter}
@@ -150,7 +194,13 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
             { value: "all", label: "All statuses" },
           ]}
         />
-        {scope.isSuperAdmin && <UI.WSelect value={orgFilter} onChange={setOrgFilter} options={orgOptions} />}
+        {scope.isSuperAdmin && <UI.WSelect value={orgTypeFilter} onChange={(value) => { setOrgTypeFilter(value); setOrgFilter("all"); }} options={[{ value: "all", label: "All organization types" }, { value: "department", label: "Departments" }, { value: "division", label: "Divisions" }, { value: "section", label: "Sections" }, { value: "unit", label: "Units" }, { value: "lgu", label: "LGU" }]} />}
+        {scope.isSuperAdmin && <UI.WSelect value={orgFilter} onChange={setOrgFilter} options={orgOptions.filter((option) => option.value === "all" || orgTypeFilter === "all" || orgs.find((org) => org.id === option.value)?.org_type === orgTypeFilter)} />}
+        <UI.WSelect value={healthFilter} onChange={setHealthFilter} options={[{ value: "all", label: "All health" }, { value: "empty", label: "Empty projects" }, { value: "on_track", label: "On track" }, { value: "due_soon", label: "Due soon" }, { value: "overdue", label: "Overdue" }, { value: "at_risk", label: "At risk" }, { value: "completed", label: "Completed" }]} />
+        <UI.WSelect value={ownerFilter} onChange={setOwnerFilter} options={ownerOptions} />
+        <UI.WSelect value={leadFilter} onChange={setLeadFilter} options={leadOptions} />
+        <UI.WSelect value={dateFilter} onChange={setDateFilter} options={[{ value: "all", label: "Any deadline" }, { value: "next30", label: "Due in 30 days" }, { value: "overdue", label: "Past due" }, { value: "unscheduled", label: "Unscheduled" }]} />
+        <div className="ml-auto flex rounded-lg border border-neutral-200 bg-white p-0.5"><button type="button" onClick={() => setView("grid")} className={`rounded-md p-1.5 ${view === "grid" ? "bg-neutral-900 text-white" : "text-neutral-400 hover:bg-neutral-50"}`} title="Grid view"><Icons.LayoutGrid size={13} /></button><button type="button" onClick={() => setView("list")} className={`rounded-md p-1.5 ${view === "list" ? "bg-neutral-900 text-white" : "text-neutral-400 hover:bg-neutral-50"}`} title="List view"><Icons.List size={13} /></button></div>
       </div>
 
       {filtered.length === 0 ? (
@@ -160,7 +210,7 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
             title={query ? "No matching projects" : "No projects yet"}
             description={query ? "Try a different search." : "Build a structured work plan or import a proposal to organize projects, milestones, and tasks."}
             action={
-              can("projects.create") && !query ? (
+              access.canCreate && !query ? (
                 <div className="flex items-center gap-2">
                   <UI.WButton icon={<Icons.Plus size={14} />} variant="primary" onClick={() => setManualPlanOpen(true)}>
                     Build work plan
@@ -173,15 +223,24 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
             }
           />
         </div>
+      ) : proposalGrouping ? (
+        <ProposalPortfolio
+          groups={proposalGroups}
+          tasks={tasks}
+          orgs={orgs}
+          profiles={profiles}
+          view={view}
+          onOpenProject={setDetailId}
+        />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        <div className={view === "grid" ? "grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3" : "space-y-2"}>
           {filtered.map((p) => (
-            <ProjectCard key={p.id} project={p} orgs={orgs} onOpen={() => setDetailId(p.id)} />
+            <ProjectCard key={p.id} project={p} tasks={tasks} orgs={orgs} profiles={profiles} view={view} onOpen={() => setDetailId(p.id)} />
           ))}
         </div>
       )}
 
-      {manualPlanOpen && (
+      {!readOnly && manualPlanOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-neutral-900/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="relative bg-white w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="flex-1 overflow-y-auto">
@@ -191,7 +250,7 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
         </div>
       )}
 
-      {importOpen && (
+      {!readOnly && importOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-neutral-900/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="relative bg-white w-full max-w-5xl h-[85vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             {/* Close button in top right of modal */}
@@ -211,15 +270,17 @@ export function ProjectsWorkspace({ scope, eyebrow }: { scope: ProjectScope; eye
         </div>
       )}
 
-      <ProjectTemplatesModal
-        open={templatesOpen}
-        onClose={() => setTemplatesOpen(false)}
-        orgId={userProfile?.departmentId || userProfile?.org_id || ""}
-        currentUserId={currentUserId}
-        canManageDepartment={canManageDepartmentTemplates}
-        leadingTasks={leadingTasks}
-        employees={deptEmployees}
-      />
+      {!readOnly && (
+        <ProjectTemplatesModal
+          open={templatesOpen}
+          onClose={() => setTemplatesOpen(false)}
+          orgId={userProfile?.departmentId || userProfile?.org_id || ""}
+          currentUserId={currentUserId}
+          canManageDepartment={canManageDepartmentTemplates}
+          leadingTasks={leadingTasks}
+          employees={deptEmployees}
+        />
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ from gateway_config import settings
 from routers.admin import router as admin_router
 from routers.ai import router as ai_router
 from routers.notifications import router as notifications_router
+from routers.backups import router as backups_router
 
 
 logging.basicConfig(
@@ -34,6 +35,7 @@ async def health():
 app.include_router(ai_router)
 app.include_router(admin_router)
 app.include_router(notifications_router)
+app.include_router(backups_router)
 
 
 if __name__ == "__main__":

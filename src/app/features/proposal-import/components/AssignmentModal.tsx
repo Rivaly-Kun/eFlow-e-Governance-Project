@@ -63,6 +63,11 @@ export function AssignmentModal({
   const draftLead = draftAssignment.leadId;
   const selectedLeader = employees.find((employee) => employee.id === draftLead);
 
+  const confirmAssignment = () => {
+    onConfirm([...draft], draftLead);
+    onClose();
+  };
+
   if (!open) return null;
 
   return (
@@ -264,7 +269,7 @@ export function AssignmentModal({
               Cancel
             </button>
             <button
-              onClick={() => onConfirm(draft, draftLead)}
+              onClick={confirmAssignment}
               className="px-4 py-2 bg-neutral-900 text-white text-[12px] font-['Lexend:SemiBold',_sans-serif] rounded-xl hover:bg-neutral-800 transition"
             >
               Confirm

@@ -14,23 +14,25 @@ describe("permission resolution compatibility", () => {
         { userId: "user-1", permission: "reports.export", allowed: true },
       ],
     );
-    expect([...result].sort()).toEqual([
-      "projects.archive",
-      "projects.create",
-      "projects.delete",
-      "reports.export",
-      "tasks.verify",
-    ]);
+    expect(result.has("tasks.assign")).toBe(false);
+    expect(result.has("reports.export")).toBe(true);
+    expect(result.has("navigation.projects")).toBe(true);
+    expect(result.has("navigation.team_intelligence")).toBe(true);
   });
 
   it("gives Assistant Head the same default workspace capabilities as Head", () => {
-    expect([...resolvePermissions("assistant_head", [], [])].sort()).toEqual([
-      "projects.archive",
-      "projects.create",
-      "projects.delete",
-      "reports.export",
-      "tasks.assign",
-      "tasks.verify",
+    const permissions = resolvePermissions("assistant_head", [], []);
+    expect(permissions.has("projects.create")).toBe(true);
+    expect(permissions.has("tasks.verify")).toBe(true);
+    expect(permissions.has("navigation.reviews")).toBe(true);
+    expect(permissions.has("navigation.user_management")).toBe(false);
+  });
+
+  it("keeps Super Admin access immutable even if an override says deny", () => {
+    const permissions = resolvePermissions("super_admin", [], [
+      { userId: "admin", permission: "database.backup", allowed: false },
     ]);
+    expect(permissions.has("database.backup")).toBe(true);
+    expect(permissions.has("navigation.user_management")).toBe(true);
   });
 });

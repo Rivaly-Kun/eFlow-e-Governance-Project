@@ -9,6 +9,7 @@ import { KanbanBoardView } from "./KanbanBoardView";
 import { ListBoardView } from "./ListBoardView";
 import { TimelineView } from "./TimelineView";
 import { useMondayBoardController } from "./useMondayBoardController";
+import { useNotificationNavigationIntent } from "../../../notifications";
 
 export function MondayBoard({
   tasks,
@@ -50,6 +51,19 @@ export function MondayBoard({
     handleUndoConfirm, handleTaskEditorSave, handleTaskDeleteRequest,
     handleTaskCancelRequest, handleTaskArchiveRequest, handleTaskEditorDelete,
   } = controller;
+
+  useNotificationNavigationIntent(
+    (intent) => role === "depthead" && intent.kind === "task",
+    (intent) => {
+      const match = tasks.find((task) => task.id === intent.taskId);
+      if (match) {
+        setRecordScope(match.archivedAt ? "archived" : "active");
+        openTaskEditor(match);
+      }
+      return true;
+    },
+    [role, tasks, openTaskEditor],
+  );
 
   return (
     <div className="w-full flex flex-col gap-5 font-['Lexend:Regular',_sans-serif]">

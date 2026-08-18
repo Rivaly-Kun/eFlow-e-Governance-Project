@@ -4,13 +4,13 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build --configLoader runner",
     "check": "tsc --noEmit",
     "dev": "concurrently --kill-others-on-fail --names gateway,web -c yellow,green \"npm run dev:gateway\" \"npm run dev:frontend\"",
     "dev:gateway": "python server/start.py",
     "dev:frontend": "vite",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest --configLoader runner run",
+    "test:watch": "vitest --configLoader runner",
     "test:e2e": "playwright test",
     "verify:client-secrets": "node scripts/verify-client-secrets.mjs",
     "verify:live-schema": "node scripts/verify-live-task-schema.mjs"

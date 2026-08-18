@@ -4,5 +4,7 @@ export { TaskSubtasksWidget } from "./components/TaskSubtasksWidget";
 export { SubtaskWorkDrawer } from "./components/SubtaskWorkDrawer";
 export { SubtaskProgressHistory } from "./components/SubtaskProgressHistory";
 export { SubtaskSubmissionHistory } from "./components/SubtaskSubmissionHistory";
+export { SubtaskSequenceControls } from "./components/sequencing/SubtaskSequenceControls";
 export * from "./services/subtaskWorkflowService";
 export type * from "./types";
+export * from "./selectors/sequencing";

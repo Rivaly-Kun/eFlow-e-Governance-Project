@@ -46,7 +46,7 @@ const CORE_WORKFLOW_NAVIGATION: Record<string, CoreRoleNavigation> = {
       {
         id: "projects",
         icon: <FolderOpen size={16} />,
-        label: "Projects",
+        label: "Plans & Projects",
         page: "Projects",
         group: "Department",
       },

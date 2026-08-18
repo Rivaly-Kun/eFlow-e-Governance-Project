@@ -13,14 +13,25 @@ import { AdminPermissions } from "./AdminPermissions";
 import { ProjectsWorkspace } from "../workflow/ProjectsWorkspace";
 import { ReportsWorkspace } from "../workflow/ReportsWorkspace";
 import { AdminTasks } from "./AdminTasks";
+import { useState } from "react";
+import { MonthlyLeaderboard } from "../../features/productivity";
+import { useDepartmentTeamAnalytics } from "../../features/team-management";
 
 // System-wide scope: super admin sees every org (empty scopedOrgIds = all).
 const ADMIN_SCOPE = { isSuperAdmin: true, scopedOrgIds: [] as string[] };
 function AdminProjects() {
-  return <ProjectsWorkspace scope={ADMIN_SCOPE} eyebrow="Administration · Projects" />;
+  return <ProjectsWorkspace scope={ADMIN_SCOPE} eyebrow="Administration · Planning Portfolio" readOnly />;
 }
 function AdminReports() {
-  return <ReportsWorkspace scope={ADMIN_SCOPE} eyebrow="Administration · Reports" />;
+  const [view, setView] = useState<"reports" | "contribution">("reports");
+  const analytics = useDepartmentTeamAnalytics();
+  return <div className="min-h-full"><div className="flex gap-1 border-b border-neutral-200 bg-white px-8 pt-4"><button type="button" onClick={() => setView("reports")} className={`rounded-t-lg px-4 py-2 text-[11px] font-medium ${view === "reports" ? "bg-neutral-900 text-white" : "text-neutral-500 hover:bg-neutral-50"}`}>System reports</button><button type="button" onClick={() => setView("contribution")} className={`rounded-t-lg px-4 py-2 text-[11px] font-medium ${view === "contribution" ? "bg-neutral-900 text-white" : "text-neutral-500 hover:bg-neutral-50"}`}>Monthly contribution</button></div>{view === "reports" ? <ReportsWorkspace scope={ADMIN_SCOPE} eyebrow="Administration · Reports" /> : <div className="p-6 sm:p-8"><MonthlyLeaderboard employees={analytics.allEmployees.filter((employee) => employee.id !== analytics.userProfile?.id)} tasks={analytics.tasks} facts={analytics.facts} currentUserId={analytics.userProfile?.id} allowDepartmentFilter /></div>}</div>;
+}
+function UserRoleDefaults() {
+  return <UserManagement initialTab="role-defaults" />;
+}
+function IndividualUserAccess() {
+  return <UserManagement initialTab="user-access" />;
 }
 
 // ─── Section → Page mapping ──────────────────────────────────────
@@ -30,6 +41,8 @@ const superAdminPages: Record<string, Record<string, React.ComponentType>> = {
   },
   users: {
     "All Users": UserManagement,
+    "Role Defaults": UserRoleDefaults,
+    "User Access": IndividualUserAccess,
   },
   org_tree: {
     "Org Structure": OrgTreeBuilder,
@@ -56,7 +69,7 @@ const superAdminPages: Record<string, Record<string, React.ComponentType>> = {
     "System Settings": SystemSettings,
   },
   migration: {
-    "Migration Tool": MigrationTool,
+    "Backup & Export": MigrationTool,
   },
   settings: {
     "System Settings": SystemSettings,
@@ -75,7 +88,7 @@ export const defaultPages: Record<string, string> = {
   audit: "Audit Log",
   permissions: "Permissions",
   administration: "System Settings",
-  migration: "Migration Tool",
+  migration: "Backup & Export",
   settings: "System Settings",
 };
 
@@ -91,7 +104,7 @@ export const superAdminSidebarContent: Record<
   users: {
     title: "User Management",
     sections: [
-      { title: "Management", items: [{ label: "All Users" }] },
+      { title: "Identity & Access", items: [{ label: "All Users" }, { label: "Role Defaults" }, { label: "User Access" }] },
     ],
   },
   org_tree: {
@@ -101,8 +114,8 @@ export const superAdminSidebarContent: Record<
     ],
   },
   migration: {
-    title: "Data Migration",
-    sections: [{ title: "Tools", items: [{ label: "Migration Tool" }] }],
+    title: "Data Tools",
+    sections: [{ title: "Tools", items: [{ label: "Backup & Export" }] }],
   },
   settings: {
     title: "Settings",

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Paperclip, Send } from "lucide-react";
+import { LockKeyhole, Paperclip, Send } from "lucide-react";
 import { BLOCKER_CATEGORIES } from "../../../services/taskDiscussionService";
 import type { Subtask } from "../../../services/subtaskService";
 import {
@@ -9,9 +9,11 @@ import {
 
 export function SubtaskProgressForm({
   subtask,
+  prerequisite,
   onSaved,
 }: {
   subtask: Subtask;
+  prerequisite?: Subtask | null;
   onSaved: () => void;
 }) {
   const [percent, setPercent] = useState(subtask.percentComplete);
@@ -24,6 +26,19 @@ export function SubtaskProgressForm({
   const [error, setError] = useState("");
 
   useEffect(() => setPercent(subtask.percentComplete), [subtask.id, subtask.percentComplete]);
+
+  if (prerequisite && !["for_review", "completed"].includes(subtask.status)) {
+    return (
+      <div className="rounded-xl border border-neutral-200 bg-neutral-100 p-3">
+        <div className="flex items-center gap-2 text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-800">
+          <LockKeyhole size={14} /> This subtask is locked
+        </div>
+        <p className="mt-1 text-[11px] leading-relaxed text-neutral-600">
+          Complete and receive Team Leader approval for “{prerequisite.title}” first. This form will unlock automatically afterward.
+        </p>
+      </div>
+    );
+  }
 
   if (subtask.status === "for_review") {
     return (

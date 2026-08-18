@@ -1,8 +1,33 @@
 export interface ProjectScope {
-  /** super admin sees all orgs; dept head is limited to their subtree. */
+  /** Super Admin sees all organizations. */
   isSuperAdmin: boolean;
-  /** org ids the user may create/place projects in (empty = all for admin). */
+  /** Exact organization ids visible to a scoped management workspace. */
   scopedOrgIds: string[];
+  /** Employees rely on membership RLS; management uses an explicit exact scope. */
+  enforceOrgScope?: boolean;
+}
+
+export interface ProjectWorkspaceAccess {
+  canCreate: boolean;
+  canManage: boolean;
+  canArchive: boolean;
+  canDelete: boolean;
+  canReviewTasks: boolean;
+  canExport: boolean;
+}
+
+export function resolveProjectWorkspaceAccess(
+  readOnly: boolean,
+  hasPermission: (permission: string) => boolean,
+): ProjectWorkspaceAccess {
+  return {
+    canCreate: !readOnly && hasPermission("projects.create"),
+    canManage: !readOnly && hasPermission("projects.create"),
+    canArchive: !readOnly && hasPermission("projects.archive"),
+    canDelete: !readOnly && hasPermission("projects.delete"),
+    canReviewTasks: !readOnly && hasPermission("tasks.verify"),
+    canExport: hasPermission("reports.export"),
+  };
 }
 
 export const MILESTONE_STATUS_META: Record<string, { label: string; tone: string }> = {

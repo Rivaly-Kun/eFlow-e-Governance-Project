@@ -21,12 +21,20 @@ export const superadminSidebar: Record<string, SidebarContent> = {
         title: "User Management",
         sections: [
           {
-            title: "Management",
+            title: "Identity & Access",
             items: [
               {
                 icon: <Carbon.UserMultiple size={16} className="text-neutral-900" />,
                 label: "All Users",
                 isActive: true,
+              },
+              {
+                icon: <Carbon.Security size={16} className="text-neutral-900" />,
+                label: "Role Defaults",
+              },
+              {
+                icon: <Carbon.UserAccess size={16} className="text-neutral-900" />,
+                label: "User Access",
               },
             ],
           },
@@ -48,13 +56,13 @@ export const superadminSidebar: Record<string, SidebarContent> = {
         ],
       },
       projects: {
-        title: "Projects",
+        title: "Plans & Projects",
         sections: [
           { title: "Portfolio", items: [{ icon: <Carbon.FolderOpen size={16} className="text-neutral-900" />, label: "All Projects", isActive: true }] },
         ],
       },
       tasks: {
-        title: "Tasks",
+        title: "Task Oversight",
         sections: [
           { title: "Operations", items: [{ icon: <Carbon.Task size={16} className="text-neutral-900" />, label: "All Tasks", isActive: true }] },
         ],
@@ -78,7 +86,7 @@ export const superadminSidebar: Record<string, SidebarContent> = {
         ],
       },
       audit: {
-        title: "Audit Log",
+        title: "Audit Trail",
         sections: [
           { title: "Security", items: [{ icon: <Carbon.Report size={16} className="text-neutral-900" />, label: "Audit Log", isActive: true }] },
         ],
@@ -90,14 +98,14 @@ export const superadminSidebar: Record<string, SidebarContent> = {
         ],
       },
       migration: {
-        title: "Data Migration",
+        title: "Data Tools",
         sections: [
           {
             title: "Tools",
             items: [
               {
                 icon: <Carbon.Renew size={16} className="text-neutral-900" />,
-                label: "Migration Tool",
+                label: "Backup & Export",
                 isActive: true,
               },
             ],

@@ -1,6 +1,5 @@
 export * from "../../services/employeeService";
 export * from "../../services/employeeNotesService";
-export { EmployeePerformanceView } from "../../components/Employee/EmployeePerformanceView";
 export { ProfilePage } from "../../components/Employee/ProfilePage";
 export { useDeptDirectoryEmployees } from "./hooks/useDeptDirectoryEmployees";
 export * from "./components/core-work";

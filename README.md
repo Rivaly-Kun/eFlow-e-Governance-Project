@@ -6,6 +6,7 @@ eFlow is a role-based local-government work-management application built with Re
 
 - Role-specific workspaces for Super Admin, Department Head, Employee, Team Leader, Executive, Legislative, HRMO, Finance, and Settings users.
 - Project and milestone workspaces with members, task rollups, archive/restore behavior, filtering, and schedule-health calculation.
+- A shared Project Command Workspace with project editing, milestone sequencing, member-role management, operational task/milestone linking, complete ordered work hierarchy, review queue, activity timeline, and project-scoped CSV/PDF reports.
 - Complete reviewed-task lifecycle: assignment, dependencies, progress, delegated subtasks, evidence submission, versioned review attempts, changes requested, approval, completion, reopening, cancellation, reminders, notifications, and audit history.
 - Primary and backup reviewers, prevention of self-review, immutable submission evidence, and server-generated approval audit hashes.
 - Recurring task templates, reminder/escalation generation, reports, announcements, chat/calls, permissions, organization management, and data-health checks.
@@ -13,6 +14,11 @@ eFlow is a role-based local-government work-management application built with Re
 - Automatic Cloudflare Quick Tunnel discovery through Supabase `system_config`, so deployed clients receive rotated AI gateway URLs without a rebuild or manual Admin entry.
 - A shared FIFO AI queue: concurrent users receive queue positions while the local node processes one DeepSeek job at a time.
 - Privileged Admin user creation through the authenticated gateway, including unique placeholder employee IDs, recovery of incomplete Auth/profile creation, and cleanup after partial failures.
+- Unified User Management with Role Defaults, per-user access exceptions, page/action entitlements, audited cross-organization scope grants, and direct-route enforcement.
+- Super Admin Backup & Export with recent-password confirmation, server-only `pg_dump`, JSONL, schema/data SQL, SHA-256 manifests, optional AES-256 disaster-recovery archives, audit history, and automatic temporary-file cleanup.
+- Atomic drag/keyboard sequencing for numbered subtasks, preserving assignees, evidence, progress, submissions, and review history.
+- An approved-work monthly contribution leaderboard with Manila calendar periods, transparent delivery/quality/speed/collaboration scoring, historical snapshots, department filtering, Reports summaries, and a private employee score view. It is deliberately excluded from AI assignment inputs.
+- Cross-tab session protection that warns after 55 minutes of inactivity and signs out the local browser session at 60 minutes; background AI jobs, realtime traffic, and timers do not extend the session.
 
 ## Development
 
@@ -78,6 +84,7 @@ npm run check
 npm test
 npm run build
 npm run verify:client-secrets
+python -m unittest discover -s server/tests -p "test_*.py" -v
 ```
 
 After applying the task-flow migrations to the target Supabase project, verify the live API schema with `npm run verify:live-schema`.
@@ -101,14 +108,16 @@ Feature-owned application code lives under `src/app/features/`. Each feature exp
 - `work-templates`: the Projects-owned template workspace for recurring whole-task schedules and reusable subtask checklists, including personal/department sharing, leadership approval, editable assignment previews, and guarded merge-or-replace application.
 - `reviews`: reviewer authorization, review services, immutable submission history, inbox, and decision components.
 - `subtasks`: permission-aware subtask services and task checklist UI.
+- `session-security`: trusted human-activity tracking, cross-tab coordination, inactivity warning/countdown, and local-only one-hour sign-out.
+- `productivity`: approved-work Manila-month scoring, live and immutable snapshot readers, department leaderboard, employee self-view, and Reports summary components.
 - `ai`: Supabase-authenticated AI gateway client, dynamic Quick Tunnel endpoint discovery, AI-only runtime gating, FIFO job submission/polling, queue-position updates, model configuration, and common response handling.
 - `team-management`: the shared Department Head operations model for live task/subtask workload, attention signals, review quality, delivery health, skill coverage, safe lead/member reassignment, and AI-compatible employee coaching inputs. The persisted AI assignment fields remain `strengths`, `weaknesses`, `notes`, and `tags`; the clearer “Development areas” label still writes to `weaknesses` for compatibility.
 - `reports`: the Department Head report library for department operations, projects, full team/subtask contributions, review attempts, evidence, risks, and lifecycle history; exact-row CSV/PDF export; and an optional queue-aware DeepSeek management brief using only visible permission-scoped rows. The legacy shared Super Admin report workspace remains intact.
-- `projects`, `employees`, `announcements`: active workflow workspaces with project query/mutation/member/milestone operations, the manual/AI work-plan entry points and Projects-owned template library, PDS parser stages, employee core-work pages, and announcement inbox controllers kept in focused modules.
+- `projects`, `employees`, `announcements`: active workflow workspaces with the shared Project Command tabs, project query/mutation/member/milestone operations, the manual/AI work-plan entry points and Projects-owned template library, PDS parser stages, employee core-work pages, and announcement inbox controllers kept in focused modules.
 - `proposal-import`: PDF extraction, AI-required per-part/whole-document DeepSeek decomposition, hierarchy validation/repair of the same AI response, employee-scope selection, draft model, queue-aware controller hook, assignment UI, import cockpit, and a separate project/task commit operation. It contains no silent non-AI proposal fallback.
 - `role-department-head`, `role-executive`, `role-finance`, `role-hrmo`, `role-legislative`: role registries and focused page components, including committee, session, councilor, portfolio, finance, audit, and project-health submodules.
 - `chat-calls`: chat/call public API plus separate controller, channel-list, active-chat, reaction, and message-codec modules.
-- `administration`, `organization`, `permissions`, `audit`, `settings`: administrative boundaries, including componentized user management and organization-tree tooling.
+- `administration`, `organization`, `permissions`, `audit`, `settings`: administrative boundaries, including componentized identity/access management, secure Supabase Backup & Export, and organization-tree tooling.
 
 Generated design imports and reusable UI primitive collections can remain physically long when they already consist of small independent functions; application page controllers and service workflows should not.
 

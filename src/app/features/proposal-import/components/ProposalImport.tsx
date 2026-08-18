@@ -214,6 +214,9 @@ export default function ProposalImport({ onClose }: { onClose?: () => void }) {
             handleDraftUpdate(assignModalTaskKey, {
               assignedMemberIds: memberIds,
               leadMemberId: leadId,
+              assignmentException: undefined,
+              teamComposition: undefined,
+              reasoning: "Team assignment manually adjusted by the reviewing manager.",
             });
           }
         }}

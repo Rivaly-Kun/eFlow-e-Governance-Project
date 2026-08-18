@@ -82,7 +82,7 @@ describe("team analytics", () => {
     expect(member!.workloadSignal).toBeGreaterThan(member!.recordedWorkload);
   });
 
-  it("builds an actionable queue and separates vague schedules from overdue work", () => {
+  it("builds an actionable queue and resolves proposal-relative schedules", () => {
     const attention = buildTeamAttentionItems([
       task(),
       task({ id: "task-2", title: "Relative schedule", deadline: "Month 2", assigneeId: undefined, teamMemberIds: [] }),
@@ -90,7 +90,7 @@ describe("team analytics", () => {
 
     expect(attention.some((item) => item.kind === "overdue" && item.taskId === "task-1")).toBe(true);
     expect(attention.some((item) => item.kind === "blocked" && item.subtaskId === "subtask-1")).toBe(true);
-    expect(attention.some((item) => item.kind === "vague_schedule" && item.taskId === "task-2")).toBe(true);
+    expect(attention.some((item) => item.kind === "vague_schedule" && item.taskId === "task-2")).toBe(false);
     expect(attention.some((item) => item.kind === "unassigned" && item.taskId === "task-2")).toBe(true);
 
     const health = buildTeamHealthSummary([task()], facts, attention);

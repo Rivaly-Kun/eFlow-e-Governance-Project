@@ -1,8 +1,9 @@
 import { AlertTriangle, CheckCircle2, Clock3, Gauge, ShieldAlert, TimerReset } from "lucide-react";
 import type { TeamHealthSummary, TeamMemberMetrics } from "../../types";
+import { TEAM_WORKLOAD_ELEVATED_THRESHOLD, TEAM_WORKLOAD_HIGH_THRESHOLD } from "../../constants";
 
 export function TeamHealthOverview({ health, members }: { health: TeamHealthSummary; members: TeamMemberMetrics[] }) {
-  const overloaded = members.filter((member) => member.workloadSignal >= 80);
+  const overloaded = members.filter((member) => member.workloadSignal >= TEAM_WORKLOAD_HIGH_THRESHOLD);
   const activeWork = health.activeTasks + health.activeSubtasks;
   const riskWork = health.overdue + health.blocked + health.stalled;
   const riskRate = activeWork ? Math.min(100, Math.round((riskWork / activeWork) * 100)) : 0;
@@ -28,7 +29,7 @@ export function TeamHealthOverview({ health, members }: { health: TeamHealthSumm
         <h2 className="text-[13px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">Workload concentration</h2>
         <p className="mt-0.5 text-[10.5px] text-neutral-400">Derived signal—not a formal HR capacity rating.</p>
         <div className="mt-4 space-y-3">
-          {members.slice(0, 5).map((member) => <div key={member.employeeId}><div className="flex items-center justify-between gap-2"><span className="truncate text-[10.5px] font-medium text-neutral-700">{member.employeeName}</span><span className={member.workloadSignal >= 80 ? "text-[10px] text-red-600" : member.workloadSignal >= 55 ? "text-[10px] text-amber-600" : "text-[10px] text-emerald-600"}>{member.workloadSignal}</span></div><div className="mt-1 h-1.5 overflow-hidden rounded-full bg-neutral-100"><div className={`h-full rounded-full ${member.workloadSignal >= 80 ? "bg-red-500" : member.workloadSignal >= 55 ? "bg-amber-500" : "bg-emerald-500"}`} style={{ width: `${member.workloadSignal}%` }} /></div></div>)}
+          {members.slice(0, 5).map((member) => <div key={member.employeeId}><div className="flex items-center justify-between gap-2"><span className="truncate text-[10.5px] font-medium text-neutral-700">{member.employeeName}</span><span className={member.workloadSignal >= TEAM_WORKLOAD_HIGH_THRESHOLD ? "text-[10px] text-red-600" : member.workloadSignal >= TEAM_WORKLOAD_ELEVATED_THRESHOLD ? "text-[10px] text-amber-600" : "text-[10px] text-emerald-600"}>{member.workloadSignal}</span></div><div className="mt-1 h-1.5 overflow-hidden rounded-full bg-neutral-100"><div className={`h-full rounded-full ${member.workloadSignal >= TEAM_WORKLOAD_HIGH_THRESHOLD ? "bg-red-500" : member.workloadSignal >= TEAM_WORKLOAD_ELEVATED_THRESHOLD ? "bg-amber-500" : "bg-emerald-500"}`} style={{ width: `${member.workloadSignal}%` }} /></div></div>)}
           {members.length === 0 && <p className="py-8 text-center text-[11px] text-neutral-400">No team members available.</p>}
         </div>
         {overloaded.length > 0 ? <div className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-[10px] leading-4 text-red-700">{overloaded.length} person(s) have a high workload signal. Review actual assignments before taking action.</div> : <div className="mt-4 flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-[10px] text-emerald-700"><CheckCircle2 size={12} /> No high workload concentration detected.</div>}

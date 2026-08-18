@@ -1,21 +1,26 @@
 import { useEffect, useState } from "react";
-import { updateProfile } from "../../../../../lib/supabaseService";
 import { FormField, SelectInput, TextInput } from "../../../../components/ui/FormField";
 import { Modal, ModalButton } from "../../../../components/ui/Modal";
 import { useToast } from "../../../../components/ui/Toast";
-import type { UserProfile, UserRole } from "../../../../types";
+import type { Organization, UserProfile, UserRole } from "../../../../types";
 import { ROLE_OPTIONS } from "./userManagementPrimitives";
+import { getLeadershipSlotConflict } from "../../services/leadershipConstraints";
+import { updateManagedUserWithLeadership } from "../../services/managedUserLeadershipService";
 
 export function EditUserModal({
   isOpen,
   onClose,
   user: editUser,
   orgOptions,
+  organizations,
+  profiles,
 }: {
   isOpen: boolean;
   onClose: () => void;
   user: UserProfile | null;
   orgOptions: { value: string; label: string }[];
+  organizations: Organization[];
+  profiles: UserProfile[];
 }) {
   const { toast } = useToast();
   const [form, setForm] = useState({
@@ -28,6 +33,13 @@ export function EditUserModal({
   const [activeTab, setActiveTab] = useState<"basic" | "skills">("basic");
   const [skillInput, setSkillInput] = useState("");
   const [skills, setSkills] = useState<Record<string, boolean>>({});
+  const leadershipConflict = getLeadershipSlotConflict({
+    role: form.role,
+    orgId: form.orgId,
+    currentUserId: editUser?.id,
+    organizations,
+    profiles,
+  });
 
   useEffect(() => {
     if (editUser) {
@@ -60,15 +72,24 @@ export function EditUserModal({
 
   const handleSave = async () => {
     if (!editUser) return;
+    if (leadershipConflict) {
+      toast(leadershipConflict, "error");
+      return;
+    }
     setSaving(true);
     try {
-      await updateProfile(editUser.id, {
+      await updateManagedUserWithLeadership({
+        user: editUser,
+        organizations,
+        profiles,
+        changes: {
         full_name: form.fullName,
         role: form.role,
         org_id: form.orgId || null,
         workload: form.workload,
         burnout_level: form.workload >= 80 ? "high" : form.workload >= 50 ? "medium" : "low",
         skills,
+        },
       });
       toast(`User "${form.fullName}" updated`, "success");
       onClose();
@@ -134,11 +155,12 @@ export function EditUserModal({
               />
             </FormField>
             <div className="grid grid-cols-2 gap-4">
-              <FormField label="Role">
+              <FormField label="Role" error={leadershipConflict || undefined}>
                 <SelectInput
                   value={form.role}
                   onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}
                   options={ROLE_OPTIONS}
+                  hasError={Boolean(leadershipConflict)}
                 />
               </FormField>
               <FormField label="Organization">

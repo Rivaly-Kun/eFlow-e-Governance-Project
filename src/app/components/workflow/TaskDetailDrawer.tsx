@@ -19,6 +19,7 @@ import { SubmitForReviewForm } from "./SubmitForReviewForm";
 import { useTasks } from "../../hooks/useFirebaseData";
 import { useProjectsData } from "../../hooks/useSupabaseData";
 import { isTaskLead } from "../../services/taskSelectors";
+import { resolveTaskDetailCapabilities } from "../../features/tasks/components/taskDetailAccess";
 
 type Tab = "overview" | "activity" | "discussion" | "review";
 
@@ -28,6 +29,7 @@ export function TaskDetailDrawer({
   canReview = false,
   canPostProgress = false,
   canDiscuss = true,
+  readOnly = false,
   onChanged,
 }: {
   task: Task | null;
@@ -35,6 +37,7 @@ export function TaskDetailDrawer({
   canReview?: boolean;
   canPostProgress?: boolean;
   canDiscuss?: boolean;
+  readOnly?: boolean;
   onChanged?: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("overview");
@@ -45,7 +48,12 @@ export function TaskDetailDrawer({
   const { projects } = useProjectsData();
 
   if (!task) return null;
-  const effectiveCanReview = canReview && Boolean(user?.id);
+  const capabilities = resolveTaskDetailCapabilities(readOnly, {
+    canReview,
+    canPostProgress,
+    canDiscuss,
+  });
+  const effectiveCanReview = capabilities.canReview && Boolean(user?.id);
   const dependencies = (task.dependencyIds || [])
     .map((id) => tasks.find((candidate) => candidate.id === id))
     .filter((dependency): dependency is Task => Boolean(dependency));
@@ -57,7 +65,7 @@ export function TaskDetailDrawer({
   const rejected = task.status === "changes_requested";
   const currentUserIsLead = Boolean(user?.id && isTaskLead(task, user.id));
   const isOwnerOrLead = task.assigneeId === user?.id || currentUserIsLead;
-  const canManageSubtasks = Boolean(
+  const canManageSubtasks = !readOnly && Boolean(
     isOwnerOrLead ||
     task.createdBy === user?.id ||
     userProfile?.role === "super_admin" ||
@@ -68,10 +76,10 @@ export function TaskDetailDrawer({
 
   // The assignee resumes rework by transitioning changes_requested → in_progress.
   // Only offered to whoever can post progress (the owner surface).
-  const canResume = rejected && canPostProgress && isOwnerOrLead;
-  const canStart = canPostProgress && task.status === "todo";
+  const canResume = rejected && capabilities.canPostProgress && isOwnerOrLead;
+  const canStart = capabilities.canPostProgress && task.status === "todo";
   const canSubmit =
-    canPostProgress && isOwnerOrLead && task.status === "in_progress";
+    capabilities.canPostProgress && isOwnerOrLead && task.status === "in_progress";
   const handleStart = async () => {
     setStarting(true);
     try {
@@ -160,6 +168,15 @@ export function TaskDetailDrawer({
         <div className="flex-1 overflow-y-auto p-4">
           {tab === "overview" && (
             <div className="space-y-4">
+              {readOnly && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/70 p-3">
+                  <Info size={15} className="mt-0.5 shrink-0 text-blue-600" />
+                  <div>
+                    <div className="text-[11.5px] font-['Lexend:Medium',_sans-serif] text-blue-900">Read-only oversight record</div>
+                    <p className="mt-0.5 text-[10.5px] leading-relaxed text-blue-700">Inspect delivery, evidence, discussion, and history here. Operational changes remain with the responsible organization.</p>
+                  </div>
+                </div>
+              )}
               {task.description && (
                 <div className="text-[13px] font-['Lexend:Regular',_sans-serif] text-neutral-700 leading-relaxed whitespace-pre-wrap">
                   {task.description}
@@ -290,7 +307,7 @@ export function TaskDetailDrawer({
                 </div>
               )}
 
-              {canPostProgress && (
+              {capabilities.canPostProgress && (
                 <ProgressUpdateForm taskId={task.id} initialPercent={percent} onSaved={onChanged} />
               )}
 
@@ -307,7 +324,7 @@ export function TaskDetailDrawer({
           )}
 
           {tab === "activity" && <TaskActivityTimeline taskId={task.id} />}
-          {tab === "discussion" && <TaskDiscussion taskId={task.id} canParticipate={canDiscuss} />}
+          {tab === "discussion" && <TaskDiscussion taskId={task.id} canParticipate={capabilities.canDiscuss} />}
           {tab === "review" && effectiveCanReview && (
             <TaskReviewPanel task={task} canReview={effectiveCanReview} onDone={() => { onChanged?.(); onClose(); }} />
           )}

@@ -4,32 +4,40 @@ import { useOrgs } from "../../../hooks/useSupabaseData";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../components/ui/Toast";
 import type { Employee } from "../../../services/employeeService";
-import { useDeptDirectoryEmployees } from "../../employees";
+import { useDepartmentTeamAnalytics } from "../../team-management";
 import { decomposeProposal, type ProposalDecompositionResult } from "../../../services/proposalDecompositionService";
 import { extractTextFromPdf } from "../services/pdfTextExtractor";
 import { commitProposalDrafts } from "../services/commitProposalDrafts";
 import { filterEmployeesByPdfMentions } from "../selectors/employeeMentions";
+import { withTeamIntelligenceCandidateWorkload } from "../selectors/candidateWorkload";
 import { buildHierarchyIds, type DraftTask, type PdfPhase } from "../components/draftModel";
 import type { AiQueueUpdate } from "../../ai";
 
 export function useProposalImportController(onClose?: () => void) {
-  const { deptEmployees: scopedDepartmentEmployees } = useDeptDirectoryEmployees({
+  const { notes: employeeNotes } = useEmployeeNotes();
+  const { userProfile } = useAuth();
+  const { orgs } = useOrgs();
+  const teamAnalytics = useDepartmentTeamAnalytics({
     scope: "exact",
     includeCurrentUser: true,
     includeDepartmentHeads: true,
     activeOnly: true,
     excludeSuperAdmins: true,
   });
-  const { notes: employeeNotes } = useEmployeeNotes();
-  const { userProfile } = useAuth();
-  const { orgs } = useOrgs();
+  const scopedDepartmentEmployees = teamAnalytics.deptEmployees;
   const { toast } = useToast();
 
   // Proposal drafts can only assign employees directly in the requester's
   // department, never a child unit or unrelated office.
-  const deptEmployees = userProfile?.departmentId
-    ? scopedDepartmentEmployees
-    : [];
+  const deptEmployees = useMemo(
+    () => userProfile?.departmentId
+      ? withTeamIntelligenceCandidateWorkload(
+        scopedDepartmentEmployees,
+        teamAnalytics.memberMetrics,
+      )
+      : [],
+    [scopedDepartmentEmployees, teamAnalytics.memberMetrics, userProfile?.departmentId],
+  );
   const allEmployees = deptEmployees;
 
   const deptEmployeesWithNotes = useMemo(
@@ -129,6 +137,8 @@ export function useProposalImportController(onClose?: () => void) {
               leadMemberId: t.recommendedEmployeeIds?.[0] || null,
               burnoutWarning: t.burnoutWarning || false,
               reasoning: t.recommendationReasoning || "",
+              assignmentException: t.assignmentException,
+              teamComposition: t.teamComposition,
               enabled: true,
             });
           });
@@ -257,6 +267,8 @@ export function useProposalImportController(onClose?: () => void) {
         leadMemberId: null,
         burnoutWarning: false,
         reasoning: "",
+        assignmentException: undefined,
+        teamComposition: undefined,
         enabled: true,
       },
     ]);

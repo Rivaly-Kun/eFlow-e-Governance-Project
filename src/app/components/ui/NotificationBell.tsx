@@ -6,14 +6,19 @@ import React, {
   useState,
 } from "react";
 import ReactDOM from "react-dom";
-import { Bell, CheckCheck, Maximize2, Minimize2, X } from "lucide-react";
+import { ArrowUpRight, Bell, CheckCheck, Maximize2, Minimize2, X } from "lucide-react";
 import {
   markAllNotificationsRead,
   markNotificationRead,
   subscribeToNotifications,
   type Notification,
 } from "../../services/notificationService";
-import { getNotificationDetail, type NotificationDetailTone } from "../../features/notifications";
+import {
+  getNotificationDetail,
+  queueNotificationNavigationIntent,
+  resolveNotificationDestination,
+  type NotificationDetailTone,
+} from "../../features/notifications";
 
 const formatNotificationTime = (value?: number) => {
   if (!value) return "";
@@ -37,10 +42,14 @@ const DETAIL_TONE: Record<NotificationDetailTone, string> = {
 
 export function NotificationBell({
   userId,
+  role,
+  onNavigate,
   className = "",
   compact = false,
 }: {
   userId?: string;
+  role?: string;
+  onNavigate?: (section: string, page: string) => void;
   className?: string;
   compact?: boolean;
 }) {
@@ -181,6 +190,28 @@ export function NotificationBell({
     [notifications],
   );
 
+  const openNotification = useCallback(
+    async (notification: Notification) => {
+      const destination = role
+        ? resolveNotificationDestination(notification, role)
+        : null;
+
+      if (!notification.read) {
+        setNotifications((current) => current.map((item) =>
+          item.id === notification.id ? { ...item, read: true } : item,
+        ));
+        await markNotificationRead(userId || "", notification.id);
+      }
+
+      if (destination && onNavigate) {
+        queueNotificationNavigationIntent(destination.intent);
+        onNavigate(destination.section, destination.page);
+        setOpen(false);
+      }
+    },
+    [onNavigate, role, userId],
+  );
+
   if (!userId) return null;
 
   const buttonSize = compact ? "size-10 min-w-10" : "h-9 w-9";
@@ -274,13 +305,13 @@ export function NotificationBell({
               notifications.map((notification) => {
                 const time = formatNotificationTime(notification.createdAt);
                 const detail = getNotificationDetail(notification);
+                const destination = role
+                  ? resolveNotificationDestination(notification, role)
+                  : null;
                 return (
                   <button
                     key={notification.id}
-                    onClick={() =>
-                      !notification.read &&
-                      markNotificationRead(userId, notification.id)
-                    }
+                    onClick={() => void openNotification(notification)}
                     className={`block w-full border-b border-neutral-100 px-3 py-3 text-left transition last:border-0 hover:bg-neutral-50 ${
                       notification.read ? "bg-white" : "bg-blue-50/60"
                     }`}
@@ -305,8 +336,13 @@ export function NotificationBell({
                           </span>
                         )}
                         {time && (
-                          <span className="mt-1 block text-[10px] text-neutral-400">
-                            {time}
+                          <span className="mt-1 flex items-center justify-between gap-2 text-[10px] text-neutral-400">
+                            <span>{time}</span>
+                            {destination && onNavigate && (
+                              <span className="inline-flex items-center gap-1 font-['Lexend:Medium',_sans-serif] text-blue-600">
+                                {destination.label} <ArrowUpRight size={10} />
+                              </span>
+                            )}
                           </span>
                         )}
                       </span>

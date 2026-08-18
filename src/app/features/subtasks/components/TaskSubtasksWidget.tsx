@@ -3,18 +3,27 @@
 // Reused across TaskDetailDrawer, YouAreLeadingView, and MondayBoard.
 
 import { useState, useEffect, useMemo, useRef } from "react";
-import { User, Plus, X, CheckSquare, Sparkles, Check, Eye, Clock3 } from "lucide-react";
+import { User, Plus, X, CheckSquare, Sparkles, Check, Eye, Clock3, LockKeyhole, Unlink2 } from "lucide-react";
 import {
   type Subtask,
   subscribeToSubtasks,
   createSubtask,
   updateSubtask,
   deleteSubtask,
+  reorderSubtasks,
 } from "../../../services/subtaskService";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../components/ui/Toast";
 import { startTaskIfTodo, type Task } from "../../../services/taskService";
 import { SubtaskWorkDrawer } from "./SubtaskWorkDrawer";
+import { SubtaskSequenceControls } from "./sequencing/SubtaskSequenceControls";
+import {
+  getSequentialStepNumber,
+  getSubtaskPrerequisite,
+  moveSequenceItem,
+  moveSequenceItemToTarget,
+  resequenceItems,
+} from "../selectors/sequencing";
 
 export function TaskSubtasksWidget({
   taskId,
@@ -31,9 +40,12 @@ export function TaskSubtasksWidget({
 }) {
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [newTitle, setNewTitle] = useState("");
+  const [newStandalone, setNewStandalone] = useState(false);
   const [adding, setAdding] = useState(false);
   const [pickerOpenFor, setPickerOpenFor] = useState<string | null>(null);
   const [openSubtask, setOpenSubtask] = useState<Subtask | null>(null);
+  const [draggedSubtaskId, setDraggedSubtaskId] = useState<string | null>(null);
+  const [reordering, setReordering] = useState(false);
   const pickerRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const { user, userProfile } = useAuth();
   const { toast } = useToast();
@@ -76,11 +88,13 @@ export function TaskSubtasksWidget({
         position: subtasks.length,
         createdBy: user?.id,
         actorName: userProfile?.full_name || "Team Lead",
+        isStandalone: newStandalone,
       });
       const parentStarted = startParentOnCreate && parentTask?.status === "todo"
         ? await startTaskIfTodo(taskId)
         : false;
       setNewTitle("");
+      setNewStandalone(false);
       toast(
         parentStarted
           ? "Subtask added. The task is now In Progress."
@@ -95,6 +109,56 @@ export function TaskSubtasksWidget({
   };
 
   const completedCount = subtasks.filter((s) => s.isCompleted).length;
+  const sequenceLocked = Boolean(parentTask && (
+    parentTask.archivedAt
+    || ["for_review", "completed", "cancelled"].includes(parentTask.status)
+  ));
+
+  const commitOrder = async (nextOrder: Subtask[]) => {
+    const previous = subtasks;
+    const optimistic = resequenceItems(nextOrder);
+    setSubtasks(optimistic);
+    setReordering(true);
+    try {
+      await reorderSubtasks(optimistic.map((subtask) => subtask.id));
+      toast("Subtask sequence updated.", "success");
+    } catch (error) {
+      setSubtasks(previous);
+      toast(error instanceof Error ? error.message : "Could not reorder subtasks.", "error");
+    } finally {
+      setReordering(false);
+      setDraggedSubtaskId(null);
+    }
+  };
+
+  const moveSubtask = (index: number, direction: -1 | 1) => {
+    const destination = index + direction;
+    if (destination < 0 || destination >= subtasks.length || sequenceLocked || reordering) return;
+    void commitOrder(moveSequenceItem(subtasks, index, destination));
+  };
+
+  const dropSubtask = (targetId: string) => {
+    if (!draggedSubtaskId || draggedSubtaskId === targetId || sequenceLocked || reordering) return;
+    void commitOrder(moveSequenceItemToTarget(subtasks, draggedSubtaskId, targetId));
+  };
+
+  const toggleStandalone = async (subtask: Subtask) => {
+    try {
+      await updateSubtask(
+        subtask.id,
+        { isStandalone: !subtask.isStandalone },
+        { id: user?.id || "", name: userProfile?.full_name || "Team Lead" },
+      );
+      toast(
+        subtask.isStandalone
+          ? `“${subtask.title}” now follows the ordered sequence.`
+          : `“${subtask.title}” can now run independently.`,
+        "success",
+      );
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not change the execution rule.", "error");
+    }
+  };
 
   return (
     <div className="pt-2">
@@ -114,7 +178,7 @@ export function TaskSubtasksWidget({
       </div>
 
       <div className="space-y-1.5">
-        {subtasks.map((st) => {
+        {subtasks.map((st, index) => {
           const assignedIds = st.assignedToIds || (st.assignedTo ? [st.assignedTo] : []);
           const assignedUsers = assignedIds
             .map((id) => assigneeOptions.find((e) => e.id === id))
@@ -122,16 +186,44 @@ export function TaskSubtasksWidget({
 
           const isMySubtask = Boolean(user?.id && assignedIds.includes(user.id));
           const canOpenDetails = canManage || isMySubtask;
+          const prerequisite = getSubtaskPrerequisite(st, subtasks);
+          const stepNumber = getSequentialStepNumber(st, subtasks);
+          const executionModeLocked = st.status !== "todo" || st.percentComplete > 0;
 
           return (
             <div
               key={st.id}
+              onDragOver={(event) => {
+                if (canManage && !sequenceLocked && !reordering) event.preventDefault();
+              }}
+              onDrop={() => dropSubtask(st.id)}
               className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 group transition-colors ${
-                isMySubtask
+                draggedSubtaskId === st.id
+                  ? "border-blue-400 bg-blue-50 shadow-sm"
+                  : prerequisite
+                  ? "border-neutral-200 bg-neutral-100/80"
+                  : isMySubtask
                   ? "bg-blue-50/60 border-blue-200"
                   : "bg-neutral-50/60 border-neutral-100 hover:bg-neutral-100/60"
               }`}
             >
+              {canManage ? (
+                <SubtaskSequenceControls
+                  index={index}
+                  total={subtasks.length}
+                  disabled={sequenceLocked || reordering}
+                  onMove={(direction) => moveSubtask(index, direction)}
+                  onDragStart={() => setDraggedSubtaskId(st.id)}
+                  onDragEnd={() => setDraggedSubtaskId(null)}
+                />
+              ) : null}
+              <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8.5px] font-semibold uppercase tracking-wide ${
+                st.isStandalone
+                  ? "border-violet-200 bg-violet-50 text-violet-700"
+                  : "border-neutral-200 bg-white text-neutral-500"
+              }`}>
+                {st.isStandalone ? "Standalone" : `Step ${stepNumber}`}
+              </span>
               <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
                 st.isCompleted
                   ? "border-emerald-500 bg-emerald-500 text-white"
@@ -149,10 +241,39 @@ export function TaskSubtasksWidget({
                 {st.title}
               </span>
 
+              {prerequisite && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-neutral-200 px-2 py-0.5 text-[8.5px] font-medium text-neutral-600"
+                  title={`Complete “${prerequisite.title}” first`}
+                >
+                  <LockKeyhole size={9} /> Waiting for Step {getSequentialStepNumber(prerequisite, subtasks)}
+                </span>
+              )}
+
               {st.source === "ai_extracted" && (
                 <span className="inline-flex items-center gap-0.5 text-[8px] uppercase tracking-wider text-violet-600 bg-violet-50 border border-violet-200 px-1 py-0.5 rounded font-['Lexend:SemiBold',_sans-serif] shrink-0">
                   <Sparkles size={8} /> AI
                 </span>
+              )}
+
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={() => void toggleStandalone(st)}
+                  disabled={executionModeLocked}
+                  className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-1 text-[8.5px] font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                    st.isStandalone
+                      ? "border-violet-200 bg-violet-50 text-violet-700"
+                      : "border-neutral-200 bg-white text-neutral-500 hover:border-violet-300 hover:text-violet-700"
+                  }`}
+                  title={executionModeLocked
+                    ? "Execution mode is locked after work starts"
+                    : st.isStandalone
+                      ? "Make this an ordered prerequisite step"
+                      : "Allow this subtask to run without earlier prerequisites"}
+                >
+                  <Unlink2 size={9} /> {st.isStandalone ? "Independent" : "Make standalone"}
+                </button>
               )}
 
               <span className={`rounded-full px-1.5 py-0.5 text-[8.5px] font-['Lexend:Medium',_sans-serif] ${
@@ -279,6 +400,10 @@ export function TaskSubtasksWidget({
         })}
       </div>
 
+      {canManage && sequenceLocked ? (
+        <p className="mt-2 text-[9.5px] text-amber-700">Sequence is locked while the parent task is under review, completed, cancelled, or archived.</p>
+      ) : null}
+
       {canManage && <div className="flex items-center gap-2 mt-2">
         <input
           value={newTitle}
@@ -287,6 +412,19 @@ export function TaskSubtasksWidget({
           placeholder="Add a subtask for team members…"
           className="flex-1 h-[32px] rounded-lg border border-neutral-200 bg-white px-2.5 text-[12px] text-neutral-900 outline-none focus:border-neutral-400 placeholder:text-neutral-400 font-['Lexend:Regular',_sans-serif]"
         />
+        <button
+          type="button"
+          onClick={() => setNewStandalone((current) => !current)}
+          aria-pressed={newStandalone}
+          className={`h-[32px] rounded-lg border px-2.5 text-[10px] font-['Lexend:Medium',_sans-serif] transition ${
+            newStandalone
+              ? "border-violet-300 bg-violet-50 text-violet-700"
+              : "border-neutral-200 bg-white text-neutral-500 hover:border-neutral-300"
+          }`}
+          title="Standalone subtasks can start immediately and do not block the ordered sequence"
+        >
+          <span className="inline-flex items-center gap-1"><Unlink2 size={11} /> Standalone</span>
+        </button>
         <button
           type="button"
           onClick={handleAdd}
@@ -299,6 +437,7 @@ export function TaskSubtasksWidget({
       <SubtaskWorkDrawer
         subtask={openSubtask}
         parentTask={parentTask}
+        prerequisite={openSubtask ? getSubtaskPrerequisite(openSubtask, subtasks) : null}
         readOnly={canManage}
         onClose={() => setOpenSubtask(null)}
       />

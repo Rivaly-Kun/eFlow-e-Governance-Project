@@ -105,6 +105,45 @@ begin
 end;
 $$;
 
+create unique index if not exists profiles_one_active_head_per_org
+  on public.profiles(org_id)
+  where is_active and role in ('dept_head', 'department_head');
+create unique index if not exists profiles_one_active_assistant_per_org
+  on public.profiles(org_id)
+  where is_active and role = 'assistant_head';
+create unique index if not exists organizations_unique_head_user
+  on public.organizations(head_user_id)
+  where head_user_id is not null;
+create unique index if not exists organizations_unique_assistant_user
+  on public.organizations(assistant_head_user_id)
+  where assistant_head_user_id is not null;
+
+create or replace function public.guard_profile_leadership_integrity()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if new.is_active and new.role in ('dept_head', 'department_head')
+     and (new.org_id is null or not exists (
+       select 1 from public.organizations o
+       where o.id = new.org_id and o.head_user_id = new.id and o.is_active
+     )) then
+    raise exception 'Assign Head through the organization leadership slot' using errcode = '23514';
+  end if;
+  if new.is_active and new.role = 'assistant_head'
+     and (new.org_id is null or not exists (
+       select 1 from public.organizations o
+       where o.id = new.org_id and o.assistant_head_user_id = new.id and o.is_active
+     )) then
+    raise exception 'Assign Assistant Head through the organization leadership slot' using errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_profile_leadership_integrity on public.profiles;
+create trigger guard_profile_leadership_integrity
+before insert or update of role, org_id, is_active on public.profiles
+for each row execute function public.guard_profile_leadership_integrity();
+
 -- ─── system_config (key/value settings) ──────────────────────────────────────
 create table if not exists public.system_config (
   key        text primary key,
@@ -180,16 +219,17 @@ $$;
 create or replace function public.can_create_scoped_work(target_org uuid, caller_id uuid)
 returns boolean language plpgsql stable security definer set search_path = public as $$
 declare
-  caller_role text;
+  caller_profile public.profiles;
 begin
   if caller_id is null then return false; end if;
-  select role::text into caller_role
+  select * into caller_profile
   from public.profiles
   where id = caller_id and is_active;
-  if caller_role = 'super_admin' then return true; end if;
-  return caller_role in ('dept_head', 'department_head', 'assistant_head')
+  if not found then return false; end if;
+  if caller_profile.role = 'super_admin' then return true; end if;
+  return caller_profile.role in ('dept_head', 'department_head', 'assistant_head')
     and target_org is not null
-    and public.org_in_my_subtree(target_org, caller_id);
+    and target_org = caller_profile.org_id;
 end;
 $$;
 
@@ -203,6 +243,13 @@ create table if not exists public.projects (
   title        text not null,
   description  text not null default '',
   owner_id     uuid references public.profiles(id) on delete set null,
+  proposal_id  text,
+  proposal_title text,
+  program_id   text,
+  program_title text,
+  source_type  text not null default 'standalone'
+                 check (source_type in ('ai_pdf','manual','standalone')),
+  source_file_name text,
   status       text not null default 'planning'
                  check (status in ('planning','active','on_hold','completed','archived')),
   priority     text not null default 'medium' check (priority in ('low','medium','high')),
@@ -218,10 +265,27 @@ create index if not exists projects_org_idx    on public.projects(org_id);
 create index if not exists projects_status_idx on public.projects(status);
 create index if not exists projects_target_idx on public.projects(target_date);
 create index if not exists projects_owner_idx  on public.projects(owner_id);
+create index if not exists projects_proposal_scope_idx on public.projects(org_id, proposal_id);
 
 drop trigger if exists projects_touch on public.projects;
 create trigger projects_touch before update on public.projects
   for each row execute function public.touch_updated_at();
+
+create or replace function public.guard_super_admin_project_mutation()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if auth.uid() is not null and public.is_super_admin(auth.uid()) then
+    raise exception 'Super Admin project access is read-only. Ask the organization Head or Assistant Head to make this change.'
+      using errcode = '42501';
+  end if;
+  return case when tg_op = 'DELETE' then old else new end;
+end;
+$$;
+
+drop trigger if exists guard_super_admin_project_mutation on public.projects;
+create trigger guard_super_admin_project_mutation
+before insert or update or delete on public.projects
+for each row execute function public.guard_super_admin_project_mutation();
 
 create table if not exists public.project_members (
   project_id uuid not null references public.projects(id) on delete cascade,
@@ -268,17 +332,19 @@ $$;
 create or replace function public.can_see_project(target_project uuid, caller_id uuid)
 returns boolean language plpgsql stable security definer set search_path = public as $$
 declare
+  caller_profile public.profiles;
   proj_org uuid;
   proj_owner uuid;
 begin
-  if public.is_super_admin(caller_id) then return true; end if;
+  select * into caller_profile from public.profiles where id = caller_id and is_active;
+  if not found then return false; end if;
+  if caller_profile.role = 'super_admin' then return true; end if;
   select org_id, owner_id into proj_org, proj_owner from public.projects where id = target_project;
   if not found then return false; end if;
-  return (
-    proj_owner = caller_id
-    or public.org_in_my_subtree(proj_org, caller_id)
-    or public.is_project_member(target_project, caller_id)
-  );
+  if caller_profile.role in ('dept_head', 'department_head', 'assistant_head') then
+    return proj_org = caller_profile.org_id;
+  end if;
+  return proj_owner = caller_id or public.is_project_member(target_project, caller_id);
 end;
 $$;
 
@@ -372,6 +438,22 @@ create index if not exists tasks_not_deleted_idx    on public.tasks(deleted_at) 
 drop trigger if exists tasks_touch on public.tasks;
 create trigger tasks_touch before update on public.tasks
   for each row execute function public.touch_updated_at();
+
+create or replace function public.guard_super_admin_task_mutation()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if auth.uid() is not null and public.is_super_admin(auth.uid()) then
+    raise exception 'Super Admin task access is read-only. Ask the responsible organization to make this change.'
+      using errcode = '42501';
+  end if;
+  return case when tg_op = 'DELETE' then old else new end;
+end;
+$$;
+
+drop trigger if exists guard_super_admin_task_mutation on public.tasks;
+create trigger guard_super_admin_task_mutation
+before insert or update or delete on public.tasks
+for each row execute function public.guard_super_admin_task_mutation();
 
 create table if not exists public.task_status_history (
   id          uuid primary key default gen_random_uuid(),

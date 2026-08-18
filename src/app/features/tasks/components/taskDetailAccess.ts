@@ -1,0 +1,21 @@
+export interface RequestedTaskDetailCapabilities {
+  canReview: boolean;
+  canPostProgress: boolean;
+  canDiscuss: boolean;
+}
+
+/**
+ * Read-only oversight is an absolute boundary. Role permissions may add
+ * capabilities to operational workspaces, but they cannot bypass this mode.
+ */
+export function resolveTaskDetailCapabilities(
+  readOnly: boolean,
+  requested: RequestedTaskDetailCapabilities,
+): RequestedTaskDetailCapabilities {
+  if (!readOnly) return requested;
+  return {
+    canReview: false,
+    canPostProgress: false,
+    canDiscuss: false,
+  };
+}

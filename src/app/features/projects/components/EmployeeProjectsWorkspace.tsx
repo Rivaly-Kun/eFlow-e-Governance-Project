@@ -9,6 +9,7 @@ export function EmployeeProjectsWorkspace() {
     <ProjectsWorkspace
       scope={{ isSuperAdmin: false, scopedOrgIds: [] }}
       eyebrow="My Workspace · Projects"
+      proposalGrouping={false}
     />
   );
 }

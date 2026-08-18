@@ -1,13 +1,14 @@
-import { useScopedOrgIds } from "../../../hooks/useSupabaseData";
+import { useAuth } from "../../../contexts/AuthContext";
 import { ProjectsWorkspace } from "./ProjectsWorkspace";
 
-/** Preserves Department Head subtree scoping for the shared projects workspace. */
+/** Heads and Assistant Heads see only proposals owned by their exact organization. */
 export function DeptHeadProjectsWorkspace() {
-  const { scopedOrgIds, isSuperAdmin } = useScopedOrgIds();
+  const { userProfile } = useAuth();
+  const organizationId = userProfile?.org_id || userProfile?.departmentId || "";
   return (
     <ProjectsWorkspace
-      scope={{ isSuperAdmin, scopedOrgIds }}
-      eyebrow="Dept. Head · Projects"
+      scope={{ isSuperAdmin: false, scopedOrgIds: organizationId ? [organizationId] : [], enforceOrgScope: true }}
+      eyebrow="Department · Planning Portfolio"
     />
   );
 }

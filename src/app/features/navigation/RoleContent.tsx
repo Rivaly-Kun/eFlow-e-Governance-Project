@@ -1,6 +1,9 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { Settings } from "@carbon/icons-react";
 import { PageWalkthroughButton } from "../guided-tours";
+import { useAuth } from "../../contexts/AuthContext";
+import { getNavigationPermission, isAdministrativeNavigationSection } from "./navigationPermissions";
+import { AccessDenied } from "./AccessDenied";
 
 const SettingsContent = lazy(() => import("../../components/Settings/SettingsContent").then((module) => ({ default: module.SettingsContent })));
 const SuperAdminContent = lazy(() => import("../../components/SuperAdmin/SuperAdminContent").then((module) => ({ default: module.SuperAdminContent })));
@@ -34,8 +37,22 @@ function RoleLoading() {
 }
 
 export function RoleContent({ role, activeSection, activePage }: RoleContentProps) {
+  const { can } = useAuth();
   if (activeSection === "settings") {
     return <Suspense fallback={<RoleLoading />}><PageFrame padded={false} dark><SettingsContent activePage={activePage} /></PageFrame></Suspense>;
+  }
+
+  const requiredPermission = getNavigationPermission(role, activeSection);
+  if (requiredPermission && !can(requiredPermission)) {
+    return <PageFrame padded={false}><AccessDenied permission={requiredPermission} /></PageFrame>;
+  }
+
+  if (role !== "superadmin" && isAdministrativeNavigationSection(activeSection)) {
+    return (
+      <Suspense fallback={<RoleLoading />}>
+        <PageFrame><SuperAdminContent activeSection={activeSection} activePage={activePage} /></PageFrame>
+      </Suspense>
+    );
   }
 
   let content: ReactNode;

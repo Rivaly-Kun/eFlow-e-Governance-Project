@@ -13,13 +13,19 @@ async function verifyLiveSchema() {
     return false;
   }
 
-  const response = await fetch(`${supabaseUrl}/rest/v1/`, {
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      Accept: "application/openapi+json",
-    },
-  });
+  let response;
+  try {
+    response = await fetch(`${supabaseUrl}/rest/v1/`, {
+      headers: {
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+        Accept: "application/openapi+json",
+      },
+    });
+  } catch (error) {
+    console.error(`Could not reach the live Supabase schema: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }
 
   if (!response.ok) {
     console.error(`Could not read the live PostgREST schema (${response.status}).`);
@@ -32,6 +38,13 @@ async function verifyLiveSchema() {
   const missing = [];
 
   for (const table of [
+    "audit_events",
+    "milestones",
+    "monthly_productivity_snapshots",
+    "project_members",
+    "projects",
+    "role_permissions",
+    "subtasks",
     "task_submissions",
     "task_reminders",
     "task_templates",
@@ -41,6 +54,9 @@ async function verifyLiveSchema() {
     "subtask_submission_attachments",
     "subtask_templates",
     "subtask_template_items",
+    "tasks",
+    "user_permission_overrides",
+    "user_org_scope_grants",
   ]) {
     if (!definitions[table]) missing.push(`table:${table}`);
   }
@@ -64,7 +80,7 @@ async function verifyLiveSchema() {
   if (!definitions.organizations?.properties?.assistant_head_user_id) {
     missing.push("organizations.assistant_head_user_id");
   }
-  for (const column of ["status", "percent_complete", "reviewer_id", "latest_submission_id"]) {
+  for (const column of ["status", "percent_complete", "reviewer_id", "latest_submission_id", "is_standalone"]) {
     if (!definitions.subtasks?.properties?.[column]) missing.push(`subtasks.${column}`);
   }
   if (definitions.subtasks?.properties?.assigned_to_ids?.format !== "uuid[]") {
@@ -94,13 +110,17 @@ async function verifyLiveSchema() {
     "decide_subtask_review",
     "dispatch_task_reminders",
     "materialize_due_task_templates",
+    "recalculate_monthly_productivity",
     "set_organization_leadership",
     "save_subtask_progress",
     "save_subtask_template",
     "review_subtask_template",
+    "reorder_task_subtasks",
     "apply_subtask_template",
     "submit_subtask_for_review",
     "submit_task_for_review",
+    "has_permission",
+    "can_access_org",
   ]) {
     if (!paths[`/rpc/${rpc}`]) missing.push(`rpc:${rpc}`);
   }

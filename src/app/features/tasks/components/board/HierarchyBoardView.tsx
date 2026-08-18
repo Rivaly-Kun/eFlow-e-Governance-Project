@@ -187,7 +187,7 @@ export function HierarchyBoardView({
                             {project.title}
                           </div>
                           <span className="ml-auto text-[9px] uppercase tracking-wider text-neutral-400">
-                            Project
+                            Task hierarchy · Project
                           </span>
                         </div>
 

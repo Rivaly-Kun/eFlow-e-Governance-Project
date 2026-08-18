@@ -3,11 +3,9 @@ import { useTasks } from "../../../hooks/useFirebaseData";
 import { useProjectsData, useScopedOrgIds } from "../../../hooks/useSupabaseData";
 import { useDeptDirectoryEmployees } from "../../employees";
 import { scopeProjects, scopeTasks } from "../../tasks";
-import {
-  buildTeamAttentionItems,
-  buildTeamHealthSummary,
-  buildTeamMemberMetrics,
-} from "../selectors/teamAnalyticsSelectors";
+import { buildTeamAttentionItems } from "../selectors/attentionSelectors";
+import { buildTeamHealthSummary } from "../selectors/healthSelectors";
+import { buildTeamMemberMetrics } from "../selectors/teamMemberSelectors";
 import { subscribeToTeamWorkflowFacts } from "../services/teamWorkflowFactsService";
 import type { TeamWorkflowFacts } from "../types";
 
@@ -19,7 +17,9 @@ const EMPTY_FACTS: TeamWorkflowFacts = {
   evidence: [],
 };
 
-export function useDepartmentTeamAnalytics() {
+type DirectoryOptions = NonNullable<Parameters<typeof useDeptDirectoryEmployees>[0]>;
+
+export function useDepartmentTeamAnalytics(directoryOptions: DirectoryOptions = {}) {
   const { tasks, loading: tasksLoading } = useTasks();
   const { projects, loading: projectsLoading } = useProjectsData();
   const { scopedOrgIds } = useScopedOrgIds();
@@ -27,6 +27,7 @@ export function useDepartmentTeamAnalytics() {
     includeDepartmentHeads: true,
     activeOnly: true,
     excludeSuperAdmins: true,
+    ...directoryOptions,
   });
   const scopedTasks = useMemo(() => scopeTasks(tasks, scopedOrgIds), [scopedOrgIds, tasks]);
   const scopedProjects = useMemo(() => scopeProjects(projects, scopedOrgIds), [projects, scopedOrgIds]);
