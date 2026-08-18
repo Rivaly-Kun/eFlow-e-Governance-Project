@@ -11,6 +11,10 @@ import {
   RoleContent,
   useRoleNavigationState,
 } from "../../features/navigation";
+import {
+  GuidedTourProvider,
+  SystemWalkthroughButton,
+} from "../../features/guided-tours";
 import { useTasksData } from "../../hooks/useSupabaseData";
 import { isTaskLead } from "../../services/taskSelectors";
 import { getSidebarContent } from "../../features/navigation/sidebarContent";
@@ -102,21 +106,18 @@ function UnifiedSidebar({
   activeSection,
   activePage,
   onPageSelect,
+  navigationItems,
 }: {
   role: string;
   activeSection: string;
   activePage?: string;
   onPageSelect: (section: string, page: string) => void;
+  navigationItems: ReturnType<typeof getRoleNavigation>["navItems"];
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set([activeSection]));
-  const config = getRoleNavigation(role);
   const { user, userProfile, logout } = useAuth();
-  const { tasks } = useTasksData();
-  const hasLeadingWork = !!user?.id && tasks.some((task) => isTaskLead(task, user.id));
-  const visibleNavItems = config.navItems.filter(
-    (item) => !item.requiresLeadership || hasLeadingWork,
-  );
+  const visibleNavItems = navigationItems;
 
   useEffect(() => {
     setExpandedSections((prev) => {
@@ -153,13 +154,14 @@ function UnifiedSidebar({
 
   return (
     <div
+      data-tour-id="primary-navigation"
       className={`bg-white box-border flex flex-col h-full relative shrink-0 transition-all duration-300 border-r border-neutral-200 ${
         isCollapsed ? "w-16" : "w-64"
       }`}
       style={{ transitionTimingFunction: softSpringEasing }}
     >
       {/* Header: Logo & Toggle */}
-      <div className="flex items-center justify-between p-4 h-16 shrink-0 border-b border-neutral-100">
+      <div data-tour-id="brand" className="flex items-center justify-between p-4 h-16 shrink-0 border-b border-neutral-100">
         {!isCollapsed && (
           <div className="flex items-center gap-2 overflow-hidden">
             <div className="size-6 shrink-0">
@@ -208,6 +210,7 @@ function UnifiedSidebar({
             <div key={item.id} className="flex flex-col gap-0.5">
               {/* Section Header Button */}
               <button
+                data-tour-section={item.id}
                 onClick={() => {
                   if (hasMultiplePages) {
                     toggleSectionExpand(item.id);
@@ -269,7 +272,7 @@ function UnifiedSidebar({
       <div className="p-3 shrink-0 border-t border-neutral-100 flex flex-col gap-2 bg-white">
         {/* Quick action buttons (bell, chat) */}
         {user?.id && (
-          <div className={`flex items-center ${isCollapsed ? "flex-col gap-2 justify-center" : "gap-4 px-2"}`}>
+          <div data-tour-id="communications" className={`flex items-center ${isCollapsed ? "flex-col gap-2 justify-center" : "gap-4 px-2"}`}>
             <NotificationBell userId={user.id} compact />
             <ChatListDrawer
               userId={user.id}
@@ -280,8 +283,11 @@ function UnifiedSidebar({
           </div>
         )}
 
+        <SystemWalkthroughButton collapsed={isCollapsed} onBeforeStart={() => setIsCollapsed(false)} />
+
         {/* Settings button */}
         <button
+          data-tour-id="settings"
           onClick={() => handleSectionClick("settings")}
           className={`flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-['Lexend:Medium',_sans-serif] transition-colors ${
             activeSection === "settings"
@@ -295,7 +301,7 @@ function UnifiedSidebar({
         </button>
 
         {/* User profile info & Logout */}
-        <div className={`flex items-center gap-2 p-1 rounded-lg ${isCollapsed ? "justify-center" : ""}`}>
+        <div data-tour-id="profile" className={`flex items-center gap-2 p-1 rounded-lg ${isCollapsed ? "justify-center" : ""}`}>
           <div className="size-8 shrink-0">
             <Avatar />
           </div>
@@ -342,17 +348,38 @@ function TwoLevelSidebar({ role }: { role: string }) {
     return undefined;
   }, [role]);
   const { activePage, activeSection, selectPage } = useRoleNavigationState(role, getInitialPage);
+  const { user, userProfile } = useAuth();
+  const { tasks } = useTasksData();
+  const hasLeadingWork = !!user?.id && tasks.some((task) => isTaskLead(task, user.id));
+  const visibleNavItems = getRoleNavigation(role).navItems.filter(
+    (item) => !item.requiresLeadership || hasLeadingWork,
+  );
+  const tourSections = visibleNavItems.map((item) => ({
+    id: item.id,
+    label: item.label,
+    page: getInitialPage(item.id) || item.label,
+  }));
 
   return (
-    <div className="flex flex-row h-full min-h-0">
-      <UnifiedSidebar
-        role={role}
-        activeSection={activeSection}
-        activePage={activePage}
-        onPageSelect={selectPage}
-      />
-      <RoleContent role={role} activeSection={activeSection} activePage={activePage} />
-    </div>
+    <GuidedTourProvider
+      userId={user?.id || ""}
+      role={userProfile?.role || role}
+      activeSection={activeSection}
+      activePage={activePage}
+      sections={tourSections}
+      onNavigate={selectPage}
+    >
+      <div data-tour-id="application-shell" className="flex flex-row h-full min-h-0">
+        <UnifiedSidebar
+          role={role}
+          activeSection={activeSection}
+          activePage={activePage}
+          onPageSelect={selectPage}
+          navigationItems={visibleNavItems}
+        />
+        <RoleContent role={role} activeSection={activeSection} activePage={activePage} />
+      </div>
+    </GuidedTourProvider>
   );
 }
 

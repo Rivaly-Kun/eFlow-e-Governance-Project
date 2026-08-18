@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getDefaultSection } from "./roleNavigation";
 
 export function useRoleNavigationState(
@@ -16,10 +16,10 @@ export function useRoleNavigationState(
     setActivePage(getInitialPage(nextSection));
   }, [getInitialPage, role]);
 
-  const selectPage = (section: string, page: string) => {
+  const selectPage = useCallback((section: string, page: string) => {
     setActiveSection(section);
     setActivePage(page);
-  };
+  }, []);
 
   return { activePage, activeSection, selectPage };
 }

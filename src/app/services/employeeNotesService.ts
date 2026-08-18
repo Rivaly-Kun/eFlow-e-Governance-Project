@@ -60,7 +60,7 @@ export const updateEmployeeNotes = async (
   partial: Partial<EmployeeNote>,
   updatedBy?: string,
 ): Promise<void> => {
-  await supabase.from('employee_notes').upsert({
+  const { error } = await supabase.from('employee_notes').upsert({
     profile_id: employeeId,
     strengths: partial.strengths || '',
     weaknesses: partial.weaknesses || '',
@@ -69,4 +69,5 @@ export const updateEmployeeNotes = async (
     updated_by: updatedBy || null,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'profile_id' });
+  if (error) throw new Error(error.message);
 };

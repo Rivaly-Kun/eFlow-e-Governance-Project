@@ -8,6 +8,7 @@ export { MondayBoard } from "./components/board/MondayBoard";
 export type { MondayBoardProps } from "./components/board/model";
 export { EmployeeTaskWorkspace } from "../../components/Employee/EmployeeTaskWorkspace";
 export { YouAreLeadingView } from "../../components/workflow/YouAreLeadingView";
+export { TaskDetailDrawer } from "../../components/workflow/TaskDetailDrawer";
 export { cancelTask } from "./services/taskLifecycleService";
 export { runTaskMaintenance } from "./services/taskMaintenanceService";
 export {

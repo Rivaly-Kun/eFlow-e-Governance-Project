@@ -1,5 +1,6 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { Settings } from "@carbon/icons-react";
+import { PageWalkthroughButton } from "../guided-tours";
 
 const SettingsContent = lazy(() => import("../../components/Settings/SettingsContent").then((module) => ({ default: module.SettingsContent })));
 const SuperAdminContent = lazy(() => import("../../components/SuperAdmin/SuperAdminContent").then((module) => ({ default: module.SuperAdminContent })));
@@ -17,8 +18,15 @@ interface RoleContentProps {
   activePage?: string;
 }
 
-function PageFrame({ children }: { children: ReactNode }) {
-  return <div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto p-6 rounded-r-2xl">{children}</div>;
+function PageFrame({ children, padded = true, dark = false }: { children: ReactNode; padded?: boolean; dark?: boolean }) {
+  return (
+    <div className={`h-full min-h-0 flex-1 overflow-hidden rounded-r-2xl ${dark ? "bg-neutral-50 dark:bg-slate-950" : "bg-neutral-50"}`}>
+      <div className="flex h-11 shrink-0 items-center justify-end border-b border-neutral-200/80 bg-white/90 px-4 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/90">
+        <PageWalkthroughButton />
+      </div>
+      <div data-tour-page-content className={`h-[calc(100%-2.75rem)] overflow-y-auto ${padded ? "p-6" : ""}`}>{children}</div>
+    </div>
+  );
 }
 
 function RoleLoading() {
@@ -27,7 +35,7 @@ function RoleLoading() {
 
 export function RoleContent({ role, activeSection, activePage }: RoleContentProps) {
   if (activeSection === "settings") {
-    return <Suspense fallback={<RoleLoading />}><div className="bg-neutral-50 h-full min-h-0 flex-1 overflow-y-auto rounded-r-2xl dark:bg-slate-950"><SettingsContent activePage={activePage} /></div></Suspense>;
+    return <Suspense fallback={<RoleLoading />}><PageFrame padded={false} dark><SettingsContent activePage={activePage} /></PageFrame></Suspense>;
   }
 
   let content: ReactNode;

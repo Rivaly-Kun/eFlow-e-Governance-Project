@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
 } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
@@ -76,6 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<Set<string>>(new Set());
+  const activeUserIdRef = useRef<string | null>(null);
 
   // Load effective permissions whenever the signed-in profile (id/role) changes.
   useEffect(() => {
@@ -99,27 +101,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [permissions, userProfile?.role],
   );
 
-  // Listen to Supabase Auth state
+  // Keep this listener synchronous. Supabase auth callbacks run while the
+  // client holds its auth lock; awaiting another Supabase operation here can
+  // deadlock startup and leave the application loading forever.
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (session?.user) {
-          setUser(session.user);
-          const { data } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-          if (data) {
-            setUserProfile(addCompatAliases(data));
-          } else {
-            setUserProfile(null);
-          }
-        } else {
-          setUser(null);
+      (_event, session) => {
+        const nextUser = session?.user ?? null;
+        const nextUserId = nextUser?.id ?? null;
+
+        if (activeUserIdRef.current !== nextUserId) {
+          activeUserIdRef.current = nextUserId;
           setUserProfile(null);
         }
-        setLoading(false);
+
+        setUser(nextUser);
+        if (!nextUser) setLoading(false);
       }
     );
 
@@ -127,6 +124,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Profile loading deliberately happens after the auth callback has returned,
+  // so all database work runs outside Supabase's auth lock.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    let active = true;
+    setLoading(true);
+    setError(null);
+
+    void (async () => {
+      try {
+        const { data, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (profileError) throw profileError;
+        if (active) setUserProfile(data ? addCompatAliases(data) : null);
+      } catch (profileError) {
+        if (!active) return;
+        console.error('Failed to load the signed-in eFlow profile:', profileError);
+        setUserProfile(null);
+        setError('We could not load your eFlow profile. Check your connection and refresh the page.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
 
   // ─── login ─────────────────────────────────────────────────────
   const login = useCallback(async (email: string, password: string) => {
