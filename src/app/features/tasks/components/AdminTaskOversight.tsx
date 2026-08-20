@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, Building2, Eye, Inbox, ListTodo, ShieldCheck, UserX } from "lucide-react";
+import { AlertTriangle, Building2, Files, Inbox, ListTodo, UserX } from "lucide-react";
 import { useTasks } from "../../../hooks/useFirebaseData";
 import { useOrgs } from "../../../hooks/useSupabaseData";
 import { TaskDetailDrawer } from "../../../components/workflow/TaskDetailDrawer";
 import { Card, LoadingState, PageHeader, SearchInput, SectionEmpty, StatCard, WSelect } from "../../../components/workflow/primitives";
 import { useNotificationNavigationIntent } from "../../notifications";
-import { isOverdue, isUnassigned } from "../selectors";
+import { buildAdminTaskProposalGroups, isOverdue, isUnassigned } from "../selectors";
 import type { Task } from "../taskTypes";
 import { AdminTaskOversightList } from "./AdminTaskOversightList";
 
@@ -32,6 +32,7 @@ export function AdminTaskOversight() {
   );
 
   const visibleTasks = useMemo(() => tasks.filter((task) => !task.archivedAt), [tasks]);
+  const proposalCount = useMemo(() => buildAdminTaskProposalGroups(visibleTasks).length, [visibleTasks]);
   const organizationIds = useMemo(() => new Set(orgs.map((org) => org.id)), [orgs]);
   const counts = useMemo(() => ({
     unassigned: visibleTasks.filter((task) => isUnassigned(task) || task.status === "pending_assignment").length,
@@ -50,7 +51,7 @@ export function AdminTaskOversight() {
     if (quickFilter === "review") rows = rows.filter((task) => task.status === "for_review");
     const normalizedQuery = query.trim().toLowerCase();
     if (normalizedQuery) {
-      rows = rows.filter((task) => [task.title, task.description, task.assigneeName, task.teamName, task.projectTitle, task.programTitle]
+      rows = rows.filter((task) => [task.title, task.description, task.assigneeName, task.teamName, task.proposalTitle, task.programTitle, task.projectTitle, task.activityTitle]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(normalizedQuery)));
     }
@@ -66,12 +67,11 @@ export function AdminTaskOversight() {
       <PageHeader
         eyebrow="Administration · Operational Oversight"
         title="Task Oversight"
-        subtitle="Monitor delivery across every organization without changing the work owned by Heads, Team Leaders, reviewers, and contributors."
-        actions={<span className="inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-[10.5px] font-medium text-blue-700"><Eye size={13} /> View-only access</span>}
+        subtitle="Inspect every proposal through its programs, projects, and delivery tasks without changing operational work."
       />
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <StatCard label="Visible work" value={visibleTasks.length} hint="System-wide records" icon={<ShieldCheck size={15} />} />
+        <StatCard label="Proposals" value={proposalCount} hint={`${visibleTasks.length} visible tasks`} icon={<Files size={15} />} />
         <StatCard label="Unassigned" value={counts.unassigned} tone={counts.unassigned ? "info" : "neutral"} icon={<UserX size={15} />} onClick={() => toggleQuickFilter("unassigned")} active={quickFilter === "unassigned"} />
         <StatCard label="Overdue" value={counts.overdue} tone={counts.overdue ? "bad" : "good"} icon={<AlertTriangle size={15} />} onClick={() => toggleQuickFilter("overdue")} active={quickFilter === "overdue"} />
         <StatCard label="Awaiting review" value={counts.review} tone={counts.review ? "warn" : "neutral"} icon={<Inbox size={15} />} onClick={() => toggleQuickFilter("review")} active={quickFilter === "review"} />
@@ -80,7 +80,7 @@ export function AdminTaskOversight() {
 
       <Card className="mb-4 shadow-sm" bodyClassName="p-3.5">
         <div className="flex flex-wrap items-center gap-2">
-          <SearchInput value={query} onChange={setQuery} placeholder="Search task, person, team, program, or project…" className="w-full sm:w-[340px]" />
+          <SearchInput value={query} onChange={setQuery} placeholder="Search proposal, program, project, task, or person…" className="w-full sm:w-[360px]" />
           <WSelect value={orgFilter} onChange={setOrgFilter} options={[{ value: "all", label: "All organizations" }, ...orgs.map((org) => ({ value: org.id, label: org.name }))]} />
           <WSelect value={statusFilter} onChange={setStatusFilter} options={[
             { value: "all", label: "All statuses" },

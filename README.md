@@ -34,14 +34,21 @@ npm run dev
 - the control gateway on `127.0.0.1:8322`;
 - the Vite frontend, normally on `5173` or the next available port.
 
-The gateway launcher creates `server/.venv`, installs `server/requirements.txt` when needed, and replaces a verified stale eFlow gateway so backend code changes are not served by an older process. You no longer need to run `python server/main.py` separately.
+The gateway launcher creates `server/.venv`, installs `server/requirements.txt` when needed, replaces a verified stale eFlow gateway, and reloads Python routes during development. You no longer need to run `python server/main.py` separately.
 
 Focused commands remain available for diagnosis:
 
 ```powershell
 npm run dev:gateway
+npm run restart:gateway
 npm run dev:frontend
 ```
+
+### Backup & Export setup
+
+The Super Admin Backup & Export tool needs the private PostgreSQL connection URI because it creates restore-grade `schema.sql` and `data.sql` files. In Supabase, open the project connection panel, copy the direct or session-pooler URI, and add it to the repository's private `.env` as `EFLOW_DATABASE_URL`. Never place that URI in a `VITE_` variable or send it to the browser.
+
+On Windows, eFlow automatically finds `pg_dump.exe` from a standard PostgreSQL or pgAdmin installation. After changing the private `.env`, stop the current development process with `Ctrl+C` and run `npm run dev` again. The Data Tools readiness panel will then verify the gateway route, database URI, PostgreSQL tools, and visible public tables before enabling an export.
 
 ### Running eFlow with the AI server
 

@@ -36,6 +36,7 @@ import {
   type BackupOverview,
 } from "../../services/backupService";
 import { BackupJobCard } from "./BackupJobCard";
+import { BackupGatewayUnavailable } from "./BackupGatewayUnavailable";
 import { useAuth } from "../../../../contexts/AuthContext";
 import { supabase } from "../../../../../lib/supabase";
 
@@ -149,6 +150,19 @@ export function BackupExportWorkspace() {
 
   if (loading && !overview) return <div className="p-8"><LoadingState label="Inspecting database backup readiness…" /></div>;
 
+  if (error && !overview) {
+    return (
+      <div className="min-h-full bg-neutral-50/40 p-6 sm:p-8">
+        <PageHeader
+          eyebrow="Super Admin · Data Tools"
+          title="Backup & Export"
+          subtitle="Create an audited, checksummed export of the live eFlow Supabase schema and operational data."
+        />
+        <BackupGatewayUnavailable error={error} refreshing={refreshing} onRetry={() => void load(true)} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-full bg-neutral-50/40 p-6 sm:p-8">
       <PageHeader
@@ -182,7 +196,7 @@ export function BackupExportWorkspace() {
             <div>
               <h3 className="text-[13px] font-['Lexend:SemiBold',_sans-serif] text-amber-950">One-time server setup required</h3>
               <p className="mt-1 text-[11px] leading-5 text-amber-800">
-                Add <code className="rounded bg-amber-100 px-1">EFLOW_DATABASE_URL</code> to the private gateway environment and install PostgreSQL <code className="rounded bg-amber-100 px-1">pg_dump</code>. These credentials remain server-only and are never sent to React.
+                Complete the server-only items marked below. Copy the Supabase direct or session-pooler connection string into <code className="rounded bg-amber-100 px-1">EFLOW_DATABASE_URL</code> in the private eFlow <code className="rounded bg-amber-100 px-1">.env</code>, then restart the gateway. PostgreSQL tools installed in their standard Windows location are detected automatically.
               </p>
               <div className="mt-2 flex flex-wrap gap-2 text-[10px]">
                 <ReadinessBadge ready={overview?.preflight.database_url_configured || false} label="Database URL" />

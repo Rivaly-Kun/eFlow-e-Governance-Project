@@ -120,18 +120,26 @@ def main() -> int:
         print(f"[GATEWAY] {exc}", file=sys.stderr, flush=True)
         return 1
 
-    print("[GATEWAY] Starting eFlow control gateway on http://127.0.0.1:8322", flush=True)
+    reload_enabled = "--reload" in sys.argv[1:]
+    print(
+        f"[GATEWAY] Starting eFlow control gateway on http://127.0.0.1:8322"
+        f"{' with code reload' if reload_enabled else ''}",
+        flush=True,
+    )
+    command = [
+        str(PYTHON),
+        "-m",
+        "uvicorn",
+        "main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8322",
+    ]
+    if reload_enabled:
+        command.extend(["--reload", "--reload-dir", str(SERVER_DIR)])
     process = subprocess.Popen(
-        [
-            str(PYTHON),
-            "-m",
-            "uvicorn",
-            "main:app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "8322",
-        ],
+        command,
         cwd=str(SERVER_DIR),
     )
 

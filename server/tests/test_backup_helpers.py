@@ -13,7 +13,7 @@ if str(SERVER_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVER_ROOT))
 
 from services.backup_manifest import file_sha256, write_checksums, write_json
-from services.backup_security import ensure_within, remove_backup_path, validate_table_name
+from services.backup_security import ensure_within, find_windows_pg_dump, remove_backup_path, validate_table_name
 from services.recent_auth import is_recent_sign_in
 
 
@@ -42,6 +42,14 @@ class BackupSecurityTests(unittest.TestCase):
             remove_backup_path(root, job)
             self.assertFalse(job.exists())
             self.assertTrue(root.exists())
+
+    def test_standard_windows_postgres_install_is_discovered(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            pg_dump = root / "PostgreSQL" / "17" / "bin" / "pg_dump.exe"
+            pg_dump.parent.mkdir(parents=True)
+            pg_dump.write_bytes(b"")
+            self.assertEqual(find_windows_pg_dump([root]), str(pg_dump))
 
 
 class BackupManifestTests(unittest.TestCase):
