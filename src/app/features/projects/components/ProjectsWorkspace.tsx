@@ -4,6 +4,7 @@ import { ManualPlanBuilder, ProposalImport } from "../../proposal-import";
 import { useDeptDirectoryEmployees } from "../../employees";
 import { isTaskLead } from "../../tasks";
 import { ProjectTemplatesModal } from "../../work-templates";
+import { useNotificationNavigationIntent } from "../../notifications";
 import { useProjectsData, useOrgs, useProfiles } from "../../../hooks/useSupabaseData";
 import { useTasks } from "../../../hooks/useFirebaseData";
 import { useAuth } from "../../../contexts/AuthContext";
@@ -13,7 +14,7 @@ import { ProjectDetail } from "./ProjectDetail";
 import { ProposalPortfolio } from "./ProposalPortfolio";
 import { resolveProjectWorkspaceAccess, type ProjectScope } from "./model";
 import { buildProjectPortfolioSummary } from "../selectors/projectCommandSelectors";
-import { buildProposalPortfolioGroups, organizationTypeLabel, projectMatchesProposalQuery } from "../selectors/proposalPortfolioSelectors";
+import { buildProposalPortfolioGroups, organizationTypeLabel, projectMatchesProposalQuery, resolveProjectHierarchyIdentity } from "../selectors/proposalPortfolioSelectors";
 
 export function ProjectsWorkspace({ scope, eyebrow, proposalGrouping = true, readOnly = false }: { scope: ProjectScope; eyebrow: string; proposalGrouping?: boolean; readOnly?: boolean }) {
   const { projects: dbProjects, loading: projectsLoading } = useProjectsData();
@@ -87,6 +88,27 @@ export function ProjectsWorkspace({ scope, eyebrow, proposalGrouping = true, rea
 
   const detail = detailId ? dbProjects.find((p) => p.id === detailId) : null;
   const loading = projectsLoading || tasksLoading;
+  useNotificationNavigationIntent(
+    (intent) => intent.kind === "project" || intent.kind === "proposal",
+    (intent) => {
+      if (loading) return false;
+      if (intent.projectId) {
+        const project = dbProjects.find((candidate) => candidate.id === intent.projectId);
+        if (project) setDetailId(project.id);
+        return true;
+      }
+      if (intent.proposalId) {
+        const project = dbProjects.find((candidate) => resolveProjectHierarchyIdentity(candidate, tasks).proposalId === intent.proposalId);
+        if (project) {
+          setStatusFilter("all");
+          setQuery(resolveProjectHierarchyIdentity(project, tasks).proposalTitle);
+        }
+        return true;
+      }
+      return true;
+    },
+    [dbProjects, loading, tasks],
+  );
   const currentUserId = user?.id || userProfile?.id || userProfile?.uid || "";
   const canManageDepartmentTemplates = [
     "dept_head",

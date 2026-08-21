@@ -1,10 +1,12 @@
 import * as React from "react";
-import { Building2, CheckCircle2, ChevronDown, FileText, FolderKanban, Layers3 } from "lucide-react";
+import { AlertTriangle, Building2, CalendarClock, CheckCircle2, ChevronDown, FileText, FolderKanban, Layers3, Sparkles } from "lucide-react";
 import type { Organization, UserProfile } from "../../../types";
 import type { Task } from "../../tasks";
 import type { ProposalPortfolioGroup } from "../selectors/proposalPortfolioSelectors";
 import { organizationTypeLabel } from "../selectors/proposalPortfolioSelectors";
+import { latestProjectTarget } from "../selectors/deadlines";
 import { ProjectCard } from "./ProjectCard";
+import { formatDate } from "../../../components/workflow/primitives";
 
 const SOURCE_LABEL = {
   ai_pdf: "AI PDF proposal",
@@ -43,6 +45,13 @@ export function ProposalPortfolio({
       {groups.map((group) => {
         const isCollapsed = collapsed.has(group.id);
         const organization = orgs.find((org) => org.id === group.orgId);
+        const deadlineClass = group.deadlineTone === "overdue"
+          ? "border-red-200 bg-red-50 text-red-700"
+          : group.deadlineTone === "due_soon"
+            ? "border-amber-200 bg-amber-50 text-amber-700"
+            : group.deadlineTone === "completed"
+              ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+              : "border-blue-100 bg-blue-50 text-blue-700";
         return (
           <section key={group.id} className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
             <button
@@ -59,11 +68,16 @@ export function ProposalPortfolio({
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[8.5px] font-semibold uppercase tracking-wide text-blue-700">Proposal</span>
                     <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[8.5px] font-medium text-neutral-600">{SOURCE_LABEL[group.sourceType]}</span>
+                    {group.completionRecommended && <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[8.5px] font-semibold text-emerald-700"><Sparkles size={9} /> Ready to mark completed</span>}
                   </div>
                   <h2 className="mt-1.5 truncate text-[14px] font-semibold text-neutral-950">{group.title}</h2>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[9.5px] text-neutral-500">
                     {organization && <span className="inline-flex items-center gap-1"><Building2 size={10} /> {organization.name} · {organizationTypeLabel(organization.org_type)}</span>}
                     {group.sourceFileName && <span className="inline-flex items-center gap-1"><FileText size={10} /> {group.sourceFileName}</span>}
+                    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium ${deadlineClass}`}>
+                      {group.deadlineTone === "overdue" ? <AlertTriangle size={9} /> : <CalendarClock size={9} />}
+                      Target {formatDate(group.targetDate)} · {group.deadlineLabel}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -87,7 +101,7 @@ export function ProposalPortfolio({
                           <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-violet-600">Program</div>
                           <h3 className="text-[11.5px] font-semibold text-neutral-800">{program.title}</h3>
                         </div>
-                        <span className="ml-auto text-[9px] text-neutral-400">{program.projects.length} {program.projects.length === 1 ? "project" : "projects"}</span>
+                        <span className="ml-auto inline-flex items-center gap-2 text-[9px] text-neutral-400"><span>{program.projects.length} {program.projects.length === 1 ? "project" : "projects"}</span><span className="inline-flex items-center gap-1"><CalendarClock size={9} /> Target {formatDate(latestProjectTarget(program.projects))}</span></span>
                       </div>
                       <div className={view === "grid" ? "grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3" : "space-y-2"}>
                         {program.projects.map((project) => (

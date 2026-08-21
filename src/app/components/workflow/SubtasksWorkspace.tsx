@@ -13,6 +13,8 @@ import {
   ShieldCheck,
   LockKeyhole,
   Unlink2,
+  CalendarClock,
+  AlertTriangle,
 } from "lucide-react";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
@@ -29,6 +31,7 @@ import {
   WSelect,
   SectionEmpty,
   LoadingState,
+  formatDate,
 } from "./primitives";
 import { TaskStatusBadge, PriorityPill } from "./StatusBadges";
 import { TaskDetailDrawer } from "./TaskDetailDrawer";
@@ -36,6 +39,7 @@ import {
   getSequentialStepNumber,
   getSubtaskPrerequisite,
 } from "../../features/subtasks/selectors/sequencing";
+import { getSubtaskDeadlineState } from "../../features/subtasks/selectors/deadlines";
 
 export function SubtasksWorkspace() {
   const { user } = useAuth();
@@ -137,6 +141,7 @@ export function SubtasksWorkspace() {
     else if (statusFilter === "for_review") rows = rows.filter((st) => st.status === "for_review");
     else if (statusFilter === "changes_requested") rows = rows.filter((st) => st.status === "changes_requested");
     else if (statusFilter === "completed") rows = rows.filter((st) => st.isCompleted);
+    else if (statusFilter === "overdue") rows = rows.filter((st) => getSubtaskDeadlineState(st).tone === "overdue");
 
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -171,6 +176,7 @@ export function SubtasksWorkspace() {
     (st) => !st.isCompleted && st.status !== "for_review",
   ).length;
   const reviewCount = subtasks.filter((st) => st.status === "for_review").length;
+  const overdueCount = subtasks.filter((st) => getSubtaskDeadlineState(st).tone === "overdue").length;
 
   if (loading || tasksLoading) {
     return (
@@ -188,7 +194,7 @@ export function SubtasksWorkspace() {
         subtitle="Open assigned work, report progress, attach evidence, and submit it for Team Leader approval."
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
         <StatCard
           label="Total Subtasks"
           value={totalCount}
@@ -212,6 +218,14 @@ export function SubtasksWorkspace() {
           tone={reviewCount > 0 ? "warn" : "neutral"}
           icon={<ShieldCheck size={15} />}
         />
+        <StatCard
+          label="Overdue"
+          value={overdueCount}
+          tone={overdueCount > 0 ? "bad" : "good"}
+          icon={<AlertTriangle size={15} />}
+          onClick={() => setStatusFilter(overdueCount > 0 ? "overdue" : "all")}
+          active={statusFilter === "overdue"}
+        />
       </div>
 
       {/* Filters */}
@@ -230,6 +244,7 @@ export function SubtasksWorkspace() {
             { value: "pending", label: "Pending Only" },
             { value: "for_review", label: "For Review" },
             { value: "changes_requested", label: "Changes Requested" },
+            { value: "overdue", label: "Overdue" },
             { value: "completed", label: "Completed" },
           ]}
         />
@@ -276,6 +291,7 @@ export function SubtasksWorkspace() {
                   {group.subtasks.map((st) => {
                     const prerequisite = getSubtaskPrerequisite(st, subtasks);
                     const stepNumber = getSequentialStepNumber(st, subtasks);
+                    const deadlineState = getSubtaskDeadlineState(st);
                     return (
                     <button
                       type="button"
@@ -330,6 +346,14 @@ export function SubtasksWorkspace() {
                           <Sparkles size={9} /> AI Extracted
                         </span>
                       )}
+                      <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-['Lexend:Medium',_sans-serif] ${
+                        deadlineState.tone === "overdue" ? "bg-red-50 text-red-700" :
+                        deadlineState.tone === "due_soon" ? "bg-amber-50 text-amber-700" :
+                        deadlineState.tone === "completed" ? "bg-emerald-50 text-emerald-700" :
+                        deadlineState.tone === "none" ? "bg-neutral-100 text-neutral-500" : "bg-blue-50 text-blue-700"
+                      }`} title={st.dueDate ? `Due ${formatDate(st.dueDate)}` : "Ask your Team Leader to assign a deadline"}>
+                        <CalendarClock size={9} /> {st.dueDate ? `${formatDate(st.dueDate)} · ${deadlineState.label}` : deadlineState.label}
+                      </span>
                       <span className={`rounded-full px-2 py-0.5 text-[9.5px] font-['Lexend:Medium',_sans-serif] ${
                         st.status === "completed" ? "bg-emerald-50 text-emerald-700" :
                         st.status === "for_review" ? "bg-amber-50 text-amber-700" :

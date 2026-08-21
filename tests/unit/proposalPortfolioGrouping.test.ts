@@ -71,20 +71,24 @@ describe("proposal-grouped project portfolio", () => {
     projects[0].programTitle = "Final Outputs";
     projects[0].proposalId = "ocedsipp";
     projects[0].proposalTitle = "OCEDSIPP";
+    projects[0].targetDate = "2027-01-31";
     projects[1].programId = "ocedsipp-program-1-inception";
     projects[1].programTitle = "Inception";
     projects[1].proposalId = "ocedsipp";
     projects[1].proposalTitle = "OCEDSIPP";
+    projects[1].targetDate = "2026-09-30";
     projects[2].programId = "ocedsipp-program-2-situational-analysis";
     projects[2].programTitle = "Situational Analysis";
     projects[2].proposalId = "ocedsipp";
     projects[2].proposalTitle = "OCEDSIPP";
+    projects[2].targetDate = "2026-10-31";
 
     expect(buildProposalPortfolioGroups(projects, [])[0].programs.map((program) => program.title)).toEqual([
       "Inception",
       "Situational Analysis",
       "Final Outputs",
     ]);
+    expect(buildProposalPortfolioGroups(projects, [])[0].targetDate).toBe("2027-01-31");
   });
 
   it("keeps an empty imported project inside its source proposal using persisted compatibility metadata", () => {

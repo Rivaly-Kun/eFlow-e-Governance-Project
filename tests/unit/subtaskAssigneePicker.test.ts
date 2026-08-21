@@ -111,6 +111,9 @@ describe("subtask assignee picker", () => {
     fireEvent.change(widget.getByPlaceholderText("Add a subtask for team members…"), {
       target: { value: "Draft the activity schedule" },
     });
+    fireEvent.change(widget.getByLabelText("New subtask due date"), {
+      target: { value: "2026-08-30" },
+    });
     fireEvent.click(widget.getByRole("button", { name: "Add" }));
 
     await waitFor(() => {
@@ -132,6 +135,9 @@ describe("subtask assignee picker", () => {
     const widget = within(view.container);
     fireEvent.change(widget.getByPlaceholderText("Add a subtask for team members…"), {
       target: { value: "Arrange refreshments" },
+    });
+    fireEvent.change(widget.getByLabelText("New subtask due date"), {
+      target: { value: "2026-08-30" },
     });
     fireEvent.click(widget.getByRole("button", { name: "Standalone" }));
     fireEvent.click(widget.getByRole("button", { name: "Add" }));

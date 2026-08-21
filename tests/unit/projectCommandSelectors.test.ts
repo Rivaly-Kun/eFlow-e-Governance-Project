@@ -39,6 +39,19 @@ describe("Project Command Workspace selectors", () => {
     expect(summary.isEmpty).toBe(true);
   });
 
+  it("recommends project completion instead of silently changing its status", () => {
+    const completedTasks = [
+      { ...tasks[0], id: "complete-1" },
+      { ...tasks[0], id: "complete-2" },
+    ];
+    const summary = buildProjectPortfolioSummary(project, completedTasks, now);
+    const metrics = buildProjectCommandMetrics(project, completedTasks, [], { ...facts, submissions: [] }, [], now);
+    expect(summary.progress).toBe(100);
+    expect(summary.completionRecommended).toBe(true);
+    expect(metrics.completionRecommended).toBe(true);
+    expect(project.status).toBe("active");
+  });
+
   it("merges audit and workflow events into one newest-first timeline", () => {
     const rows = buildProjectActivity(facts, [{ id: "audit", kind: "project", title: "project updated", detail: "", occurredAt: now }]);
     expect(rows.map((row) => row.id)).toEqual(["audit", "submission:s"]);

@@ -22,6 +22,10 @@ export interface Subtask {
   assignedToIds: string[];
   position: number;
   isStandalone: boolean;
+  dueDate?: string;
+  dueDateChangeReason?: string;
+  dueDateChangedAt?: number;
+  dueDateChangedBy?: string;
   source: SubtaskSource;
   createdBy?: string;
   createdAt: number;
@@ -51,6 +55,10 @@ export function rowToSubtask(row: Record<string, unknown>): Subtask {
     assignedToIds,
     position: (row.position as number) || 0,
     isStandalone: row.is_standalone === true,
+    dueDate: (row.due_date as string) || undefined,
+    dueDateChangeReason: (row.due_date_change_reason as string) || undefined,
+    dueDateChangedAt: row.due_date_changed_at ? new Date(row.due_date_changed_at as string).getTime() : undefined,
+    dueDateChangedBy: (row.due_date_changed_by as string) || undefined,
     source: (row.source as SubtaskSource) || 'manual',
     createdBy: (row.created_by as string) || undefined,
     createdAt: new Date(row.created_at as string).getTime(),
@@ -108,6 +116,7 @@ export async function createSubtask(
     assignedTo?: string;
     actorName?: string;
     isStandalone?: boolean;
+    dueDate?: string;
   },
 ): Promise<Subtask> {
   const assignedIds = opts?.assignedToIds || (opts?.assignedTo ? [opts.assignedTo] : []);
@@ -125,6 +134,7 @@ export async function createSubtask(
     assigned_to_ids: assignedIds,
   };
   if (opts?.isStandalone) insertRow.is_standalone = true;
+  if (opts?.dueDate) insertRow.due_date = opts.dueDate;
 
   const { data, error } = await supabase
     .from('subtasks')
@@ -269,6 +279,25 @@ export async function updateSubtask(
       }
     }
   }
+}
+
+export async function setSubtaskDueDate(
+  subtaskId: string,
+  dueDate: string,
+  reason?: string,
+): Promise<Subtask> {
+  const { data, error } = await supabase.rpc('set_subtask_due_date', {
+    p_subtask_id: subtaskId,
+    p_due_date: dueDate || null,
+    p_reason: reason?.trim() || null,
+  });
+  if (error) {
+    if (error.code === 'PGRST202' || error.message.includes('set_subtask_due_date')) {
+      throw new Error('Apply the hierarchical deadline database migration, then try again.');
+    }
+    throw new Error(error.message);
+  }
+  return rowToSubtask(data as Record<string, unknown>);
 }
 
 // ─── deleteSubtask ──────────────────────────────────────────────────

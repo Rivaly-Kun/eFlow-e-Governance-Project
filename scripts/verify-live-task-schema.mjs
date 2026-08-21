@@ -40,6 +40,7 @@ async function verifyLiveSchema() {
   for (const table of [
     "audit_events",
     "milestones",
+    "hierarchy_deadline_reminders",
     "monthly_productivity_snapshots",
     "project_members",
     "projects",
@@ -80,8 +81,11 @@ async function verifyLiveSchema() {
   if (!definitions.organizations?.properties?.assistant_head_user_id) {
     missing.push("organizations.assistant_head_user_id");
   }
-  for (const column of ["status", "percent_complete", "reviewer_id", "latest_submission_id", "is_standalone"]) {
+  for (const column of ["status", "percent_complete", "reviewer_id", "latest_submission_id", "is_standalone", "due_date", "due_date_change_reason", "due_date_changed_at", "due_date_changed_by"]) {
     if (!definitions.subtasks?.properties?.[column]) missing.push(`subtasks.${column}`);
+  }
+  for (const column of ["project_id", "proposal_id", "org_id", "entity_type"]) {
+    if (!definitions.notifications?.properties?.[column]) missing.push(`notifications.${column}`);
   }
   if (definitions.subtasks?.properties?.assigned_to_ids?.format !== "uuid[]") {
     missing.push(
@@ -109,9 +113,11 @@ async function verifyLiveSchema() {
     "decide_task_review",
     "decide_subtask_review",
     "dispatch_task_reminders",
+    "dispatch_hierarchy_deadline_reminders",
     "materialize_due_task_templates",
     "recalculate_monthly_productivity",
     "set_organization_leadership",
+    "set_subtask_due_date",
     "save_subtask_progress",
     "save_subtask_template",
     "review_subtask_template",

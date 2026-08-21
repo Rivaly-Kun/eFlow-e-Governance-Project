@@ -12,6 +12,7 @@ import type { SubtaskProgressUpdate, SubtaskSubmission } from "../types";
 import { SubtaskProgressForm } from "./SubtaskProgressForm";
 import { SubtaskProgressHistory } from "./SubtaskProgressHistory";
 import { SubtaskSubmissionHistory } from "./SubtaskSubmissionHistory";
+import { SubtaskDeadlineEditor } from "./SubtaskDeadlineEditor";
 
 const statusMeta = {
   todo: { label: "To do", tone: "bg-neutral-100 text-neutral-700" },
@@ -26,12 +27,14 @@ export function SubtaskWorkDrawer({
   parentTask,
   prerequisite,
   readOnly = false,
+  canManageDeadline = false,
   onClose,
 }: {
   subtask: Subtask | null;
   parentTask?: Task;
   prerequisite?: Subtask | null;
   readOnly?: boolean;
+  canManageDeadline?: boolean;
   onClose: () => void;
 }) {
   const [current, setCurrent] = useState(subtask);
@@ -113,6 +116,13 @@ export function SubtaskWorkDrawer({
               </div>
             </div>
           </div>
+
+          <SubtaskDeadlineEditor
+            subtask={current}
+            parentTask={parentTask}
+            canManage={canManageDeadline}
+            onSaved={reload}
+          />
 
           {readOnly ? (
             <div className="flex gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-[11.5px] text-blue-800">

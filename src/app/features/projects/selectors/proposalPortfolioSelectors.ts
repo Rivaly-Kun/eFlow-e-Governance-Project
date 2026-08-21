@@ -1,6 +1,7 @@
 import type { Organization } from "../../../types";
 import type { Task } from "../../tasks";
 import type { Project, ProjectSourceType } from "../services/types";
+import { deriveProposalTargetDate, getPortfolioDeadlineState } from "./deadlines";
 
 export interface ProposalProgramGroup {
   id: string;
@@ -19,7 +20,12 @@ export interface ProposalPortfolioGroup {
   projectCount: number;
   taskCount: number;
   completedTaskCount: number;
+  completedProjectCount: number;
   progress: number;
+  targetDate?: string;
+  deadlineTone: "none" | "on_track" | "due_soon" | "overdue" | "completed";
+  deadlineLabel: string;
+  completionRecommended: boolean;
   latestActivityAt: number;
 }
 
@@ -131,7 +137,11 @@ export function buildProposalPortfolioGroups(projects: Project[], tasks: Task[])
         projectCount: 0,
         taskCount: 0,
         completedTaskCount: 0,
+        completedProjectCount: 0,
         progress: 0,
+        deadlineTone: "none",
+        deadlineLabel: "No target date",
+        completionRecommended: false,
         latestActivityAt: project.updatedAt,
       };
       groups.set(groupId, group);
@@ -146,20 +156,31 @@ export function buildProposalPortfolioGroups(projects: Project[], tasks: Task[])
     group.projectCount += 1;
     group.taskCount += linkedTasks.length;
     group.completedTaskCount += completedTaskCount;
+    if (project.status === "completed") group.completedProjectCount += 1;
     group.latestActivityAt = Math.max(group.latestActivityAt, project.updatedAt);
   });
 
   return Array.from(groups.values())
-    .map((group) => ({
-      ...group,
-      progress: group.taskCount ? Math.round((group.completedTaskCount / group.taskCount) * 100) : 0,
-      programs: group.programs
+    .map((group) => {
+      const programs = group.programs
         .map((program) => ({
           ...program,
           projects: [...program.projects].sort(compareProjectsByPlanOrder),
         }))
-        .sort(compareProgramsByPlanOrder),
-    }))
+        .sort(compareProgramsByPlanOrder);
+      const targetDate = deriveProposalTargetDate(programs);
+      const completed = group.projectCount > 0 && group.completedProjectCount === group.projectCount;
+      const deadline = getPortfolioDeadlineState(targetDate, completed);
+      return {
+        ...group,
+        progress: group.taskCount ? Math.round((group.completedTaskCount / group.taskCount) * 100) : 0,
+        programs,
+        targetDate,
+        deadlineTone: deadline.tone,
+        deadlineLabel: deadline.label,
+        completionRecommended: !completed && group.taskCount > 0 && group.completedTaskCount === group.taskCount,
+      };
+    })
     .sort((a, b) => b.latestActivityAt - a.latestActivityAt);
 }
 

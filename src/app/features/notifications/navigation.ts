@@ -7,12 +7,16 @@ export type NotificationIntentKind =
   | "task_review"
   | "subtask_review"
   | "announcement"
-  | "team_intelligence";
+  | "team_intelligence"
+  | "project"
+  | "proposal";
 
 export interface NotificationNavigationIntent {
   notificationId: string;
   kind: NotificationIntentKind;
   taskId?: string;
+  projectId?: string;
+  proposalId?: string;
   entityLabel?: string;
 }
 
@@ -60,6 +64,13 @@ function destinationForAnnouncement(role: string) {
   return null;
 }
 
+function destinationForProject(role: string) {
+  if (["superadmin", "depthead", "employee", "teamleader"].includes(role)) {
+    return { section: "projects", page: "Projects" };
+  }
+  return null;
+}
+
 function makeDestination(
   notification: Notification,
   route: { section: string; page: string } | null,
@@ -75,6 +86,8 @@ function makeDestination(
       notificationId: notification.id,
       kind,
       taskId: notification.taskId,
+      projectId: notification.projectId,
+      proposalId: notification.proposalId,
       entityLabel,
     },
   };
@@ -155,6 +168,26 @@ export function resolveNotificationDestination(
       destinationForSubtask(role),
       "subtask",
       "Open subtask",
+      messageLabels[0],
+    );
+  }
+
+  if (notification.entityType === "proposal" && notification.proposalId) {
+    return makeDestination(
+      notification,
+      destinationForProject(role),
+      "proposal",
+      "Open proposal",
+      messageLabels[0],
+    );
+  }
+
+  if (notification.projectId) {
+    return makeDestination(
+      notification,
+      destinationForProject(role),
+      "project",
+      "Open project",
       messageLabels[0],
     );
   }

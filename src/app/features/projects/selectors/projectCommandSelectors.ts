@@ -26,9 +26,11 @@ export function buildProjectCommandMetrics(
   const blocked = attention.filter((item) => item.kind === "blocked").length;
   const awaitingReview = facts.submissions.filter((item) => item.status === "pending").length;
   const changesRequested = facts.submissions.filter((item) => item.status === "changes_requested").length;
+  const taskCompleted = activeTasks.filter((task) => task.status === "completed").length;
+  const completionRecommended = project.status !== "completed" && activeTasks.length > 0 && taskCompleted === activeTasks.length;
   const target = timestamp(project.targetDate);
   let scheduleHealth: ProjectScheduleHealth = "on_track";
-  if (project.status === "completed" || progress === 100) scheduleHealth = "completed";
+  if (project.status === "completed") scheduleHealth = "completed";
   else if (overdue > 0 || (target && target < now)) scheduleHealth = "overdue";
   else if (blocked > 0 || changesRequested > 0 || milestones.some((milestone) => milestone.manualStatus === "at_risk")) scheduleHealth = "at_risk";
   else if (target && target <= now + 14 * DAY) scheduleHealth = "due_soon";
@@ -42,13 +44,14 @@ export function buildProjectCommandMetrics(
     progress,
     scheduleHealth,
     taskTotal: activeTasks.length,
-    taskCompleted: activeTasks.filter((task) => task.status === "completed").length,
+    taskCompleted,
     milestoneOpen: milestones.filter((milestone) => milestone.status !== "completed" && milestone.manualStatus !== "completed").length,
     milestoneCompleted: milestones.filter((milestone) => milestone.status === "completed" || milestone.manualStatus === "completed").length,
     overdue,
     blocked,
     awaitingReview,
     changesRequested,
+    completionRecommended,
     activeLeadIds: Array.from(new Set(activeTasks.map((task) => task.recommendationLeadId || task.assigneeId).filter((id): id is string => Boolean(id)))),
     nextDeadline,
     lastActivityAt: activityTimes.length ? Math.max(...activityTimes.filter(Number.isFinite)) : undefined,
@@ -74,6 +77,7 @@ export function buildProjectPortfolioSummary(project: Project, tasks: Task[], no
   const changesRequested = live.filter((task) => task.status === "changes_requested").length;
   const leadIds = Array.from(new Set(live.map((task) => task.recommendationLeadId || task.assigneeId).filter((id): id is string => Boolean(id))));
   const deadlines = live.map((task) => task.deadline || task.dueDate).filter((date): date is string => Boolean(date)).filter((date) => new Date(date).getTime() >= now).sort();
-  const health: ProjectScheduleHealth = project.status === "completed" || progress === 100 ? "completed" : overdue || (target && target < now) ? "overdue" : changesRequested ? "at_risk" : target && target < now + 14 * DAY ? "due_soon" : "on_track";
-  return { progress, completed, total: live.length, isEmpty: live.length === 0 && project.status !== "completed", overdue, awaitingReview, changesRequested, leadIds, nextDeadline: deadlines[0] || project.targetDate, health, lastActivityAt: Math.max(project.updatedAt, ...live.map((task) => task.lastActivityAt || task.updatedAt)) };
+  const health: ProjectScheduleHealth = project.status === "completed" ? "completed" : overdue || (target && target < now) ? "overdue" : changesRequested ? "at_risk" : target && target < now + 14 * DAY ? "due_soon" : "on_track";
+  const completionRecommended = project.status !== "completed" && live.length > 0 && completed === live.length;
+  return { progress, completed, total: live.length, isEmpty: live.length === 0 && project.status !== "completed", overdue, awaitingReview, changesRequested, leadIds, nextDeadline: deadlines[0] || project.targetDate, health, completionRecommended, lastActivityAt: Math.max(project.updatedAt, ...live.map((task) => task.lastActivityAt || task.updatedAt)) };
 }

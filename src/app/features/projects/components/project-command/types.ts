@@ -16,6 +16,7 @@ export interface ProjectCommandMetrics {
   blocked: number;
   awaitingReview: number;
   changesRequested: number;
+  completionRecommended: boolean;
   activeLeadIds: string[];
   nextDeadline?: string;
   lastActivityAt?: number;

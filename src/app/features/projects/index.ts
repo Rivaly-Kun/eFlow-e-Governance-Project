@@ -4,6 +4,7 @@ export { EmployeeProjectsWorkspace } from "./components/EmployeeProjectsWorkspac
 export { ProjectCommandWorkspace } from "./components/project-command/ProjectCommandWorkspace";
 export * from "./selectors/projectCommandSelectors";
 export * from "./selectors/proposalPortfolioSelectors";
+export * from "./selectors/deadlines";
 export type { ProjectScope } from "./components/model";
 export * from "./services/projectService";
 export {

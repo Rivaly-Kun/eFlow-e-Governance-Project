@@ -13,7 +13,8 @@ export type NotificationType =
   | 'reassignment'
   | 'status_change'
   | 'undo'
-  | 'comment';
+  | 'comment'
+  | 'reminder';
 
 export interface Notification {
   id: string;
@@ -27,6 +28,10 @@ export interface Notification {
   statusFrom?: string;
   statusTo?: string;
   reason?: string;
+  projectId?: string;
+  proposalId?: string;
+  orgId?: string;
+  entityType?: string;
   read: boolean;
   createdAt: number;
 }
@@ -44,6 +49,10 @@ function rowToNotif(row: Record<string, unknown>): Notification {
     statusFrom: (row.status_from as string) || undefined,
     statusTo: (row.status_to as string) || undefined,
     reason: (row.reason as string) || undefined,
+    projectId: (row.project_id as string) || undefined,
+    proposalId: (row.proposal_id as string) || undefined,
+    orgId: (row.org_id as string) || undefined,
+    entityType: (row.entity_type as string) || undefined,
     read: (row.read as boolean) || false,
     createdAt: new Date((row.created_at as string) || Date.now()).getTime(),
   };
@@ -90,7 +99,7 @@ export async function createNotification(
   const isUuid = (val?: string) =>
     Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
 
-  await supabase.from('notifications').insert({
+  const row: Record<string, unknown> = {
     user_id: userId,
     type: notification.type,
     title: notification.title,
@@ -103,7 +112,12 @@ export async function createNotification(
     status_to: notification.statusTo || '',
     reason: notification.reason || '',
     read: false,
-  });
+  };
+  if (notification.projectId) row.project_id = isUuid(notification.projectId) ? notification.projectId : null;
+  if (notification.proposalId) row.proposal_id = notification.proposalId;
+  if (notification.orgId) row.org_id = isUuid(notification.orgId) ? notification.orgId : null;
+  if (notification.entityType) row.entity_type = notification.entityType;
+  await supabase.from('notifications').insert(row);
 
   // Fire-and-forget email — never let this throw into the caller. The
   // in-app notification above has already succeeded regardless of

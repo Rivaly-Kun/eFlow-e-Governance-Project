@@ -3,7 +3,7 @@
 // Reused across TaskDetailDrawer, YouAreLeadingView, and MondayBoard.
 
 import { useState, useEffect, useMemo, useRef } from "react";
-import { User, Plus, X, CheckSquare, Sparkles, Check, Eye, Clock3, LockKeyhole, Unlink2 } from "lucide-react";
+import { User, Plus, X, CheckSquare, Sparkles, Check, Eye, Clock3, LockKeyhole, Unlink2, CalendarClock } from "lucide-react";
 import {
   type Subtask,
   subscribeToSubtasks,
@@ -17,6 +17,7 @@ import { useToast } from "../../../components/ui/Toast";
 import { startTaskIfTodo, type Task } from "../../../services/taskService";
 import { SubtaskWorkDrawer } from "./SubtaskWorkDrawer";
 import { SubtaskSequenceControls } from "./sequencing/SubtaskSequenceControls";
+import { formatDate } from "../../../components/workflow/primitives";
 import {
   getSequentialStepNumber,
   getSubtaskPrerequisite,
@@ -24,6 +25,7 @@ import {
   moveSequenceItemToTarget,
   resequenceItems,
 } from "../selectors/sequencing";
+import { getSubtaskDeadlineState, parentTaskDueDate } from "../selectors/deadlines";
 
 export function TaskSubtasksWidget({
   taskId,
@@ -41,6 +43,7 @@ export function TaskSubtasksWidget({
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [newTitle, setNewTitle] = useState("");
   const [newStandalone, setNewStandalone] = useState(false);
+  const [newDueDate, setNewDueDate] = useState(() => parentTaskDueDate(parentTask?.deadline, parentTask?.dueDate) || "");
   const [adding, setAdding] = useState(false);
   const [pickerOpenFor, setPickerOpenFor] = useState<string | null>(null);
   const [openSubtask, setOpenSubtask] = useState<Subtask | null>(null);
@@ -55,6 +58,11 @@ export function TaskSubtasksWidget({
     const unsub = subscribeToSubtasks(taskId, setSubtasks);
     return unsub;
   }, [taskId]);
+
+  const parentDue = parentTaskDueDate(parentTask?.deadline, parentTask?.dueDate);
+  useEffect(() => {
+    if (!newDueDate && parentDue) setNewDueDate(parentDue);
+  }, [newDueDate, parentDue]);
 
   useEffect(() => {
     if (!pickerOpenFor) return;
@@ -80,7 +88,7 @@ export function TaskSubtasksWidget({
   }, [allowedAssignees]);
 
   const handleAdd = async () => {
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim() || !newDueDate) return;
     setAdding(true);
     try {
       await createSubtask(taskId, newTitle.trim(), {
@@ -89,12 +97,14 @@ export function TaskSubtasksWidget({
         createdBy: user?.id,
         actorName: userProfile?.full_name || "Team Lead",
         isStandalone: newStandalone,
+        dueDate: newDueDate,
       });
       const parentStarted = startParentOnCreate && parentTask?.status === "todo"
         ? await startTaskIfTodo(taskId)
         : false;
       setNewTitle("");
       setNewStandalone(false);
+      setNewDueDate(parentDue || "");
       toast(
         parentStarted
           ? "Subtask added. The task is now In Progress."
@@ -189,6 +199,7 @@ export function TaskSubtasksWidget({
           const prerequisite = getSubtaskPrerequisite(st, subtasks);
           const stepNumber = getSequentialStepNumber(st, subtasks);
           const executionModeLocked = st.status !== "todo" || st.percentComplete > 0;
+          const deadlineState = getSubtaskDeadlineState(st);
 
           return (
             <div
@@ -285,6 +296,15 @@ export function TaskSubtasksWidget({
 
               <span className="text-[9.5px] font-['Lexend:Medium',_sans-serif] tabular-nums text-neutral-500">
                 {st.percentComplete}%
+              </span>
+
+              <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[8.5px] font-medium ${
+                deadlineState.tone === "overdue" ? "bg-red-50 text-red-700" :
+                deadlineState.tone === "due_soon" ? "bg-amber-50 text-amber-700" :
+                deadlineState.tone === "completed" ? "bg-emerald-50 text-emerald-700" :
+                deadlineState.tone === "none" ? "bg-neutral-100 text-neutral-500" : "bg-blue-50 text-blue-700"
+              }`} title={st.dueDate ? `Due ${formatDate(st.dueDate)}` : "No due date assigned"}>
+                <CalendarClock size={9} /> {deadlineState.label}
               </span>
 
               {canOpenDetails && (
@@ -412,6 +432,15 @@ export function TaskSubtasksWidget({
           placeholder="Add a subtask for team members…"
           className="flex-1 h-[32px] rounded-lg border border-neutral-200 bg-white px-2.5 text-[12px] text-neutral-900 outline-none focus:border-neutral-400 placeholder:text-neutral-400 font-['Lexend:Regular',_sans-serif]"
         />
+        <input
+          type="date"
+          value={newDueDate}
+          max={parentDue}
+          onChange={(event) => setNewDueDate(event.target.value)}
+          className="h-[32px] w-[145px] rounded-lg border border-neutral-200 bg-white px-2 text-[10.5px] text-neutral-700 outline-none focus:border-neutral-400"
+          title={parentDue ? `Subtask deadline, no later than ${formatDate(parentDue)}` : "Subtask deadline"}
+          aria-label="New subtask due date"
+        />
         <button
           type="button"
           onClick={() => setNewStandalone((current) => !current)}
@@ -428,7 +457,7 @@ export function TaskSubtasksWidget({
         <button
           type="button"
           onClick={handleAdd}
-          disabled={adding || !newTitle.trim()}
+          disabled={adding || !newTitle.trim() || !newDueDate}
           className="h-[32px] px-3 rounded-lg bg-neutral-900 text-white text-[11px] font-['Lexend:Medium',_sans-serif] disabled:opacity-40 hover:bg-neutral-800 shrink-0 inline-flex items-center gap-1"
         >
           <Plus size={13} /> Add
@@ -439,6 +468,7 @@ export function TaskSubtasksWidget({
         parentTask={parentTask}
         prerequisite={openSubtask ? getSubtaskPrerequisite(openSubtask, subtasks) : null}
         readOnly={canManage}
+        canManageDeadline={canManage}
         onClose={() => setOpenSubtask(null)}
       />
     </div>
