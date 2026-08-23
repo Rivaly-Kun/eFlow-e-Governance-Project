@@ -10,6 +10,7 @@ from routers.admin import router as admin_router
 from routers.ai import router as ai_router
 from routers.notifications import router as notifications_router
 from routers.backups import router as backups_router
+from routers.collaboration import router as collaboration_router
 
 
 logging.basicConfig(
@@ -36,6 +37,7 @@ app.include_router(ai_router)
 app.include_router(admin_router)
 app.include_router(notifications_router)
 app.include_router(backups_router)
+app.include_router(collaboration_router)
 
 
 if __name__ == "__main__":

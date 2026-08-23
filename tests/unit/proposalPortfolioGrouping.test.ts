@@ -118,4 +118,13 @@ describe("proposal-grouped project portfolio", () => {
     expect(projectMatchesProposalQuery(operationalProject, tasks, "strategic planning")).toBe(true);
     expect(projectMatchesProposalQuery(operationalProject, tasks, "finance payroll")).toBe(false);
   });
+
+  it("keeps the committed collaboration link on the proposal group", () => {
+    const operationalProject = project("project-1", "ledipo", "Inception");
+    operationalProject.sourceCollaborationDraftId = "draft-1";
+
+    expect(buildProposalPortfolioGroups([operationalProject], [
+      task("task-1", "project-1", "ledipo", "program-1", "Planning"),
+    ])[0].sourceCollaborationDraftId).toBe("draft-1");
+  });
 });

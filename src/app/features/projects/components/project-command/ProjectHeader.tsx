@@ -1,10 +1,10 @@
-import { Archive, ArchiveRestore, Building2, ChevronLeft, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Building2, ChevronLeft, ScrollText, Trash2 } from "lucide-react";
 import type { Organization } from "../../../../types";
 import type { Project } from "../../services/types";
 import { PriorityPill, ProjectStatusBadge } from "../../../../components/workflow/StatusBadges";
 import { WButton } from "../../../../components/workflow/primitives";
 
-export function ProjectHeader({ project, organizations, canArchive, canDelete, onBack, onArchive, onRestore, onDelete }: { project: Project; organizations: Organization[]; canArchive: boolean; canDelete: boolean; onBack: () => void; onArchive: () => void; onRestore: () => void; onDelete: () => void }) {
+export function ProjectHeader({ project, organizations, canArchive, canDelete, onBack, onArchive, onRestore, onDelete, onOpenSourceGovernance }: { project: Project; organizations: Organization[]; canArchive: boolean; canDelete: boolean; onBack: () => void; onArchive: () => void; onRestore: () => void; onDelete: () => void; onOpenSourceGovernance?: () => void }) {
   const organization = organizations.find((item) => item.id === project.orgId);
   const archived = project.status === "archived";
   return (
@@ -16,7 +16,7 @@ export function ProjectHeader({ project, organizations, canArchive, canDelete, o
           <h1 className="mt-2 text-[23px] font-semibold tracking-tight text-neutral-950">{project.title}</h1>
           <p className="mt-1 text-[11.5px] leading-relaxed text-neutral-500">{project.description || "No project description has been recorded."}</p>
         </div>
-        <div className="flex items-center gap-2">{canArchive ? archived ? <WButton icon={<ArchiveRestore size={14} />} onClick={onRestore}>Restore</WButton> : <WButton icon={<Archive size={14} />} onClick={onArchive}>Archive</WButton> : null}{canDelete ? <WButton icon={<Trash2 size={14} />} variant="danger" onClick={onDelete}>Delete</WButton> : null}</div>
+        <div className="flex items-center gap-2">{onOpenSourceGovernance ? <WButton icon={<ScrollText size={14} />} onClick={onOpenSourceGovernance}>Source &amp; governance</WButton> : null}{canArchive ? archived ? <WButton icon={<ArchiveRestore size={14} />} onClick={onRestore}>Restore</WButton> : <WButton icon={<Archive size={14} />} onClick={onArchive}>Archive</WButton> : null}{canDelete ? <WButton icon={<Trash2 size={14} />} variant="danger" onClick={onDelete}>Delete</WButton> : null}</div>
       </div>
       {archived ? <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-100 px-3 py-2 text-[10.5px] text-neutral-600"><Archive size={13} /> Archived projects are read-only; history and reports remain available.</div> : null}
     </header>

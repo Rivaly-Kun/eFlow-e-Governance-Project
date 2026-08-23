@@ -20,7 +20,7 @@ import { useAuth } from "../../../contexts/AuthContext";
 import { useTasks } from "../../../hooks/useFirebaseData";
 import { useProjectsData, useScopedOrgIds } from "../../../hooks/useSupabaseData";
 import type { Task } from "../../../services/taskService";
-import { canUserReviewTask } from "../selectors";
+import { canUserReviewTask, isTaskVisibleInReviewQueue } from "../selectors";
 import {
   fetchProgressUpdates,
   type ProgressUpdate,
@@ -62,22 +62,9 @@ export interface ForReviewInboxProps {
   scope?: ReviewInboxScope;
 }
 
-function isDepartmentReviewTask(
-  task: Task,
-  role: string | undefined,
-  scopedOrgIds: string[],
-): boolean {
-  if (role === "super_admin") return true;
-  if (!["dept_head", "assistant_head", "department_head"].includes(role || "")) return false;
-  if (task.orgId && scopedOrgIds.length > 0) {
-    return scopedOrgIds.includes(task.orgId);
-  }
-  return true;
-}
-
 export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
   const { tasks, loading } = useTasks();
-  const { scopedOrgIds, isSuperAdmin } = useScopedOrgIds();
+  const { isSuperAdmin } = useScopedOrgIds();
   const { projects } = useProjectsData();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("oldest");
@@ -89,12 +76,11 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
   const { user, userProfile } = useAuth();
   const queue = useMemo(() => {
     let rows = tasks.filter(
-      (t) =>
-        t.status === "for_review" &&
-        !t.archivedAt &&
-        canUserReviewTask(t, user?.id, userProfile?.role) &&
-        (scope === "leading" ||
-          isDepartmentReviewTask(t, userProfile?.role, scopedOrgIds)),
+      (task) => isTaskVisibleInReviewQueue(
+        task,
+        user?.id,
+        userProfile?.role,
+      ),
     );
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -115,7 +101,6 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
     scope,
     user?.id,
     userProfile?.role,
-    scopedOrgIds,
     query,
     sort,
     projects,

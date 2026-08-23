@@ -6,7 +6,6 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { User, Plus, X, CheckSquare, Sparkles, Check, Eye, Clock3, LockKeyhole, Unlink2, CalendarClock } from "lucide-react";
 import {
   type Subtask,
-  subscribeToSubtasks,
   createSubtask,
   updateSubtask,
   deleteSubtask,
@@ -26,6 +25,7 @@ import {
   resequenceItems,
 } from "../selectors/sequencing";
 import { getSubtaskDeadlineState, parentTaskDueDate } from "../selectors/deadlines";
+import { useTaskSubtasks } from "../hooks/useTaskSubtasks";
 
 export function TaskSubtasksWidget({
   taskId,
@@ -40,7 +40,7 @@ export function TaskSubtasksWidget({
   parentTask?: Task;
   startParentOnCreate?: boolean;
 }) {
-  const [subtasks, setSubtasks] = useState<Subtask[]>([]);
+  const { subtasks, setSubtasks } = useTaskSubtasks(taskId);
   const [newTitle, setNewTitle] = useState("");
   const [newStandalone, setNewStandalone] = useState(false);
   const [newDueDate, setNewDueDate] = useState(() => parentTaskDueDate(parentTask?.deadline, parentTask?.dueDate) || "");
@@ -52,12 +52,6 @@ export function TaskSubtasksWidget({
   const pickerRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const { user, userProfile } = useAuth();
   const { toast } = useToast();
-
-  useEffect(() => {
-    if (!taskId) return;
-    const unsub = subscribeToSubtasks(taskId, setSubtasks);
-    return unsub;
-  }, [taskId]);
 
   const parentDue = parentTaskDueDate(parentTask?.deadline, parentTask?.dueDate);
   useEffect(() => {

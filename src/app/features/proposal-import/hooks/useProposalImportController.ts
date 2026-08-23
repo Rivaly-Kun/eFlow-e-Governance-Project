@@ -1,13 +1,21 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useEmployeeNotes } from "../../../hooks/useFirebaseData";
 import { useOrgs } from "../../../hooks/useSupabaseData";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../components/ui/Toast";
-import type { Employee } from "../../../services/employeeService";
 import { useDepartmentTeamAnalytics } from "../../team-management";
+import { useDeptDirectoryEmployees } from "../../employees";
+import {
+  buildCollaborationSnapshot,
+  autosaveCollaborationDraft,
+  createCollaborationDraft,
+  defaultParticipationRole,
+  detectMentionedOrganizations,
+  getCollaborationCandidateEmployees,
+  type CollaborationOrganizationSelection,
+} from "../../interdepartment-collaboration";
 import { decomposeProposal, type ProposalDecompositionResult } from "../../../services/proposalDecompositionService";
 import { extractTextFromPdf } from "../services/pdfTextExtractor";
-import { commitProposalDrafts } from "../services/commitProposalDrafts";
 import { filterEmployeesByPdfMentions } from "../selectors/employeeMentions";
 import { withTeamIntelligenceCandidateWorkload } from "../selectors/candidateWorkload";
 import { buildHierarchyIds, type DraftTask, type PdfPhase } from "../components/draftModel";
@@ -25,6 +33,13 @@ export function useProposalImportController(onClose?: () => void) {
     excludeSuperAdmins: true,
   });
   const scopedDepartmentEmployees = teamAnalytics.deptEmployees;
+  const { allEmployees: directoryEmployees } = useDeptDirectoryEmployees({
+    scope: "exact",
+    includeCurrentUser: true,
+    includeDepartmentHeads: true,
+    activeOnly: true,
+    excludeSuperAdmins: true,
+  });
   const { toast } = useToast();
 
   // Proposal drafts can only assign employees directly in the requester's
@@ -38,7 +53,18 @@ export function useProposalImportController(onClose?: () => void) {
       : [],
     [scopedDepartmentEmployees, teamAnalytics.memberMetrics, userProfile?.departmentId],
   );
-  const allEmployees = deptEmployees;
+  const ownerOrgId = userProfile?.departmentId || userProfile?.org_id || "";
+  const [collaborationOrganizations, setCollaborationOrganizations] = useState<CollaborationOrganizationSelection[]>([]);
+  useEffect(() => {
+    if (!ownerOrgId) return;
+    setCollaborationOrganizations((current) => current.some((item) => item.participationRole === "owner")
+      ? current
+      : [{ orgId: ownerOrgId, participationRole: "owner", staffingEnabled: true }]);
+  }, [ownerOrgId]);
+  const allEmployees = useMemo(
+    () => getCollaborationCandidateEmployees(directoryEmployees, collaborationOrganizations),
+    [collaborationOrganizations, directoryEmployees],
+  );
 
   const deptEmployeesWithNotes = useMemo(
     () => deptEmployees.filter((emp) => Boolean(employeeNotes?.[emp.id])),
@@ -53,23 +79,12 @@ export function useProposalImportController(onClose?: () => void) {
     [deptEmployees, deptEmployeesWithNotes],
   );
 
-  const employeeById = useMemo(
-    () => {
-      const candidates = allEmployees && allEmployees.length > 0 ? allEmployees : deptEmployees;
-      return Object.fromEntries(candidates.map((e) => [e.id, e])) as Record<
-        string,
-        Employee
-      >;
-    },
-    [deptEmployees, allEmployees],
-  );
-
   const departmentFilter = userProfile?.departmentId || "";
-  const currentUserId = userProfile?.uid || "";
 
   const pdfFileRef = useRef<HTMLInputElement>(null);
   const [pdfPhase, setPdfPhase] = useState<PdfPhase>("idle");
   const [pdfFileName, setPdfFileName] = useState("");
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfError, setPdfError] = useState("");
   const [aiQueueStatus, setAiQueueStatus] = useState<AiQueueUpdate | null>(null);
   const [decompositionProgress, setDecompositionProgress] = useState<{
@@ -80,6 +95,10 @@ export function useProposalImportController(onClose?: () => void) {
   const [draftTasks, setDraftTasks] = useState<DraftTask[]>([]);
   const [committing, setCommitting] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [autoSaveState, setAutoSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const lastSavedSnapshot = useRef("");
+  const planningAnchor = useRef(Date.now());
 
   // Assignment modal for PDF drafts
   const [assignModalOpen, setAssignModalOpen] = useState(false);
@@ -155,6 +174,11 @@ export function useProposalImportController(onClose?: () => void) {
       return;
     }
     setPdfFileName(file.name);
+    setDraftId(null);
+    setAutoSaveState("idle");
+    lastSavedSnapshot.current = "";
+    planningAnchor.current = Date.now();
+    setPdfFile(file);
     setPdfError("");
     setAiQueueStatus(null);
     setDecompositionProgress(null);
@@ -178,8 +202,19 @@ export function useProposalImportController(onClose?: () => void) {
 
     setPdfPhase("decomposing");
     try {
-      const candidates = allEmployees && allEmployees.length > 0
-        ? filterEmployeesByPdfMentions(text, allEmployees, orgs)
+      const mentioned = detectMentionedOrganizations(text, orgs).filter((org) => org.id !== ownerOrgId);
+      const detectedScope: CollaborationOrganizationSelection[] = [
+        { orgId: ownerOrgId, participationRole: "owner", staffingEnabled: true },
+        ...mentioned.map((org) => ({
+          orgId: org.id,
+          participationRole: defaultParticipationRole(org),
+          staffingEnabled: defaultParticipationRole(org) !== "governance",
+        } as CollaborationOrganizationSelection)),
+      ];
+      setCollaborationOrganizations(detectedScope);
+      const expandedPool = getCollaborationCandidateEmployees(directoryEmployees, detectedScope);
+      const candidates = expandedPool.length > 0
+        ? filterEmployeesByPdfMentions(text, expandedPool, orgs)
         : employeesForAi;
       const result = await decomposeProposal(
         text,
@@ -190,7 +225,27 @@ export function useProposalImportController(onClose?: () => void) {
           setDecompositionProgress({ current, total, partTitle }),
         setAiQueueStatus,
       );
-      setDraftTasks(buildDraftTasks(result, file.name.replace(/\.pdf$/i, "")));
+      const generatedTasks = buildDraftTasks(result, file.name.replace(/\.pdf$/i, ""));
+      const snapshot = buildCollaborationSnapshot({
+        title: generatedTasks[0]?.proposalTitle || file.name.replace(/\.pdf$/i, ""),
+        tasks: generatedTasks,
+        organizations: detectedScope,
+        ownerOrgId: departmentFilter,
+        planningAnchor: planningAnchor.current,
+      });
+      setAutoSaveState("saving");
+      const persistedDraft = await createCollaborationDraft({
+        title: snapshot.title,
+        ownerOrgId: departmentFilter,
+        sourceType: "ai_pdf",
+        snapshot,
+        sourceFile: file,
+      });
+      lastSavedSnapshot.current = JSON.stringify(snapshot);
+      setDraftId(persistedDraft.id);
+      setDraftTasks(generatedTasks);
+      setCommitMessage("Draft saved automatically.");
+      setAutoSaveState("saved");
       setPdfPhase("review");
       setAiQueueStatus(null);
     } catch (error) {
@@ -203,6 +258,26 @@ export function useProposalImportController(onClose?: () => void) {
       setPdfPhase("error");
     }
   };
+
+  useEffect(() => {
+    if (!draftId || pdfPhase !== "review" || draftTasks.length === 0) return;
+    const snapshot = buildCollaborationSnapshot({
+      title: draftTasks[0]?.proposalTitle || pdfFileName.replace(/\.pdf$/i, ""),
+      tasks: draftTasks,
+      organizations: collaborationOrganizations,
+      ownerOrgId: departmentFilter,
+      planningAnchor: planningAnchor.current,
+    });
+    const signature = JSON.stringify(snapshot);
+    if (signature === lastSavedSnapshot.current) return;
+    setAutoSaveState("saving");
+    const timer = window.setTimeout(() => {
+      void autosaveCollaborationDraft(draftId, snapshot.title, snapshot)
+        .then(() => { lastSavedSnapshot.current = signature; setAutoSaveState("saved"); setCommitMessage("Draft saved automatically."); })
+        .catch(() => setAutoSaveState("error"));
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [collaborationOrganizations, departmentFilter, draftId, draftTasks, pdfFileName, pdfPhase]);
 
   const handleDraftUpdate = (key: string, patch: Partial<DraftTask>) =>
     setDraftTasks((prev) =>
@@ -278,30 +353,33 @@ export function useProposalImportController(onClose?: () => void) {
     const toCreate = draftTasks.filter((task) => task.enabled);
     if (toCreate.length === 0) return;
     setCommitting(true);
-    setCommitMessage("Committing projects and milestones...");
-
-    const { created, failed } = await commitProposalDrafts({
-      toCreate,
-      pdfFileName,
-      departmentFilter,
-      currentUserId,
-      employeeById,
-    });
-
-    setCommitting(false);
-    if (created > 0) {
-      toast("Successfully imported proposal. Created projects and tasks.", "success");
+    setCommitMessage("Saving persistent collaboration draft...");
+    try {
+      const snapshot = buildCollaborationSnapshot({
+        title: toCreate[0]?.proposalTitle || pdfFileName.replace(/\.pdf$/i, ""),
+        tasks: draftTasks,
+        organizations: collaborationOrganizations,
+        ownerOrgId: departmentFilter,
+        planningAnchor: planningAnchor.current,
+      });
+      if (draftId) await autosaveCollaborationDraft(draftId, snapshot.title, snapshot);
+      else await createCollaborationDraft({ title: snapshot.title, ownerOrgId: departmentFilter, sourceType: "ai_pdf", snapshot, sourceFile: pdfFile || undefined });
+      setCommitMessage("Draft saved. No operational work was created.");
+      toast("Proposal draft saved. Review collaboration scope before requesting approval.", "success");
       onClose?.();
-      return;
+    } catch (error) {
+      setCommitMessage(error instanceof Error ? error.message : "Could not save the proposal draft.");
+      toast("Could not save the collaboration draft.", "error");
+    } finally {
+      setCommitting(false);
     }
-
-    setCommitMessage(
-      `Created ${created} task${created !== 1 ? "s" : ""}; ${failed} failed to save.`,
-    );
   };
 
   return {
     allEmployees,
+    orgs,
+    collaborationOrganizations,
+    setCollaborationOrganizations,
     employeeNotes,
     deptEmployees,
     pdfFileRef,
@@ -316,6 +394,7 @@ export function useProposalImportController(onClose?: () => void) {
     draftTasks,
     setDraftTasks,
     committing,
+    autoSaveState,
     commitMessage,
     setCommitMessage,
     assignModalOpen,

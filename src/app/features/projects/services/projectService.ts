@@ -3,4 +3,5 @@ export { fetchAllProjects, subscribeToProjects } from './projectQueryService';
 export { archiveProject, createProject, deleteProject, restoreProject, updateProject } from './projectMutationService';
 export { addProjectMember, fetchProjectMembers, removeProjectMember, updateProjectMemberRole } from './projectMemberService';
 export { fetchProjectAuditActivity } from './projectActivityService';
+export { archiveProposalProjects, markProposalProjectsCompleted } from './proposalDeliveryService';
 export { createMilestone, deleteMilestone, deriveMilestoneStatus, fetchMilestones, reorderMilestones, setMilestoneManualStatus, subscribeToMilestones, updateMilestone } from './milestoneService';

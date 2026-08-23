@@ -9,7 +9,9 @@ export type NotificationIntentKind =
   | "announcement"
   | "team_intelligence"
   | "project"
-  | "proposal";
+  | "proposal"
+  | "collaboration"
+  | "budget";
 
 export interface NotificationNavigationIntent {
   notificationId: string;
@@ -71,6 +73,16 @@ function destinationForProject(role: string) {
   return null;
 }
 
+function destinationForBudget(role: string) {
+  if (role === "depthead") {
+    return { section: "budget", page: "Department Budget" };
+  }
+  if (role === "employee" || role === "teamleader") {
+    return { section: "budget", page: "Petty Cash & Expenses" };
+  }
+  return null;
+}
+
 function makeDestination(
   notification: Notification,
   route: { section: string; page: string } | null,
@@ -105,6 +117,29 @@ export function resolveNotificationDestination(
   const title = notification.title.trim().toLowerCase();
   const messageLabels = quotedLabels(notification.message || "");
   const isSubtask = title.includes("subtask");
+
+  if (
+    notification.type.startsWith("budget_")
+    || notification.type.startsWith("petty_cash_")
+  ) {
+    return makeDestination(
+      notification,
+      destinationForBudget(role),
+      "budget",
+      role === "depthead" ? "Open budget approval" : "Open petty cash",
+      notification.taskTitle || messageLabels[0],
+    );
+  }
+
+  if (notification.entityType === "collaboration_draft" || notification.type.startsWith("collaboration_")) {
+    return makeDestination(
+      notification,
+      destinationForProject(role),
+      "collaboration",
+      "Open collaboration review",
+      notification.message.trim() || undefined,
+    );
+  }
 
   if (title.includes("announcement")) {
     return makeDestination(

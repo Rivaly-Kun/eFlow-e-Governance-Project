@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getRoleNavigation, getRoleNavigationCandidates } from "../../src/app/features/navigation/roleNavigation";
+import {
+  getRoleNavigation,
+  getRoleNavigationCandidates,
+  isRoleNavigationItemVisible,
+} from "../../src/app/features/navigation/roleNavigation";
 import { canOpenNavigationSection, getNavigationPermission } from "../../src/app/features/navigation/navigationPermissions";
 
 describe("role navigation compatibility", () => {
@@ -7,7 +11,7 @@ describe("role navigation compatibility", () => {
     const departmentHead = getRoleNavigation("depthead");
     expect(departmentHead.defaultSection).toBe("dashboard");
     expect(departmentHead.navItems.map((item) => item.id)).toEqual([
-      "dashboard", "projects", "tasks", "leading", "subtasks", "reviews",
+      "dashboard", "projects", "tasks", "budget", "leading", "subtasks", "reviews",
       "team", "intelligence", "reports", "announcements",
     ]);
     expect(departmentHead.navItems.find((item) => item.id === "leading")?.requiresLeadership).toBe(true);
@@ -15,7 +19,7 @@ describe("role navigation compatibility", () => {
     const employee = getRoleNavigation("employee");
     expect(employee.defaultSection).toBe("tasks");
     expect(employee.navItems.map((item) => item.id)).toEqual([
-      "tasks", "projects", "leading", "subtasks", "reviews", "deadlines", "history",
+      "tasks", "budget", "projects", "leading", "subtasks", "reviews", "deadlines", "history",
       "performance", "reports", "announcements",
     ]);
     expect(employee.navItems.find((item) => item.id === "reviews")?.requiresLeadership).toBe(true);
@@ -46,6 +50,7 @@ describe("role navigation compatibility", () => {
     expect(canOpenNavigationSection("depthead", "projects", can)).toBe(true);
     expect(canOpenNavigationSection("depthead", "reports", can)).toBe(false);
     expect(getNavigationPermission("depthead", "reports")).toBe("navigation.reports");
+    expect(getNavigationPermission("depthead", "budget")).toBe("navigation.projects");
     expect(canOpenNavigationSection("depthead", "dashboard", can)).toBe(true);
     expect(canOpenNavigationSection("executive", "portfolio", () => false)).toBe(true);
   });
@@ -68,5 +73,20 @@ describe("role navigation compatibility", () => {
       (permission) => permission === "navigation.user_management",
     )).map((item) => item.id)).toContain("users");
     expect(getRoleNavigationCandidates("executive")).toEqual(getRoleNavigation("executive").navItems);
+  });
+
+  it("only exposes contextual leadership destinations when the user leads work", () => {
+    const headLeading = getRoleNavigation("depthead").navItems.find((item) => item.id === "leading")!;
+    const employeeLeading = getRoleNavigation("employee").navItems.find((item) => item.id === "leading")!;
+    const employeeReviews = getRoleNavigation("employee").navItems.find((item) => item.id === "reviews")!;
+    const headProjects = getRoleNavigation("depthead").navItems.find((item) => item.id === "projects")!;
+
+    expect(isRoleNavigationItemVisible(headLeading, false)).toBe(false);
+    expect(isRoleNavigationItemVisible(employeeLeading, false)).toBe(false);
+    expect(isRoleNavigationItemVisible(employeeReviews, false)).toBe(false);
+    expect(isRoleNavigationItemVisible(headProjects, false)).toBe(true);
+    expect(isRoleNavigationItemVisible(headLeading, true)).toBe(true);
+    expect(isRoleNavigationItemVisible(employeeLeading, true)).toBe(true);
+    expect(isRoleNavigationItemVisible(employeeReviews, true)).toBe(true);
   });
 });

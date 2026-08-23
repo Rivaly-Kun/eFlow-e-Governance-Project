@@ -23,6 +23,8 @@ export function KanbanBoardView({
   currentUserId,
   currentUserName,
   onUndoRequest,
+  readOnly = false,
+  onOpenTask,
 }: {
   tasks: Task[];
   employees: Employee[];
@@ -37,6 +39,8 @@ export function KanbanBoardView({
   currentUserId?: string;
   currentUserName?: string;
   onUndoRequest?: (task: Task) => void;
+  readOnly?: boolean;
+  onOpenTask?: (task: Task) => void;
 }) {
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
   const {
@@ -67,6 +71,7 @@ export function KanbanBoardView({
   const handleDrop = async (e: React.DragEvent, newStatus: TaskStatus) => {
     e.preventDefault();
     setDragOverStatus(null);
+    if (readOnly) return;
     const taskId = e.dataTransfer.getData("text/plain");
     if (!taskId) return;
     const task = tasks.find((t) => t.id === taskId);
@@ -155,11 +160,12 @@ export function KanbanBoardView({
                   task.status === "in_progress" &&
                   currentUserId &&
                   task.assigneeId === currentUserId;
-                const isDraggable = canDragTask(
+                const isDraggable = !readOnly && canDragTask(
                   task,
                   role,
                   currentUserId,
                 );
+                const taskOpener = onOpenTaskEditor || onOpenTask;
                 return (
                   <div
                     key={task.id}
@@ -179,11 +185,11 @@ export function KanbanBoardView({
                       className={`h-0.5 rounded-full ${pm.kanbanBar} mb-2.5`}
                     />
 
-                    {role === "depthead" && onOpenTaskEditor ? (
+                    {taskOpener ? (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          onOpenTaskEditor(task);
+                          taskOpener(task);
                         }}
                         className="text-left text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-900 leading-snug hover:text-violet-700 transition"
                       >
@@ -254,7 +260,7 @@ export function KanbanBoardView({
 
                     {/* Actions */}
                     <div className="mt-2.5 flex gap-1">
-                      {role === "depthead" && task.status === "for_review" && (
+                      {!readOnly && role === "depthead" && task.status === "for_review" && (
                         <>
                           <button
                             onClick={() => onVerify?.(task.id, true)}
@@ -273,7 +279,7 @@ export function KanbanBoardView({
                           </button>
                         </>
                       )}
-                      {role === "employee" && task.status === "todo" && (
+                      {!readOnly && role === "employee" && task.status === "todo" && (
                         <button
                           onClick={() => onExecute?.(task.id)}
                           className="flex-1 text-[10px] bg-blue-500 text-white py-1 rounded-lg hover:bg-blue-600 transition"
@@ -281,7 +287,7 @@ export function KanbanBoardView({
                           Start Work
                         </button>
                       )}
-                      {canSubmit && (
+                      {!readOnly && canSubmit && (
                         <button
                           onClick={() => onSubmitRequest?.(task)}
                           className="flex-1 text-[10px] bg-violet-500 text-white py-1 rounded-lg hover:bg-violet-600 transition"
@@ -289,7 +295,7 @@ export function KanbanBoardView({
                           Submit for Review
                         </button>
                       )}
-                      {role === "depthead" && (
+                      {!readOnly && role === "depthead" && (
                         <TaskManagementMenu
                           task={task}
                           onEdit={onOpenTaskEditor}

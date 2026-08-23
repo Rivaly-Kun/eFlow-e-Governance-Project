@@ -11,6 +11,7 @@ export {
 } from "./taskReviewLifecycleService";
 export { logTaskActivity, subscribeToTaskActivities } from "./taskActivityService";
 export { archiveTask, unarchiveTask } from "./taskArchiveService";
+export { updateTaskTeamMembers } from "./taskTeamService";
 export { TASK_STATUS_LABELS } from "../taskConstants";
 export type {
   CreateTaskPayload,

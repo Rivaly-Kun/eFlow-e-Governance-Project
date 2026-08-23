@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildProjectActivity, buildProjectCommandMetrics, buildProjectPortfolioSummary } from "../../src/app/features/projects/selectors/projectCommandSelectors";
+import { buildProjectActivity, buildProjectCommandMetrics, buildProjectPortfolioSummary, buildProjectWorkGroups } from "../../src/app/features/projects/selectors/projectCommandSelectors";
 import type { Project } from "../../src/app/features/projects/services/types";
 import type { Task } from "../../src/app/features/tasks";
 import type { TeamWorkflowFacts } from "../../src/app/features/team-management";
@@ -55,5 +55,18 @@ describe("Project Command Workspace selectors", () => {
   it("merges audit and workflow events into one newest-first timeline", () => {
     const rows = buildProjectActivity(facts, [{ id: "audit", kind: "project", title: "project updated", detail: "", occurredAt: now }]);
     expect(rows.map((row) => row.id)).toEqual(["audit", "submission:s"]);
+  });
+
+  it("groups linked tasks by activity and surfaces broken links as a repair queue", () => {
+    const milestones = [{ id: "activity-1", projectId: "project", title: "Site preparation", description: "", dueDate: "2026-08-25", status: "in_progress" as const, sortOrder: 0, createdAt: now, updatedAt: now }];
+    const groupedTasks = [
+      { ...tasks[0], milestoneId: "activity-1" },
+      { ...tasks[1], milestoneId: undefined },
+    ];
+    const groups = buildProjectWorkGroups(groupedTasks, milestones);
+    expect(groups.map((group) => group.title)).toEqual(["Site preparation", "Needs activity assignment"]);
+    expect(groups[0].needsActivityAssignment).toBe(false);
+    expect(groups[1].needsActivityAssignment).toBe(true);
+    expect(groups[1].tasks.map((task) => task.id)).toEqual(["b"]);
   });
 });

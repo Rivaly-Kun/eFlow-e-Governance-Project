@@ -1,11 +1,10 @@
 import type { Task } from "../../../services/taskService";
+import { getTaskLeadId } from "./teamMembership";
 
 export function isTaskLead(
-  task: Pick<Task, "recommendationLeadId" | "teamMemberIds">,
+  task: Pick<Task, "assigneeId" | "recommendationLeadId" | "teamMemberIds">,
   userId: string | null | undefined,
 ): boolean {
   if (!userId) return false;
-  return task.recommendationLeadId
-    ? task.recommendationLeadId === userId
-    : task.teamMemberIds?.[0] === userId;
+  return getTaskLeadId(task) === userId;
 }

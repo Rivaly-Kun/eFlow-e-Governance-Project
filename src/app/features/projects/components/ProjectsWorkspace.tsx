@@ -15,6 +15,8 @@ import { ProposalPortfolio } from "./ProposalPortfolio";
 import { resolveProjectWorkspaceAccess, type ProjectScope } from "./model";
 import { buildProjectPortfolioSummary } from "../selectors/projectCommandSelectors";
 import { buildProposalPortfolioGroups, organizationTypeLabel, projectMatchesProposalQuery, resolveProjectHierarchyIdentity } from "../selectors/proposalPortfolioSelectors";
+import { CollaborationDraftList, CollaborationDraftWorkspace, isActiveCollaborationDraft, useCollaborationDrafts } from "../../interdepartment-collaboration";
+import { archiveProposalProjects, markProposalProjectsCompleted } from "../services/proposalDeliveryService";
 
 export function ProjectsWorkspace({ scope, eyebrow, proposalGrouping = true, readOnly = false }: { scope: ProjectScope; eyebrow: string; proposalGrouping?: boolean; readOnly?: boolean }) {
   const { projects: dbProjects, loading: projectsLoading } = useProjectsData();
@@ -30,6 +32,8 @@ export function ProjectsWorkspace({ scope, eyebrow, proposalGrouping = true, rea
     excludeSuperAdmins: true,
   });
   const [detailId, setDetailId] = React.useState<string | null>(null);
+  const [detailDraftId, setDetailDraftId] = React.useState<string | null>(null);
+  const [workspaceView, setWorkspaceView] = React.useState<"portfolio" | "drafts" | "incoming">("portfolio");
   const [importOpen, setImportOpen] = React.useState(false);
   const [manualPlanOpen, setManualPlanOpen] = React.useState(false);
   const [templatesOpen, setTemplatesOpen] = React.useState(false);
@@ -43,11 +47,20 @@ export function ProjectsWorkspace({ scope, eyebrow, proposalGrouping = true, rea
   const [dateFilter, setDateFilter] = React.useState("all");
   const [view, setView] = React.useState<"grid" | "list">(() => window.localStorage.getItem("eflow-project-view") === "list" ? "list" : "grid");
   const access = resolveProjectWorkspaceAccess(readOnly, can);
+  const collaboration = useCollaborationDrafts();
+  const activeCollaborationDrafts = React.useMemo(
+    () => collaboration.drafts.filter(isActiveCollaborationDraft),
+    [collaboration.drafts],
+  );
+  const currentOrgId = userProfile?.org_id || userProfile?.departmentId || "";
 
   const inScope = React.useMemo(() => {
     if (scope.isSuperAdmin || !scope.enforceOrgScope) return dbProjects;
     if (scope.scopedOrgIds.length === 0) return [];
-    return dbProjects.filter((project) => Boolean(project.orgId && scope.scopedOrgIds.includes(project.orgId)));
+    // RLS already returns owned and explicitly participating collaboration
+    // projects. Re-filtering only by projects.org_id would hide legitimate
+    // inter-department work from receiving Heads.
+    return dbProjects;
   }, [dbProjects, scope]);
 
   const summaries = React.useMemo(() => new Map(inScope.map((project) => [project.id, buildProjectPortfolioSummary(project, tasks)])), [inScope, tasks]);
@@ -89,9 +102,13 @@ export function ProjectsWorkspace({ scope, eyebrow, proposalGrouping = true, rea
   const detail = detailId ? dbProjects.find((p) => p.id === detailId) : null;
   const loading = projectsLoading || tasksLoading;
   useNotificationNavigationIntent(
-    (intent) => intent.kind === "project" || intent.kind === "proposal",
+    (intent) => intent.kind === "project" || intent.kind === "proposal" || intent.kind === "collaboration",
     (intent) => {
       if (loading) return false;
+      if (intent.kind === "collaboration" && intent.proposalId) {
+        setDetailDraftId(intent.proposalId);
+        return true;
+      }
       if (intent.projectId) {
         const project = dbProjects.find((candidate) => candidate.id === intent.projectId);
         if (project) setDetailId(project.id);
@@ -125,6 +142,24 @@ export function ProjectsWorkspace({ scope, eyebrow, proposalGrouping = true, rea
 
   if (loading) return <div className="p-8"><UI.LoadingState label="Loading projects…" /></div>;
 
+  if (detailDraftId) {
+    return (
+      <CollaborationDraftWorkspace
+        draftId={detailDraftId}
+        organizations={orgs}
+        profiles={profiles}
+        operationalProjects={dbProjects}
+        operationalTasks={tasks}
+        readOnly={readOnly}
+        onBack={() => setDetailDraftId(null)}
+        onCommitted={() => { void collaboration.refresh(); setDetailDraftId(null); setWorkspaceView("portfolio"); }}
+        onOpenProject={(projectId) => { setDetailDraftId(null); setDetailId(projectId); }}
+        onMarkProjectsCompleted={markProposalProjectsCompleted}
+        onArchiveProjects={archiveProposalProjects}
+      />
+    );
+  }
+
   if (detail) {
     return (
       <ProjectDetail
@@ -137,6 +172,7 @@ export function ProjectsWorkspace({ scope, eyebrow, proposalGrouping = true, rea
         canDelete={access.canDelete}
         canReviewTasks={access.canReviewTasks}
         canExport={access.canExport}
+        onOpenSourceGovernance={setDetailDraftId}
       />
     );
   }
@@ -160,7 +196,7 @@ export function ProjectsWorkspace({ scope, eyebrow, proposalGrouping = true, rea
             : "Create, track, and manage projects from one operational workspace."
           : "View the same operational projects, milestones, members, and tasks used by management."}
         actions={
-          access.canCreate || (!readOnly && canUseTemplates) ? (
+          workspaceView === "portfolio" && (access.canCreate || (!readOnly && canUseTemplates)) ? (
             <div className="flex flex-wrap items-center justify-end gap-2">
               {access.canCreate && (
               <button
@@ -194,6 +230,31 @@ export function ProjectsWorkspace({ scope, eyebrow, proposalGrouping = true, rea
         }
       />
 
+      {proposalGrouping && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white p-1.5">
+          {([
+            { id: "portfolio", label: "Operational portfolio", count: proposalGroups.length, icon: <Icons.Folders size={13} /> },
+            { id: "drafts", label: readOnly ? "Collaboration drafts" : "My drafts", count: activeCollaborationDrafts.filter((draft) => readOnly || draft.ownerOrgId === currentOrgId).length, icon: <Icons.FileClock size={13} /> },
+            { id: "incoming", label: "Incoming reviews", count: activeCollaborationDrafts.filter((draft) => draft.snapshot.organizations.some((item) => item.participationRole !== "owner" && [currentOrgId, ...collaboration.membershipOrgIds].includes(item.orgId))).length, icon: <Icons.Inbox size={13} /> },
+          ] as const).map((item) => <button key={item.id} type="button" onClick={() => setWorkspaceView(item.id)} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-[10px] font-['Lexend:Medium',_sans-serif] transition ${workspaceView === item.id ? "bg-neutral-900 text-white" : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800"}`}>{item.icon}{item.label}<span className={`rounded-full px-1.5 py-0.5 text-[8px] ${workspaceView === item.id ? "bg-white/15 text-white" : "bg-neutral-100 text-neutral-500"}`}>{item.count}</span></button>)}
+          <span className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-[9px] font-['Lexend:Medium',_sans-serif] text-emerald-700"><Icons.CheckCircle2 size={12} /> Ready to commit {activeCollaborationDrafts.filter((draft) => draft.status === "ready_to_commit" && (readOnly || draft.ownerOrgId === currentOrgId)).length}</span>
+        </div>
+      )}
+
+      {proposalGrouping && workspaceView !== "portfolio" ? (
+        collaboration.loading ? <UI.LoadingState label="Loading collaboration drafts…" /> : collaboration.error ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-[11px] text-amber-800">{collaboration.error}</div> : (
+          <CollaborationDraftList
+            drafts={activeCollaborationDrafts}
+            organizations={orgs}
+            mode={workspaceView === "incoming" ? "incoming" : "owned"}
+            currentOrgId={currentOrgId}
+            accessibleOrgIds={collaboration.membershipOrgIds}
+            showAll={readOnly && scope.isSuperAdmin}
+            onOpen={setDetailDraftId}
+          />
+        )
+      ) : <>
+
       <div className={`grid grid-cols-2 gap-3 mb-4 ${proposalGrouping ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
         {proposalGrouping && <UI.StatCard label="Visible proposals" value={proposalGroups.length} icon={<Icons.Files size={15} />} />}
         <UI.StatCard label="Active" value={active.filter((p) => p.status === "active").length} tone="info" icon={<Icons.FolderKanban size={15} />} />
@@ -216,7 +277,7 @@ export function ProjectsWorkspace({ scope, eyebrow, proposalGrouping = true, rea
             { value: "all", label: "All statuses" },
           ]}
         />
-        {scope.isSuperAdmin && <UI.WSelect value={orgTypeFilter} onChange={(value) => { setOrgTypeFilter(value); setOrgFilter("all"); }} options={[{ value: "all", label: "All organization types" }, { value: "department", label: "Departments" }, { value: "division", label: "Divisions" }, { value: "section", label: "Sections" }, { value: "unit", label: "Units" }, { value: "lgu", label: "LGU" }]} />}
+        {scope.isSuperAdmin && <UI.WSelect value={orgTypeFilter} onChange={(value) => { setOrgTypeFilter(value); setOrgFilter("all"); }} options={[{ value: "all", label: "All organization types" }, { value: "department", label: "Departments" }, { value: "division", label: "Divisions" }, { value: "section", label: "Sections" }, { value: "unit", label: "Units" }, { value: "board", label: "Boards" }, { value: "committee", label: "Committees" }, { value: "lgu", label: "LGU" }]} />}
         {scope.isSuperAdmin && <UI.WSelect value={orgFilter} onChange={setOrgFilter} options={orgOptions.filter((option) => option.value === "all" || orgTypeFilter === "all" || orgs.find((org) => org.id === option.value)?.org_type === orgTypeFilter)} />}
         <UI.WSelect value={healthFilter} onChange={setHealthFilter} options={[{ value: "all", label: "All health" }, { value: "empty", label: "Empty projects" }, { value: "on_track", label: "On track" }, { value: "due_soon", label: "Due soon" }, { value: "overdue", label: "Overdue" }, { value: "at_risk", label: "At risk" }, { value: "completed", label: "Completed" }]} />
         <UI.WSelect value={ownerFilter} onChange={setOwnerFilter} options={ownerOptions} />
@@ -253,6 +314,7 @@ export function ProjectsWorkspace({ scope, eyebrow, proposalGrouping = true, rea
           profiles={profiles}
           view={view}
           onOpenProject={setDetailId}
+          onOpenProposal={setDetailDraftId}
         />
       ) : (
         <div className={view === "grid" ? "grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3" : "space-y-2"}>
@@ -303,6 +365,7 @@ export function ProjectsWorkspace({ scope, eyebrow, proposalGrouping = true, rea
           employees={deptEmployees}
         />
       )}
+      </>}
     </div>
   );
 }

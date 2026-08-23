@@ -46,3 +46,10 @@ export interface SubtaskReviewItem {
   taskTitle: string;
   projectTitle?: string;
 }
+
+export interface SubtaskReviewerIdentity {
+  id: string;
+  name: string;
+  role: string;
+  organizationName?: string;
+}

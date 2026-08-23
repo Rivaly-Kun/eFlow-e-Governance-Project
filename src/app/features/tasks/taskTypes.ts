@@ -82,6 +82,11 @@ export interface Task extends TaskHierarchy {
   archivedAt?: number;
   lastActivityAt?: number;
   createdBy?: string;
+  reviewRouteMode?: 'organization_default' | 'explicit' | 'governance';
+  governanceApprovalMode?: 'department' | 'governance' | 'closeout_only';
+  governanceOrganizationId?: string;
+  sourceCollaborationDraftId?: string;
+  sourceCollaborationRevisionId?: string;
 }
 
 export interface TaskSubmissionMetadata {
@@ -170,6 +175,9 @@ export interface CreateTaskPayload {
   linkedProjectId?: string;
   milestoneId?: string;
   percentComplete?: number;
+  reviewRouteMode?: 'organization_default' | 'explicit' | 'governance';
+  governanceApprovalMode?: 'department' | 'governance' | 'closeout_only';
+  governanceOrganizationId?: string;
 }
 
 export interface UpdateTaskPayload {
@@ -211,6 +219,7 @@ export interface UpdateTaskPayload {
   linkedProjectId?: string;
   milestoneId?: string;
   percentComplete?: number;
+  reviewRouteMode?: 'organization_default' | 'explicit' | 'governance';
 }
 
 // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

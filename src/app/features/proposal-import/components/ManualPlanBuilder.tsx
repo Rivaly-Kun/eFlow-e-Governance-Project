@@ -2,21 +2,29 @@ import { AlertCircle, FilePenLine, Layers, Plus } from "lucide-react";
 import { AssignmentModal } from "./AssignmentModal";
 import { DraftCockpit } from "./DraftCockpit";
 import { useManualPlanController } from "../hooks/useManualPlanController";
+import { OrganizationScopePicker } from "../../interdepartment-collaboration";
+import { ProposalBudgetEditor } from "../../budget";
 
 export function ManualPlanBuilder({ onClose }: { onClose: () => void }) {
   const {
     allEmployees,
+    orgs,
+    collaborationOrganizations,
+    setCollaborationOrganizations,
     employeesLoading,
     employeeNotes,
     planTitle,
     planDescription,
+    proposalBudget,
     draftTasks,
     committing,
+    autoSaveState,
     commitMessage,
     validationIssues,
     assignModalTaskKey,
     currentDraftTask,
     setPlanDescription,
+    setProposalBudget,
     setAssignModalTaskKey,
     updatePlanTitle,
     handleAddProgram,
@@ -44,7 +52,7 @@ export function ManualPlanBuilder({ onClose }: { onClose: () => void }) {
                 Manual work-plan builder
               </h1>
               <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">
-                Build Programs, Projects, Activities, and Tasks yourself. AI is not used in this builder; nothing is saved until you create the draft.
+                Build Programs, Projects, Activities, and Tasks yourself. AI is not used here. Your review draft autosaves; operational work is created only after approval and commit.
               </p>
             </div>
           </div>
@@ -77,6 +85,15 @@ export function ManualPlanBuilder({ onClose }: { onClose: () => void }) {
             />
           </label>
         </section>
+
+        <OrganizationScopePicker
+          organizations={orgs}
+          value={collaborationOrganizations}
+          ownerOrgId={collaborationOrganizations.find((item) => item.participationRole === "owner")?.orgId || ""}
+          onChange={setCollaborationOrganizations}
+        />
+
+        <ProposalBudgetEditor value={proposalBudget} onChange={setProposalBudget} />
 
         {validationIssues.length > 0 && (
           <section
@@ -128,6 +145,7 @@ export function ManualPlanBuilder({ onClose }: { onClose: () => void }) {
             onOpenModal={setAssignModalTaskKey}
             onCommit={handleCommit}
             committing={committing}
+            autoSaveState={autoSaveState}
             commitMessage={commitMessage}
             onAddProgram={handleAddProgram}
             onAddProject={handleAddProject}

@@ -34,7 +34,7 @@ export function SubtaskProgressForm({
           <LockKeyhole size={14} /> This subtask is locked
         </div>
         <p className="mt-1 text-[11px] leading-relaxed text-neutral-600">
-          Complete and receive Team Leader approval for “{prerequisite.title}” first. This form will unlock automatically afterward.
+          Complete “{prerequisite.title}” and receive its assigned reviewer’s approval first. This form will unlock automatically afterward.
         </p>
       </div>
     );
@@ -43,7 +43,7 @@ export function SubtaskProgressForm({
   if (subtask.status === "for_review") {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-        <div className="text-[12px] font-['Lexend:Medium',_sans-serif] text-amber-900">Waiting for Team Leader review</div>
+        <div className="text-[12px] font-['Lexend:Medium',_sans-serif] text-amber-900">Waiting for the assigned reviewer</div>
         <p className="mt-0.5 text-[11px] text-amber-700">Your note and evidence are locked while the reviewer decides this submission.</p>
       </div>
     );
@@ -163,7 +163,7 @@ export function SubtaskProgressForm({
           disabled={saving || (isSubmission && (!note.trim() || files.length === 0))}
           className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-neutral-900 px-3 text-[11.5px] font-['Lexend:Medium',_sans-serif] text-white hover:bg-neutral-800 disabled:opacity-40"
         >
-          <Send size={13} /> {saving ? "Saving…" : isSubmission ? "Submit for leader review" : "Save update"}
+          <Send size={13} /> {saving ? "Saving…" : isSubmission ? "Submit for review" : "Save update"}
         </button>
       </div>
 

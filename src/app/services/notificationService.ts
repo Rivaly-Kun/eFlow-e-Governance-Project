@@ -14,7 +14,14 @@ export type NotificationType =
   | 'status_change'
   | 'undo'
   | 'comment'
-  | 'reminder';
+  | 'reminder'
+  | 'collaboration_request'
+  | 'collaboration_message'
+  | 'collaboration_change'
+  | 'collaboration_revision'
+  | 'collaboration_approved'
+  | 'collaboration_declined'
+  | 'collaboration_ready';
 
 export interface Notification {
   id: string;

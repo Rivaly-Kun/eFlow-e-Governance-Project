@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import type { UserRole } from "../../types";
 import { supabase } from "../../../lib/supabase";
 import { SESSION_NOTICE_KEY } from "../../features/session-security/constants";
 import { clearAllSessionActivity } from "../../features/session-security/services/sessionActivityStorage";
+import { QUICK_LOGIN_ACCOUNTS, type QuickLoginAccount } from "../../shared/quickLoginAccounts";
 
 // ─── Ormoc City seal SVG (simplified shield) ─────────────────────
 function OrmocSeal() {
@@ -117,6 +118,8 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "error" | "success" } | null>(null);
   const [canSetupAdmin, setCanSetupAdmin] = useState<boolean | null>(null);
+  const [isQuickLoginOpen, setIsQuickLoginOpen] = useState(false);
+  const quickLoginRef = useRef<HTMLDivElement>(null);
   const [sessionNotice] = useState(() => {
     const notice = localStorage.getItem(SESSION_NOTICE_KEY) || "";
     if (notice) {
@@ -148,6 +151,21 @@ export function LoginPage() {
     })();
   }, []);
 
+  useEffect(() => {
+    const closeQuickLogin = (event: MouseEvent) => {
+      if (!quickLoginRef.current?.contains(event.target as Node)) setIsQuickLoginOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsQuickLoginOpen(false);
+    };
+    document.addEventListener("mousedown", closeQuickLogin);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeQuickLogin);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
   // Show auth error as toast
   useEffect(() => {
     if (error) {
@@ -169,6 +187,23 @@ export function LoginPage() {
       await login(email.trim(), password);
     } catch {
       // error is handled via toast
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleQuickLogin = async (account: QuickLoginAccount) => {
+    setIsQuickLoginOpen(false);
+    setEmail(account.email);
+    setPassword(account.password);
+    setSubmitting(true);
+    try {
+      clearError();
+      clearAllSessionActivity(localStorage);
+      localStorage.removeItem(SESSION_NOTICE_KEY);
+      await login(account.email, account.password);
+    } catch {
+      // AuthContext supplies the user-facing error toast.
     } finally {
       setSubmitting(false);
     }
@@ -251,15 +286,63 @@ export function LoginPage() {
                   <label className="block text-[11px] font-['Lexend:Medium',_sans-serif] font-medium text-[#676879] uppercase tracking-wider mb-1.5">
                     Email Address
                   </label>
-                  <input
-                    id="login-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@eflow.gov.ph"
-                    autoComplete="email"
-                    className="w-full h-11 px-3.5 rounded-lg border border-neutral-200 bg-[#F5F6F8] text-[13px] font-['Lexend:Regular',_sans-serif] text-[#323338] placeholder:text-neutral-400 focus:outline-none focus:border-[#0085FF] focus:ring-2 focus:ring-[#0085FF]/10 transition-all"
-                  />
+                  <div ref={quickLoginRef} className="relative">
+                    <input
+                      id="login-email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@eflow.gov.ph"
+                      autoComplete="email"
+                      className="w-full h-11 px-3.5 pr-28 rounded-lg border border-neutral-200 bg-[#F5F6F8] text-[13px] font-['Lexend:Regular',_sans-serif] text-[#323338] placeholder:text-neutral-400 focus:outline-none focus:border-[#0085FF] focus:ring-2 focus:ring-[#0085FF]/10 transition-all"
+                    />
+                    <button
+                      id="quick-login-picker"
+                      type="button"
+                      disabled={submitting}
+                      onClick={() => setIsQuickLoginOpen((current) => !current)}
+                      aria-haspopup="menu"
+                      aria-expanded={isQuickLoginOpen}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-8 items-center gap-1 rounded-md border border-blue-100 bg-white px-2 text-[10px] font-semibold text-[#006FD6] shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Quick login
+                      <svg viewBox="0 0 16 16" aria-hidden="true" className={`h-3 w-3 transition-transform ${isQuickLoginOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="m4 6 4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+
+                    {isQuickLoginOpen && (
+                      <div
+                        role="menu"
+                        aria-label="Quick login accounts"
+                        className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl shadow-slate-900/15"
+                      >
+                        <p className="px-2.5 pb-1.5 pt-1 text-[9px] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                          Development accounts
+                        </p>
+                        {QUICK_LOGIN_ACCOUNTS.map((account) => (
+                          <button
+                            key={account.email}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => void handleQuickLogin(account)}
+                            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-blue-50 focus:bg-blue-50 focus:outline-none"
+                          >
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#0085FF] to-[#0066CC] text-[10px] font-bold text-white">
+                              {account.label.slice(0, 1)}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[11px] font-semibold text-[#323338]">{account.label}</span>
+                              <span className="block truncate text-[9.5px] text-[#676879]">{account.email}</span>
+                            </span>
+                            <span className="rounded border border-neutral-200 bg-neutral-50 px-1.5 py-0.5 text-[9px] font-medium text-neutral-500">
+                              Ctrl+{account.shortcut}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div>

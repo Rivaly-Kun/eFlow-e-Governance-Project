@@ -162,6 +162,18 @@ export function getRoleNavigationCandidates(role: string): RoleNavItem[] {
   return [...base, ...supplemental];
 }
 
+/**
+ * Leadership destinations are contextual workspaces, not role defaults.
+ * Heads, Assistant Heads, and Employees only see them while they actually
+ * lead at least one task visible to their account.
+ */
+export function isRoleNavigationItemVisible(
+  item: Pick<RoleNavItem, "requiresLeadership">,
+  hasLeadingWork: boolean,
+): boolean {
+  return !item.requiresLeadership || hasLeadingWork;
+}
+
 export function getDefaultSection(role: string): string {
   return getRoleNavigation(role).defaultSection;
 }

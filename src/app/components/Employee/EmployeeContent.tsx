@@ -15,6 +15,7 @@ import {
 import { EmployeePerformanceView } from "./EmployeePerformanceView";
 import { EmployeeTaskWorkspace } from "./EmployeeTaskWorkspace";
 import { EmployeeProjectsWorkspace } from "../../features/projects";
+import { PettyCashWorkspace } from "../../features/budget";
 
 /**
  * Thin employee route manifest. The previous file mixed routing with more than
@@ -30,6 +31,9 @@ export const employeePages: RolePageSections = {
   },
   subtasks: {
     "My Subtasks": SubtasksWorkspace,
+  },
+  budget: {
+    "Petty Cash & Expenses": PettyCashWorkspace,
   },
   leading: {
     "Leading Work": YouAreLeadingView,
@@ -79,6 +83,7 @@ export const employeeDefaultPages: Record<string, string> = {
   tasks: "My Tasks",
   projects: "Projects",
   subtasks: "My Subtasks",
+  budget: "Petty Cash & Expenses",
   leading: "Leading Work",
   reviews: "Leader Reviews",
   deadlines: "Deadlines",

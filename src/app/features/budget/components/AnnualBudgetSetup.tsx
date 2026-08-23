@@ -1,0 +1,61 @@
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Banknote, LockKeyhole, Save } from "lucide-react";
+import { createBudgetLine, DEFAULT_PETTY_CASH_LIMIT, DEFAULT_PETTY_CASH_REQUEST_LIMIT, DEFAULT_UNDERUTILIZATION_THRESHOLD } from "../constants";
+import type { DepartmentBudgetBundle } from "../types";
+import { lockDepartmentFiscalBudget, saveDepartmentFiscalBudget } from "../services/budgetService";
+import { peso } from "./budgetUi";
+
+export function AnnualBudgetSetup({ orgId, fiscalYear, data, canEdit, onChanged }: { orgId: string; fiscalYear: number; data: DepartmentBudgetBundle; canEdit: boolean; onChanged: () => Promise<void> }) {
+  const [annualAmount, setAnnualAmount] = useState(0);
+  const [pettyLimit, setPettyLimit] = useState(DEFAULT_PETTY_CASH_LIMIT);
+  const [requestLimit, setRequestLimit] = useState(DEFAULT_PETTY_CASH_REQUEST_LIMIT);
+  const [threshold, setThreshold] = useState(DEFAULT_UNDERUTILIZATION_THRESHOLD);
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    if (!data.summary) return;
+    setAnnualAmount(data.summary.approvedAmount);
+    setPettyLimit(data.summary.pettyCashLimit); setRequestLimit(data.summary.pettyCashRequestLimit);
+    setThreshold(data.summary.underutilizationThreshold); setNotes(data.summary.notes || "");
+  }, [data.lines, data.summary]);
+  const total = useMemo(() => Math.max(0, Number(annualAmount) || 0), [annualAmount]);
+  const locked = data.summary?.status === "locked";
+  const persistDraft = () => saveDepartmentFiscalBudget({
+    orgId,
+    fiscalYear,
+    pettyCashLimit: pettyLimit,
+    requestLimit,
+    threshold,
+    notes,
+    lines: [{
+      ...createBudgetLine(0),
+      id: data.lines[0]?.id || crypto.randomUUID(),
+      expenseClass: "Annual Department Budget",
+      category: "Available Appropriation",
+      particular: `Fiscal year ${fiscalYear} department budget`,
+      fundSource: "Department appropriation",
+      amount: total,
+    }],
+  });
+  const save = async () => { setBusy(true); setMessage(""); try { await persistDraft(); setMessage("Annual budget draft saved."); await onChanged(); } catch (error) { setMessage(error instanceof Error ? error.message : "Budget could not be saved."); } finally { setBusy(false); } };
+  const lock = async () => { if (!window.confirm(`Lock the ${fiscalYear} department budget at ${peso.format(total)}? It cannot be edited afterward.`)) return; setBusy(true); setMessage(""); try { const budgetId = await persistDraft(); await lockDepartmentFiscalBudget(budgetId); setMessage("Annual budget saved and locked."); await onChanged(); } catch (error) { setMessage(error instanceof Error ? error.message : "Budget could not be locked."); } finally { setBusy(false); } };
+  return <div className="space-y-4">
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-[9px] uppercase tracking-[0.18em] text-neutral-400">Fiscal year {fiscalYear}</div><h2 className="mt-1 text-[15px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">Annual department budget</h2><p className="mt-1 text-[10.5px] text-neutral-500">The Department Head defines the annual envelope once. Published proposals reserve funds from this locked total.</p></div><div className="text-right"><div className="text-[9px] uppercase tracking-wide text-neutral-400">Annual total</div><div className="mt-1 text-[20px] font-['Lexend:SemiBold',_sans-serif] text-neutral-950">{peso.format(total)}</div></div></div>
+      {locked && <div className="mt-4 flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-[10.5px] text-emerald-800"><LockKeyhole size={14} className="shrink-0" /><span>This annual budget is locked. New proposal commitments and expenses are recorded without changing the original appropriation.</span></div>}
+      {!canEdit && !locked && <div className="mt-4 flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10.5px] text-amber-800"><AlertTriangle size={14} className="shrink-0" />Only the assigned Department Head can prepare and lock the annual budget. Assistant Heads can monitor it and approve operational requests.</div>}
+    </div>
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><Banknote size={17} /></div>
+        <div className="min-w-0 flex-1"><h3 className="text-[12px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">Annual spending authority</h3><p className="mt-1 max-w-2xl text-[10px] leading-relaxed text-neutral-500">Enter the department’s complete authorized budget for {fiscalYear}. Individual expense categories belong inside each proposal, where their detailed budget will reserve money from this amount.</p></div>
+        <label className="w-full sm:w-72"><span className="text-[10px] text-neutral-500">Annual department budget</span><div className="relative mt-1"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-neutral-400">₱</span><input type="number" min={0} step="0.01" disabled={!canEdit || locked} value={annualAmount || ""} onChange={(event) => setAnnualAmount(Number(event.target.value))} placeholder="0.00" className="h-11 w-full rounded-xl border border-neutral-200 pl-8 pr-3 text-right text-[14px] font-['Lexend:SemiBold',_sans-serif] tabular-nums disabled:bg-neutral-50" /></div></label>
+      </div>
+    </div>
+    <div className="grid gap-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm md:grid-cols-3"><NumberField label="Department petty-cash limit" value={pettyLimit} onChange={setPettyLimit} disabled={!canEdit || locked} /><NumberField label="Maximum per request" value={requestLimit} onChange={setRequestLimit} disabled={!canEdit || locked} /><NumberField label="Q4 utilization target (%)" value={threshold} onChange={setThreshold} disabled={!canEdit || locked} /><label className="md:col-span-3"><span className="text-[10px] text-neutral-500">Budget notes</span><textarea disabled={!canEdit || locked} value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-[10.5px] disabled:bg-neutral-50" /></label></div>
+    {message && <div className={`rounded-xl border px-4 py-3 text-[10.5px] ${/could not|invalid|only|enough/i.test(message) ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{message}</div>}
+    {canEdit && !locked && <div className="flex justify-end gap-2"><button disabled={busy} onClick={save} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-4 text-[10.5px] font-['Lexend:Medium',_sans-serif] text-neutral-700"><Save size={12} /> Save draft</button><button disabled={busy || total <= 0} onClick={lock} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-neutral-950 px-4 text-[10.5px] font-['Lexend:Medium',_sans-serif] text-white disabled:opacity-40"><LockKeyhole size={12} /> Save &amp; lock annual budget</button></div>}
+  </div>;
+}
+
+function NumberField({ label, value, onChange, disabled }: { label: string; value: number; onChange: (value: number) => void; disabled: boolean }) { return <label><span className="text-[10px] text-neutral-500">{label}</span><input type="number" min={0} step="0.01" disabled={disabled} value={value} onChange={(event) => onChange(Number(event.target.value))} className="mt-1 h-10 w-full rounded-xl border border-neutral-200 px-3 text-[11px] tabular-nums disabled:bg-neutral-50" /></label>; }

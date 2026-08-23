@@ -40,6 +40,8 @@ import {
   getSubtaskPrerequisite,
 } from "../../features/subtasks/selectors/sequencing";
 import { getSubtaskDeadlineState } from "../../features/subtasks/selectors/deadlines";
+import { useSubtaskReviewerDirectory } from "../../features/subtasks/hooks/useSubtaskReviewerDirectory";
+import { SubtaskReviewerBadge } from "../../features/subtasks/components/SubtaskReviewerBadge";
 
 export function SubtasksWorkspace() {
   const { user } = useAuth();
@@ -50,6 +52,8 @@ export function SubtasksWorkspace() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [activeTaskDetail, setActiveTaskDetail] = useState<Task | null>(null);
   const [activeSubtask, setActiveSubtask] = useState<(Subtask & { parentTask?: Task }) | null>(null);
+  const reviewerIds = useMemo(() => subtasks.map((subtask) => subtask.reviewerId), [subtasks]);
+  const { reviewersById, loading: reviewersLoading } = useSubtaskReviewerDirectory(reviewerIds);
 
   useNotificationNavigationIntent(
     (intent) => intent.kind === "subtask",
@@ -191,7 +195,7 @@ export function SubtasksWorkspace() {
       <PageHeader
         eyebrow="My Workspace · Subtasks"
         title="My Subtask Checklist"
-        subtitle="Open assigned work, report progress, attach evidence, and submit it for Team Leader approval."
+        subtitle="Open assigned work, report progress, attach evidence, and submit it to the assigned reviewer for approval."
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
@@ -345,6 +349,14 @@ export function SubtasksWorkspace() {
                         <span className="inline-flex items-center gap-0.5 text-[9px] uppercase tracking-wider text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full font-['Lexend:SemiBold',_sans-serif] shrink-0">
                           <Sparkles size={9} /> AI Extracted
                         </span>
+                      )}
+                      {st.reviewerId && (
+                        <SubtaskReviewerBadge
+                          reviewer={reviewersById[st.reviewerId]}
+                          status={st.status}
+                          loading={reviewersLoading}
+                          compact
+                        />
                       )}
                       <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-['Lexend:Medium',_sans-serif] ${
                         deadlineState.tone === "overdue" ? "bg-red-50 text-red-700" :

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Crown, Search, X } from "lucide-react";
 import type { Employee } from "../../../services/employeeService";
 import type { EmployeeNotesMap } from "../../../services/employeeNotesService";
@@ -44,13 +44,15 @@ export function AssignmentModal({
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    if (!q) return employees;
-    return employees.filter(
+    const matches = !q ? employees : employees.filter(
       (e) =>
         e.name.toLowerCase().includes(q) ||
         (e.jobTitle || "").toLowerCase().includes(q) ||
         (e.departmentName || "").toLowerCase().includes(q),
     );
+    return [...matches].sort((left, right) =>
+      (left.departmentName || left.department || "").localeCompare(right.departmentName || right.department || "")
+      || left.name.localeCompare(right.name));
   }, [employees, search]);
 
   const toggle = (id: string) => {
@@ -92,7 +94,7 @@ export function AssignmentModal({
               Select Team &amp; Leader
             </div>
             <div className="mt-1 text-[11px] text-neutral-400">
-              Only members assigned directly to your department are shown. The first selected member becomes leader.
+              Eligible members are grouped by participating organization. Select the crown to choose the proposed Task Leader.
             </div>
           </div>
           <button
@@ -156,7 +158,7 @@ export function AssignmentModal({
         <div className="flex-1 overflow-y-auto px-4 py-2">
           {loading ? (
             <div className="text-center text-[12px] text-neutral-400 py-10">
-              Loading eligible employeesâ€¦
+              Loading eligible employees…
             </div>
           ) : filtered.length === 0 ? (
             <div className="text-center text-[12px] text-neutral-400 py-10">
@@ -170,9 +172,18 @@ export function AssignmentModal({
                 const notes = employeeNotes?.[emp.id];
                 const tags = notes?.tags?.slice(0, 3) || [];
                 const load = emp.currentWorkload;
+                const index = filtered.indexOf(emp);
+                const departmentLabel = emp.departmentName || emp.department || "No organization";
+                const previousDepartment = index > 0 ? (filtered[index - 1].departmentName || filtered[index - 1].department || "No organization") : null;
                 return (
+                  <Fragment key={emp.id}>
+                  {departmentLabel !== previousDepartment && (
+                    <div className="sticky top-0 z-10 mt-2 flex items-center justify-between border-b border-neutral-100 bg-white/95 px-2 py-2 backdrop-blur">
+                      <span className="text-[9px] font-['Lexend:Medium',_sans-serif] uppercase tracking-[0.16em] text-neutral-500">{departmentLabel}</span>
+                      <span className="text-[8px] uppercase text-violet-500">Participating organization</span>
+                    </div>
+                  )}
                   <div
-                    key={emp.id}
                     onClick={() => toggle(emp.id)}
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all border ${
                       selected
@@ -244,6 +255,7 @@ export function AssignmentModal({
                       </div>
                     </div>
                   </div>
+                  </Fragment>
                 );
               })}
             </div>

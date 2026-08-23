@@ -9,6 +9,7 @@ import { getRoleLabel } from "../../shared/roles";
 import {
   getRoleNavigation,
   getRoleNavigationCandidates,
+  isRoleNavigationItemVisible,
   canOpenNavigationSection,
   RoleContent,
   useRoleNavigationState,
@@ -359,9 +360,16 @@ function TwoLevelSidebar({ role }: { role: string }) {
   const { tasks } = useTasksData();
   const hasLeadingWork = !!user?.id && tasks.some((task) => isTaskLead(task, user.id));
   const visibleNavItems = getRoleNavigationCandidates(role).filter(
-    (item) => (!item.requiresLeadership || hasLeadingWork)
+    (item) => isRoleNavigationItemVisible(item, hasLeadingWork)
       && canOpenNavigationSection(role, item.id, can),
   );
+
+  useEffect(() => {
+    if (visibleNavItems.some((item) => item.id === activeSection)) return;
+    const fallback = visibleNavItems[0];
+    if (fallback) selectPage(fallback.id, getInitialPage(fallback.id) || fallback.label);
+  }, [activeSection, getInitialPage, selectPage, visibleNavItems]);
+
   const tourSections = visibleNavItems.map((item) => ({
     id: item.id,
     label: item.label,

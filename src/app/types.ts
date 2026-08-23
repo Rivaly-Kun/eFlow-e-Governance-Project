@@ -29,7 +29,7 @@ export interface RoleDefinition {
 }
 
 // ─── Organization (the dynamic org tree — Supabase) ──────────────
-export type OrgType = 'lgu' | 'department' | 'division' | 'section' | 'unit';
+export type OrgType = 'lgu' | 'department' | 'division' | 'section' | 'unit' | 'board' | 'committee';
 
 export interface Organization {
   id: string;

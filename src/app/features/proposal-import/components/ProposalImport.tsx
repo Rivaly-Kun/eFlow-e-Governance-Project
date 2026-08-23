@@ -2,13 +2,15 @@ import { AlertCircle, Clock3, Loader2, Upload } from "lucide-react";
 import { AssignmentModal } from "./AssignmentModal";
 import { DraftCockpit } from "./DraftCockpit";
 import { useProposalImportController } from "../hooks/useProposalImportController";
+import { OrganizationScopePicker } from "../../interdepartment-collaboration";
 
 export default function ProposalImport({ onClose }: { onClose?: () => void }) {
   const {
-    allEmployees, employeeNotes, deptEmployees, pdfFileRef, pdfPhase,
+    allEmployees, employeeNotes, deptEmployees, orgs, collaborationOrganizations,
+    setCollaborationOrganizations, pdfFileRef, pdfPhase,
     setPdfPhase, pdfFileName, setPdfFileName, pdfError, setPdfError,
     aiQueueStatus, decompositionProgress,
-    draftTasks, setDraftTasks, committing, commitMessage, setCommitMessage,
+    draftTasks, setDraftTasks, committing, autoSaveState, commitMessage, setCommitMessage,
     assignModalOpen, setAssignModalOpen, assignModalTaskKey,
     setAssignModalTaskKey, currentDraftTask, handlePdfFile,
     handleDraftUpdate, handleDraftDelete, handleDraftAdd, handleCommit,
@@ -63,7 +65,7 @@ export default function ProposalImport({ onClose }: { onClose?: () => void }) {
                 or click to browse · AI decomposes it into Programs → Projects → Activities → Tasks
               </div>
               <div className="mt-4 text-[11px] text-neutral-400 bg-white border border-neutral-200 rounded-full px-4 py-1.5 inline-block">
-                Results appear here as an editable draft · nothing is saved until you commit
+                The editable result is saved as a persistent draft before approval · no operational work is created yet
               </div>
               <input
                 ref={pdfFileRef}
@@ -163,7 +165,7 @@ export default function ProposalImport({ onClose }: { onClose?: () => void }) {
                   <span className="text-neutral-800 font-['Lexend:Medium',_sans-serif]">
                     {pdfFileName}
                   </span>{" "}
-                  · Review and edit each task before committing.
+                  · Review the scope, responsibilities, and staffing while eFlow autosaves the draft.
                 </div>
                 <button
                   onClick={() => {
@@ -178,9 +180,18 @@ export default function ProposalImport({ onClose }: { onClose?: () => void }) {
                 </button>
               </div>
 
+              <div className="mb-4">
+                <OrganizationScopePicker
+                  organizations={orgs}
+                  value={collaborationOrganizations}
+                  ownerOrgId={collaborationOrganizations.find((item) => item.participationRole === "owner")?.orgId || ""}
+                  onChange={setCollaborationOrganizations}
+                />
+              </div>
+
               <DraftCockpit
                 draftTasks={draftTasks}
-                employees={deptEmployees}
+                employees={allEmployees.length > 0 ? allEmployees : deptEmployees}
                 allEmployees={allEmployees}
                 employeeNotes={employeeNotes}
                 onUpdate={handleDraftUpdate}
@@ -192,6 +203,7 @@ export default function ProposalImport({ onClose }: { onClose?: () => void }) {
                 }}
                 onCommit={handleCommit}
                 committing={committing}
+                autoSaveState={autoSaveState}
                 commitMessage={commitMessage}
               />
             </div>

@@ -1,24 +1,27 @@
-import { AlertTriangle, ChevronRight, CircleDot, GitBranch, ListTree, Paperclip, UsersRound } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, ChevronRight, CircleDot, GitBranch, ListTree, Paperclip, Pencil, UsersRound } from "lucide-react";
 import type { UserProfile } from "../../../../types";
 import { useToast } from "../../../../components/ui/Toast";
 import { PriorityPill, TaskStatusBadge } from "../../../../components/workflow/StatusBadges";
 import { formatDate, ProgressBar } from "../../../../components/workflow/primitives";
-import { updateTask, type Task } from "../../../tasks";
+import { getTaskLeadId, getTaskTeamMemberIds, TaskTeamEditorDialog, TaskTeamMemberList, updateTask, type Task } from "../../../tasks";
+import { buildProjectWorkGroups } from "../../selectors/projectCommandSelectors";
 import type { ProjectCommandData } from "./types";
 
 export function ProjectWorkTab({ data, profiles, onOpenTask, canManage = false }: { data: ProjectCommandData; profiles: UserProfile[]; onOpenTask: (taskId: string) => void; canManage?: boolean }) {
   const { toast } = useToast();
   const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
-  const groups = [
-    ...data.milestones.map((milestone) => ({ id: milestone.id, title: milestone.title, dueDate: milestone.dueDate, tasks: data.tasks.filter((task) => task.milestoneId === milestone.id) })),
-    { id: "unplanned", title: "Unscheduled work", dueDate: undefined, tasks: data.tasks.filter((task) => !task.milestoneId || !data.milestones.some((milestone) => milestone.id === task.milestoneId)) },
-  ].filter((group) => group.tasks.length > 0);
+  const groups = buildProjectWorkGroups(data.tasks, data.milestones);
+  const [teamTaskId, setTeamTaskId] = useState<string | null>(null);
+  const teamTask = data.tasks.find((task) => task.id === teamTaskId) || null;
 
-  const updateMilestoneLink = async (task: Task, milestoneId: string) => {
+  const updateActivityAssignment = async (task: Task, activityId: string) => {
+    const activity = data.milestones.find((item) => item.id === activityId);
+    if (!activity) return;
     try {
-      await updateTask(task.id, { linkedProjectId: data.project.id, milestoneId });
-      toast("Task milestone updated.", "success");
-    } catch (error: any) { toast(error?.message || "Could not update the milestone link.", "error"); }
+      await updateTask(task.id, { linkedProjectId: data.project.id, milestoneId: activityId });
+      toast(`Task moved to ${activity.title}.`, "success");
+    } catch (error: any) { toast(error?.message || "Could not move the task to that activity.", "error"); }
   };
 
   if (!groups.length) return <div className="rounded-2xl border border-dashed border-neutral-200 bg-white py-16 text-center text-[11px] text-neutral-400">No tasks are linked to this project.</div>;
@@ -27,8 +30,8 @@ export function ProjectWorkTab({ data, profiles, onOpenTask, canManage = false }
     <div className="space-y-4">
       {groups.map((group) => (
         <section key={group.id} className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
-          <header className="flex items-center justify-between border-b border-neutral-100 bg-neutral-50/80 px-4 py-3">
-            <div className="flex items-center gap-2"><ListTree size={15} className="text-neutral-500" /><div><h3 className="text-[12px] font-semibold text-neutral-900">{group.title}</h3><p className="text-[9.5px] text-neutral-400">{group.tasks.length} task(s){group.dueDate ? ` · due ${formatDate(group.dueDate)}` : ""}</p></div></div>
+          <header className={`flex items-center justify-between border-b px-4 py-3 ${group.needsActivityAssignment ? "border-amber-100 bg-amber-50/80" : "border-neutral-100 bg-neutral-50/80"}`}>
+            <div className="flex items-center gap-2"><ListTree size={15} className={group.needsActivityAssignment ? "text-amber-600" : "text-neutral-500"} /><div><h3 className="text-[12px] font-semibold text-neutral-900">{group.title}</h3><p className={group.needsActivityAssignment ? "text-[9.5px] text-amber-700" : "text-[9.5px] text-neutral-400"}>{group.needsActivityAssignment ? `${group.tasks.length} task(s) must be assigned to a project activity` : `${group.tasks.length} task(s)${group.dueDate ? ` · due ${formatDate(group.dueDate)}` : ""}`}</p></div></div>
           </header>
           <div className="divide-y divide-neutral-100">
             {group.tasks.map((task) => (
@@ -39,21 +42,33 @@ export function ProjectWorkTab({ data, profiles, onOpenTask, canManage = false }
                 profileMap={profileMap}
                 canManage={canManage && data.project.status !== "archived"}
                 onOpen={() => onOpenTask(task.id)}
-                onMilestoneChange={(milestoneId) => void updateMilestoneLink(task, milestoneId)}
+                needsActivityAssignment={group.needsActivityAssignment}
+                onActivityChange={(activityId) => void updateActivityAssignment(task, activityId)}
+                onManageTeam={() => setTeamTaskId(task.id)}
               />
             ))}
           </div>
         </section>
       ))}
+      <TaskTeamEditorDialog
+        task={teamTask}
+        profiles={profiles}
+        subtasks={teamTask ? data.facts.subtasks.filter((subtask) => subtask.taskId === teamTask.id) : []}
+        responsibleOrgId={teamTask?.orgId || data.project.orgId}
+        onClose={() => setTeamTaskId(null)}
+      />
     </div>
   );
 }
 
-function ProjectTaskRow({ task, data, profileMap, canManage, onOpen, onMilestoneChange }: { task: Task; data: ProjectCommandData; profileMap: Map<string, UserProfile>; canManage: boolean; onOpen: () => void; onMilestoneChange: (milestoneId: string) => void }) {
+function ProjectTaskRow({ task, data, profileMap, canManage, needsActivityAssignment, onOpen, onActivityChange, onManageTeam }: { task: Task; data: ProjectCommandData; profileMap: Map<string, UserProfile>; canManage: boolean; needsActivityAssignment: boolean; onOpen: () => void; onActivityChange: (activityId: string) => void; onManageTeam: () => void }) {
   const subtasks = data.facts.subtasks.filter((subtask) => subtask.taskId === task.id).sort((a, b) => a.position - b.position);
   const latest = data.facts.progress.find((item) => item.kind === "task" && item.taskId === task.id);
   const pending = data.facts.submissions.find((item) => item.kind === "task" && item.taskId === task.id && item.status === "pending");
-  const lead = profileMap.get(task.recommendationLeadId || task.assigneeId || "");
+  const leadId = getTaskLeadId(task);
+  const lead = profileMap.get(leadId || "");
+  const memberIds = getTaskTeamMemberIds(task);
+  const canEditTeam = canManage && !["for_review", "completed", "cancelled"].includes(task.status);
   const evidenceCount = data.facts.evidence.filter((item) => item.taskId === task.id).length;
 
   return (
@@ -73,13 +88,23 @@ function ProjectTaskRow({ task, data, profileMap, canManage, onOpen, onMilestone
         <div className="flex items-center gap-2">{pending && <span className="rounded-full bg-amber-50 px-2 py-1 text-[9px] font-semibold text-amber-700">Head review waiting</span>}<ChevronRight size={15} className="text-neutral-300" /></div>
       </button>
 
-      {canManage && (
+      <div className="mt-3 rounded-xl border border-neutral-100 bg-neutral-50/70 px-3 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="inline-flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-neutral-400"><UsersRound size={11} /> Task members · {memberIds.length}</div>
+          {canEditTeam && <button type="button" onClick={onManageTeam} className="inline-flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[9.5px] font-semibold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-900"><Pencil size={10} /> Manage members</button>}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <TaskTeamMemberList task={task} profiles={Array.from(profileMap.values())} />
+        </div>
+      </div>
+
+      {canManage && (needsActivityAssignment || data.milestones.length > 1) && (
         <label className="mt-3 ml-3 flex max-w-sm items-center gap-2 border-l border-neutral-200 pl-4 text-[9.5px] text-neutral-500">
-          <span className="shrink-0">Milestone link</span>
-          <select value={task.milestoneId || ""} onChange={(event) => onMilestoneChange(event.target.value)} className="h-8 min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-2 text-[10px]">
-            <option value="">Unscheduled work</option>
-            {data.milestones.map((milestone) => <option key={milestone.id} value={milestone.id}>{milestone.title}</option>)}
-          </select>
+          <span className="shrink-0">{needsActivityAssignment ? "Assign activity" : "Move to activity"}</span>
+          {data.milestones.length ? <select value={needsActivityAssignment ? "" : task.milestoneId || ""} onChange={(event) => onActivityChange(event.target.value)} className="h-8 min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-2 text-[10px]">
+            {needsActivityAssignment && <option value="" disabled>Select an activity…</option>}
+            {data.milestones.map((activity) => <option key={activity.id} value={activity.id}>{activity.title}</option>)}
+          </select> : <span className="rounded-lg bg-amber-50 px-2 py-1.5 text-amber-700">Add an activity in the Plan tab first.</span>}
         </label>
       )}
 

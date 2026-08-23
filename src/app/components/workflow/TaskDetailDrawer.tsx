@@ -5,7 +5,7 @@
 // same component serves every role.
 
 import React, { useState } from "react";
-import { X, Info, Activity, MessageSquare, ClipboardCheck, Calendar, User, Building2, Layers } from "lucide-react";
+import { X, Info, Activity, MessageSquare, ClipboardCheck, Calendar, User, Building2, Layers, Pencil, UsersRound } from "lucide-react";
 import { updateTaskStatus, type Task } from "../../services/taskService";
 import { useAuth } from "../../contexts/AuthContext";
 import { TaskStatusBadge, PriorityPill, InitialsAvatar, ProjectStatusBadge } from "./StatusBadges";
@@ -17,9 +17,14 @@ import { ProgressUpdateForm } from "./ProgressUpdateForm";
 import { TaskSubtasksWidget } from "./TaskSubtasksWidget";
 import { SubmitForReviewForm } from "./SubmitForReviewForm";
 import { useTasks } from "../../hooks/useFirebaseData";
-import { useProjectsData } from "../../hooks/useSupabaseData";
+import { useProfiles, useProjectsData } from "../../hooks/useSupabaseData";
 import { isTaskLead } from "../../services/taskSelectors";
 import { resolveTaskDetailCapabilities } from "../../features/tasks/components/taskDetailAccess";
+import { TaskTeamEditorDialog } from "../../features/tasks/components/team/TaskTeamEditorDialog";
+import { TaskTeamMemberList } from "../../features/tasks/components/team/TaskTeamMemberList";
+import { getTaskTeamMemberIds } from "../../features/tasks/selectors/teamMembership";
+import { useTaskSubtasks } from "../../features/subtasks/hooks/useTaskSubtasks";
+import { WorkBudgetCard } from "../../features/budget";
 
 type Tab = "overview" | "activity" | "discussion" | "review";
 
@@ -43,9 +48,12 @@ export function TaskDetailDrawer({
   const [tab, setTab] = useState<Tab>("overview");
   const [resuming, setResuming] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [teamEditorOpen, setTeamEditorOpen] = useState(false);
   const { user, userProfile } = useAuth();
   const { tasks } = useTasks();
   const { projects } = useProjectsData();
+  const { profiles } = useProfiles();
+  const { subtasks: taskSubtasks } = useTaskSubtasks(task?.id);
 
   if (!task) return null;
   const capabilities = resolveTaskDetailCapabilities(readOnly, {
@@ -73,6 +81,7 @@ export function TaskDetailDrawer({
     userProfile?.role === "assistant_head" ||
     userProfile?.role === "department_head",
   );
+  const canManageTaskTeam = canManageSubtasks && !["for_review", "completed", "cancelled"].includes(task.status);
 
   // The assignee resumes rework by transitioning changes_requested → in_progress.
   // Only offered to whoever can post progress (the owner surface).
@@ -227,6 +236,8 @@ export function TaskDetailDrawer({
                 <ProgressBar value={percent} tone={percent === 100 ? "good" : rel.overdue ? "bad" : "neutral"} />
               </div>
 
+              <WorkBudgetCard task={task} canManage={canManageSubtasks} />
+
               {canStart && (
                 <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
                   <div className="text-[12px] font-['Lexend:Medium',_sans-serif] text-blue-900">
@@ -259,12 +270,23 @@ export function TaskDetailDrawer({
                 {task.programTitle && <Field icon={<Layers size={13} />} label="Program" value={task.programTitle} />}
               </div>
 
+              <section className="rounded-xl border border-neutral-200 bg-neutral-50/70 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="inline-flex items-center gap-1.5 text-[10px] font-['Lexend:Medium',_sans-serif] uppercase tracking-wide text-neutral-500"><UsersRound size={12} /> Task members · {getTaskTeamMemberIds(task).length}</div>
+                  {canManageTaskTeam && <button type="button" onClick={() => setTeamEditorOpen(true)} className="inline-flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[9.5px] font-['Lexend:Medium',_sans-serif] text-neutral-600 hover:text-neutral-900"><Pencil size={10} /> Manage</button>}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5"><TaskTeamMemberList task={task} profiles={profiles} /></div>
+              </section>
+
               <div className="border-t border-neutral-100 pt-3">
                 <TaskSubtasksWidget
                   taskId={task.id}
-                  allowedAssignees={(task.teamMemberIds || []).map((id, idx) => ({
+                  allowedAssignees={getTaskTeamMemberIds(task).map((id) => ({
                     id,
-                    name: (task.teamMemberNames || [])[idx] || "Team Member",
+                    name: profiles.find((profile) => profile.id === id)?.full_name
+                      || (task.teamMemberIds || []).map((memberId, index) => [memberId, task.teamMemberNames?.[index]] as const).find(([memberId]) => memberId === id)?.[1]
+                      || (id === task.assigneeId ? task.assigneeName : undefined)
+                      || "Team Member",
                   }))}
                   canManage={canManageSubtasks}
                   parentTask={task}
@@ -330,6 +352,13 @@ export function TaskDetailDrawer({
           )}
         </div>
       </div>
+      <TaskTeamEditorDialog
+        task={teamEditorOpen ? task : null}
+        profiles={profiles}
+        subtasks={taskSubtasks}
+        responsibleOrgId={task.orgId || operationalProject?.orgId}
+        onClose={() => setTeamEditorOpen(false)}
+      />
       <style>{`
         @keyframes slidein { from { transform: translateX(100%); } to { transform: translateX(0); } }
         @keyframes fade { from { opacity: 0; } to { opacity: 1; } }

@@ -3,13 +3,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../components/ui/Toast";
 import { SESSION_NOTICE_KEY } from "../session-security/constants";
 import { clearAllSessionActivity } from "../session-security/services/sessionActivityStorage";
-
-const QUICK_ACCOUNTS: Record<string, { email: string; pass: string; label: string }> = {
-  "1": { email: "admin@gmail.com", pass: "admin123", label: "Super Admin (admin@gmail.com)" },
-  "2": { email: "bplo.head@gmail.com", pass: "123456", label: "Head (bplo.head@gmail.com)" },
-  "3": { email: "tdfro.staff1@gmail.com", pass: "123456", label: "Employee (tdfro.staff1@gmail.com)" },
-  "4": { email: "gabzcah@gmail.com", pass: "123456", label: "Gabriel (gabzcah@gmail.com)" },
-};
+import { getQuickLoginAccount } from "../../shared/quickLoginAccounts";
 
 export function QuickLoginListener() {
   const { login, logout } = useAuth();
@@ -17,15 +11,16 @@ export function QuickLoginListener() {
 
   useEffect(() => {
     const handleKeyDown = async (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || !(event.key in QUICK_ACCOUNTS)) return;
-      const account = QUICK_ACCOUNTS[event.key];
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const account = getQuickLoginAccount(event.key);
+      if (!account) return;
       event.preventDefault();
       toast("Quick switching to " + account.label + "...", "info");
       try {
         await logout();
         clearAllSessionActivity(localStorage);
         localStorage.removeItem(SESSION_NOTICE_KEY);
-        await login(account.email, account.pass);
+        await login(account.email, account.password);
         toast("Logged in as " + account.label, "success");
       } catch (error: unknown) {
         toast(error instanceof Error ? error.message : "Failed to switch to " + account.email, "error");

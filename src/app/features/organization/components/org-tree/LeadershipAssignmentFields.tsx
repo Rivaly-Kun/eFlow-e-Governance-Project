@@ -35,6 +35,7 @@ export function LeadershipAssignmentFields({
   onHeadChange,
   onAssistantHeadChange,
   assistantHeadError,
+  boardMode = false,
 }: {
   isOpen: boolean;
   orgId?: string;
@@ -45,11 +46,12 @@ export function LeadershipAssignmentFields({
   onHeadChange: (userId: string) => void;
   onAssistantHeadChange: (userId: string) => void;
   assistantHeadError?: string;
+  boardMode?: boolean;
 }) {
   const [query, setQuery] = React.useState("");
   const leadershipCandidates = React.useMemo(
-    () => getLeadershipCandidates(profiles, organizations, orgId),
-    [orgId, organizations, profiles],
+    () => getLeadershipCandidates(profiles, organizations, orgId, boardMode),
+    [boardMode, orgId, organizations, profiles],
   );
   const matchingCandidates = React.useMemo(
     () => filterLeadershipCandidates(leadershipCandidates, query, organizations),
@@ -90,7 +92,9 @@ export function LeadershipAssignmentFields({
             Leadership team
           </h4>
           <p className="mt-0.5 text-[11px] leading-4 text-neutral-500">
-            Search active users, then assign two different people to lead and review work.
+            {boardMode
+              ? "Assign secondary Board leadership without moving anyone from their home office."
+              : "Only active people assigned directly to this organization can be selected. Assign a person to this office first if they are not listed."}
           </p>
         </div>
       </div>
@@ -113,12 +117,12 @@ export function LeadershipAssignmentFields({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             className="bg-white pl-9"
-            placeholder="Name, email, employee ID, role, or office"
+            placeholder={boardMode ? "Name, email, employee ID, role, or office" : "Name, email, employee ID, or role"}
           />
         </div>
         <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-neutral-500">
           <UserRound size={13} aria-hidden="true" />
-          {matchingCandidates.length} matching {matchingCandidates.length === 1 ? "user" : "users"}
+          {matchingCandidates.length} matching {matchingCandidates.length === 1 ? "user" : "users"}{!boardMode ? " in this organization" : ""}
         </p>
       </div>
 
@@ -129,18 +133,18 @@ export function LeadershipAssignmentFields({
       )}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <FormField label="Head">
+        <FormField label={boardMode ? "Board Head" : "Head"}>
           <SelectInput
             value={headUserId}
             onChange={(event) => onHeadChange(event.target.value)}
-            options={optionsFor(headUserId, assistantHeadUserId, "No Head assigned")}
+            options={optionsFor(headUserId, assistantHeadUserId, boardMode ? "No Board Head assigned" : "No Head assigned")}
           />
         </FormField>
-        <FormField label="Assistant Head" error={assistantHeadError}>
+        <FormField label={boardMode ? "Board Assistant Head" : "Assistant Head"} error={assistantHeadError}>
           <SelectInput
             value={assistantHeadUserId}
             onChange={(event) => onAssistantHeadChange(event.target.value)}
-            options={optionsFor(assistantHeadUserId, headUserId, "No Assistant Head assigned")}
+            options={optionsFor(assistantHeadUserId, headUserId, boardMode ? "No Board Assistant Head assigned" : "No Assistant Head assigned")}
           />
         </FormField>
       </div>

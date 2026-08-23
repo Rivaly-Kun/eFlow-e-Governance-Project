@@ -9,6 +9,8 @@ const ORG_TYPE_ICONS: Record<OrgType, string> = {
   division: '\u{1F4C2}',
   section: '\u{1F4C1}',
   unit: '\u{1F4C4}',
+  board: '\u{2696}',
+  committee: '\u{1F465}',
 };
 
 const ORG_TYPE_COLORS: Record<OrgType, string> = {
@@ -17,6 +19,8 @@ const ORG_TYPE_COLORS: Record<OrgType, string> = {
   division: 'bg-indigo-500 text-white',
   section: 'bg-violet-500 text-white',
   unit: 'bg-purple-400 text-white',
+  board: 'bg-amber-600 text-white',
+  committee: 'bg-teal-600 text-white',
 };
 
 export const ORG_TYPE_OPTIONS: { value: OrgType; label: string }[] = [
@@ -24,6 +28,8 @@ export const ORG_TYPE_OPTIONS: { value: OrgType; label: string }[] = [
   { value: 'division', label: 'Division' },
   { value: 'section', label: 'Section' },
   { value: 'unit', label: 'Unit' },
+  { value: 'board', label: 'Board' },
+  { value: 'committee', label: 'Committee' },
 ];
 
 export const ROLE_COLORS: Record<string, string> = {

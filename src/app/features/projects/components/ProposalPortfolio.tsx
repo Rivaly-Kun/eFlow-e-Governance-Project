@@ -1,5 +1,5 @@
 import * as React from "react";
-import { AlertTriangle, Building2, CalendarClock, CheckCircle2, ChevronDown, FileText, FolderKanban, Layers3, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, Building2, CalendarClock, CheckCircle2, ChevronDown, FileText, FolderKanban, Layers3, Sparkles } from "lucide-react";
 import type { Organization, UserProfile } from "../../../types";
 import type { Task } from "../../tasks";
 import type { ProposalPortfolioGroup } from "../selectors/proposalPortfolioSelectors";
@@ -21,6 +21,7 @@ export function ProposalPortfolio({
   profiles,
   view,
   onOpenProject,
+  onOpenProposal,
 }: {
   groups: ProposalPortfolioGroup[];
   tasks: Task[];
@@ -28,6 +29,7 @@ export function ProposalPortfolio({
   profiles: UserProfile[];
   view: "grid" | "list";
   onOpenProject: (projectId: string) => void;
+  onOpenProposal: (draftId: string) => void;
 }) {
   const [collapsed, setCollapsed] = React.useState<Set<string>>(() => new Set());
 
@@ -54,12 +56,8 @@ export function ProposalPortfolio({
               : "border-blue-100 bg-blue-50 text-blue-700";
         return (
           <section key={group.id} className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
-            <button
-              type="button"
-              onClick={() => toggle(group.id)}
-              aria-expanded={!isCollapsed}
-              className="flex w-full flex-col gap-4 px-5 py-4 text-left transition-colors hover:bg-neutral-50/70 lg:flex-row lg:items-center"
-            >
+            <div className="flex items-stretch">
+            <button type="button" onClick={() => toggle(group.id)} aria-expanded={!isCollapsed} className="flex min-w-0 flex-1 flex-col gap-4 px-5 py-4 text-left transition-colors hover:bg-neutral-50/70 lg:flex-row lg:items-center">
               <div className="flex min-w-0 flex-1 items-start gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-900 text-white shadow-sm">
                   <FileText size={18} />
@@ -79,6 +77,7 @@ export function ProposalPortfolio({
                       Target {formatDate(group.targetDate)} · {group.deadlineLabel}
                     </span>
                   </div>
+                  <div className="mt-2 flex items-center gap-2"><span className="h-1.5 min-w-[120px] flex-1 overflow-hidden rounded-full bg-neutral-100"><span className="block h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${group.progress}%` }} /></span><span className="text-[9px] font-medium text-neutral-500">{group.completedTaskCount}/{group.taskCount} tasks approved</span></div>
                 </div>
               </div>
 
@@ -87,8 +86,12 @@ export function ProposalPortfolio({
                 <Metric icon={<Layers3 size={12} />} value={group.taskCount} label={group.taskCount === 1 ? "task" : "tasks"} />
                 <Metric icon={<CheckCircle2 size={12} />} value={`${group.progress}%`} label="complete" />
               </div>
-              <ChevronDown size={16} className={`shrink-0 text-neutral-400 transition-transform duration-200 ${isCollapsed ? "-rotate-90" : ""}`} />
             </button>
+            <div className="flex shrink-0 flex-col items-center justify-center gap-2 border-l border-neutral-100 px-3">
+              {group.sourceCollaborationDraftId && <button type="button" onClick={() => onOpenProposal(group.sourceCollaborationDraftId!)} className="inline-flex items-center gap-1 rounded-lg bg-neutral-900 px-2.5 py-2 text-[9.5px] font-medium text-white hover:bg-neutral-800">Open delivery <ArrowRight size={11} /></button>}
+              <button type="button" onClick={() => toggle(group.id)} aria-label={isCollapsed ? "Show proposal projects" : "Hide proposal projects"} className="rounded-lg border border-neutral-200 p-2 text-neutral-400 hover:bg-neutral-50 hover:text-neutral-700"><ChevronDown size={15} className={`transition-transform duration-200 ${isCollapsed ? "-rotate-90" : ""}`} /></button>
+            </div>
+            </div>
 
             {!isCollapsed && (
               <div className="border-t border-neutral-100 bg-neutral-50/50 px-4 py-4 sm:px-5">

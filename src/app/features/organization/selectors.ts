@@ -21,6 +21,7 @@ export function getLeadershipCandidates(
   profiles: UserProfile[],
   organizations: Organization[],
   organizationId?: string,
+  allowSecondaryOrganizationLeadership = false,
 ): UserProfile[] {
   const assignedElsewhere = new Set(
     organizations
@@ -36,7 +37,11 @@ export function getLeadershipCandidates(
     (profile) =>
       profile.is_active &&
       profile.role !== "super_admin" &&
-      !assignedElsewhere.has(profile.id),
+      // A normal Head or Assistant Head is selected from the organization
+      // they already belong to. This deliberately does not move people out of
+      // another office as a side-effect of assigning leadership.
+      (allowSecondaryOrganizationLeadership || profile.org_id === organizationId) &&
+      (allowSecondaryOrganizationLeadership || !assignedElsewhere.has(profile.id)),
   );
 }
 

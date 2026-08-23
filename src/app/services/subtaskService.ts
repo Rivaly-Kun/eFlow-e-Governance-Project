@@ -205,7 +205,7 @@ export async function toggleSubtask(
   void subtaskId;
   void isCompleted;
   void actorId;
-  throw new Error('Direct subtask check-off is disabled. Open the subtask and submit evidence for Team Leader review.');
+  throw new Error('Direct subtask check-off is disabled. Open the subtask and submit evidence for independent review.');
 }
 
 // ─── updateSubtask ──────────────────────────────────────────────────

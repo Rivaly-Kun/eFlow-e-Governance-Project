@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   filterLeadershipCandidates,
+  getLeadershipCandidates,
   resolveOrganizationLeadershipReviewer,
 } from "../../src/app/features/organization/selectors";
 import type { Organization, UserProfile } from "../../src/app/types";
@@ -63,5 +64,16 @@ describe("organization leadership review routing", () => {
       .toMatchObject([{ id: "candidate-1" }]);
     expect(filterLeadershipCandidates(candidates, "EMP-222", [organization]))
       .toMatchObject([{ id: "candidate-2" }]);
+  });
+
+  it("offers normal organization leadership only to active people from that exact organization", () => {
+    const candidates = [
+      { id: "own-active", full_name: "Own office", org_id: "org-1", role: "employee", is_active: true },
+      { id: "other-office", full_name: "Other office", org_id: "org-2", role: "employee", is_active: true },
+      { id: "own-inactive", full_name: "Inactive", org_id: "org-1", role: "employee", is_active: false },
+    ] as UserProfile[];
+
+    expect(getLeadershipCandidates(candidates, [organization], "org-1"))
+      .toMatchObject([{ id: "own-active" }]);
   });
 });

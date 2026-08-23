@@ -16,6 +16,7 @@ export interface ProposalPortfolioGroup {
   orgId?: string;
   sourceType: ProjectSourceType;
   sourceFileName?: string;
+  sourceCollaborationDraftId?: string;
   programs: ProposalProgramGroup[];
   projectCount: number;
   taskCount: number;
@@ -133,6 +134,7 @@ export function buildProposalPortfolioGroups(projects: Project[], tasks: Task[])
         orgId: project.orgId,
         sourceType: identity.sourceType,
         sourceFileName: identity.sourceFileName,
+        sourceCollaborationDraftId: project.sourceCollaborationDraftId,
         programs: [],
         projectCount: 0,
         taskCount: 0,
@@ -158,6 +160,9 @@ export function buildProposalPortfolioGroups(projects: Project[], tasks: Task[])
     group.completedTaskCount += completedTaskCount;
     if (project.status === "completed") group.completedProjectCount += 1;
     group.latestActivityAt = Math.max(group.latestActivityAt, project.updatedAt);
+    if (!group.sourceCollaborationDraftId && project.sourceCollaborationDraftId) {
+      group.sourceCollaborationDraftId = project.sourceCollaborationDraftId;
+    }
   });
 
   return Array.from(groups.values())

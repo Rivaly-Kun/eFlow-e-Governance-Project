@@ -67,6 +67,40 @@ export function buildProjectActivity(facts: TeamWorkflowFacts, projectEvents: Pr
   ].sort((a, b) => b.occurredAt - a.occurredAt);
 }
 
+export interface ProjectWorkGroup {
+  id: string;
+  title: string;
+  dueDate?: string;
+  tasks: Task[];
+  needsActivityAssignment: boolean;
+}
+
+/**
+ * Groups operational tasks under the proposal activity represented internally
+ * by a milestone. Invalid legacy links are surfaced as a repair queue instead
+ * of presenting "unscheduled work" as a normal planning choice.
+ */
+export function buildProjectWorkGroups(tasks: Task[], milestones: Milestone[]): ProjectWorkGroup[] {
+  const activityIds = new Set(milestones.map((milestone) => milestone.id));
+  const groups: ProjectWorkGroup[] = milestones.map((milestone) => ({
+    id: milestone.id,
+    title: milestone.title,
+    dueDate: milestone.dueDate,
+    tasks: tasks.filter((task) => task.milestoneId === milestone.id),
+    needsActivityAssignment: false,
+  }));
+  const needsAssignment = tasks.filter((task) => !task.milestoneId || !activityIds.has(task.milestoneId));
+  if (needsAssignment.length) {
+    groups.push({
+      id: "needs-activity-assignment",
+      title: "Needs activity assignment",
+      tasks: needsAssignment,
+      needsActivityAssignment: true,
+    });
+  }
+  return groups.filter((group) => group.tasks.length > 0);
+}
+
 export function buildProjectPortfolioSummary(project: Project, tasks: Task[], now = Date.now()) {
   const live = tasks.filter((task) => task.linkedProjectId === project.id && !task.archivedAt && task.status !== "cancelled");
   const completed = live.filter((task) => task.status === "completed").length;

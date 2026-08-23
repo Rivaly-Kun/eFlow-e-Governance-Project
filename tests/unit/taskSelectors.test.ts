@@ -27,9 +27,11 @@ describe("task selector compatibility", () => {
     expect(isOverdue(task({ status: "completed" }) as never, Date.UTC(2026, 1, 1))).toBe(false);
   });
 
-  it("keeps lead fallback and unassigned semantics stable", () => {
+  it("uses the current Task Lead assignment before legacy AI lead suggestions", () => {
     expect(isTaskLead(task() as never, "employee-1")).toBe(true);
-    expect(isTaskLead(task({ recommendationLeadId: "employee-2" }) as never, "employee-1")).toBe(false);
+    expect(isTaskLead(task({ recommendationLeadId: "employee-2" }) as never, "employee-1")).toBe(true);
+    expect(isTaskLead(task({ recommendationLeadId: "employee-2" }) as never, "employee-2")).toBe(false);
+    expect(isTaskLead(task({ assigneeId: undefined, recommendationLeadId: "employee-2" }) as never, "employee-2")).toBe(true);
     expect(unassignedTasks([task({ assigneeId: null }), task() ] as never)).toHaveLength(1);
   });
 

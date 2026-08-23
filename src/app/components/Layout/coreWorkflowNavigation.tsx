@@ -11,6 +11,7 @@ import {
   StarFilled,
   Task,
   UserMultiple,
+  Wallet,
 } from "@carbon/icons-react";
 
 export interface CoreRoleNavItem {
@@ -55,6 +56,13 @@ const CORE_WORKFLOW_NAVIGATION: Record<string, CoreRoleNavigation> = {
         icon: <Task size={16} />,
         label: "Task Board",
         page: "Task Board",
+        group: "Department",
+      },
+      {
+        id: "budget",
+        icon: <Wallet size={16} />,
+        label: "Department Budget",
+        page: "Department Budget",
         group: "Department",
       },
       {
@@ -117,6 +125,13 @@ const CORE_WORKFLOW_NAVIGATION: Record<string, CoreRoleNavigation> = {
         icon: <Task size={16} />,
         label: "My Tasks",
         page: "My Tasks",
+        group: "My Work",
+      },
+      {
+        id: "budget",
+        icon: <Wallet size={16} />,
+        label: "Petty Cash",
+        page: "Petty Cash & Expenses",
         group: "My Work",
       },
       {

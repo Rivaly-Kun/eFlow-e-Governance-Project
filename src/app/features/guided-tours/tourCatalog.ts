@@ -5,6 +5,7 @@ const SECTION_GUIDANCE: Record<string, string> = {
   command: "Use the command center to understand current operations before opening detailed workspaces.",
   projects: "Open operational projects, inspect milestones and members, build work plans, import AI proposal drafts, and reuse approved templates.",
   tasks: "Track task ownership and lifecycle status. Switch between List, Kanban, Timeline, and Hierarchy without changing the underlying records.",
+  budget: "Department Heads set and lock the annual budget, approve work allocations and petty cash, verify receipts, and monitor utilization. Employees use this workspace to request cash and liquidate approved expenses.",
   leading: "Manage work where you are the Team Leader, create and assign subtasks, and review employee evidence.",
   subtasks: "Open each assigned subtask, report progress, attach evidence, and submit completed work to the Team Leader.",
   reviews: "Validate submitted evidence, inspect work history, approve acceptable work, or request specific corrections.",

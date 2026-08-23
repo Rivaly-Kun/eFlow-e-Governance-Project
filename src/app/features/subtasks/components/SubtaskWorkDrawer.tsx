@@ -13,6 +13,9 @@ import { SubtaskProgressForm } from "./SubtaskProgressForm";
 import { SubtaskProgressHistory } from "./SubtaskProgressHistory";
 import { SubtaskSubmissionHistory } from "./SubtaskSubmissionHistory";
 import { SubtaskDeadlineEditor } from "./SubtaskDeadlineEditor";
+import { SubtaskReviewerBadge } from "./SubtaskReviewerBadge";
+import { useSubtaskReviewerDirectory } from "../hooks/useSubtaskReviewerDirectory";
+import { WorkBudgetCard } from "../../budget";
 
 const statusMeta = {
   todo: { label: "To do", tone: "bg-neutral-100 text-neutral-700" },
@@ -40,6 +43,8 @@ export function SubtaskWorkDrawer({
   const [current, setCurrent] = useState(subtask);
   const [submissions, setSubmissions] = useState<SubtaskSubmission[]>([]);
   const [progressUpdates, setProgressUpdates] = useState<SubtaskProgressUpdate[]>([]);
+  const reviewerIds = current?.reviewerId ? [current.reviewerId] : [];
+  const { reviewersById, loading: reviewerLoading } = useSubtaskReviewerDirectory(reviewerIds);
 
   const reload = async () => {
     if (!subtask) return;
@@ -102,13 +107,22 @@ export function SubtaskWorkDrawer({
             <div className="mt-3 grid grid-cols-2 gap-3 text-[11px]">
               <div>
                 <div className="text-neutral-400">Review rule</div>
-                <div className="mt-0.5 flex items-center gap-1 text-neutral-700"><CheckCircle2 size={12} /> Leader approval required</div>
+                <div className="mt-0.5 flex items-center gap-1 text-neutral-700"><CheckCircle2 size={12} /> Independent approval required</div>
               </div>
               <div>
                 <div className="text-neutral-400">Parent deadline</div>
                 <div className="mt-0.5 flex items-center gap-1 text-neutral-700"><Calendar size={12} /> {formatDate(parentTask?.deadline || parentTask?.dueDate)} {due?.label ? `· ${due.label}` : ""}</div>
               </div>
             </div>
+            {current.reviewerId && (
+              <div className="mt-3 border-t border-neutral-200 pt-3">
+                <SubtaskReviewerBadge
+                  reviewer={reviewersById[current.reviewerId]}
+                  status={current.status}
+                  loading={reviewerLoading}
+                />
+              </div>
+            )}
             <div className="mt-3 border-t border-neutral-200 pt-3 text-[11px]">
               <div className="text-neutral-400">Assigned contributors</div>
               <div className="mt-1 flex items-center gap-1.5 text-neutral-700">
@@ -123,6 +137,14 @@ export function SubtaskWorkDrawer({
             canManage={canManageDeadline}
             onSaved={reload}
           />
+
+          {parentTask && (
+            <WorkBudgetCard
+              task={parentTask}
+              subtask={current}
+              canManage={canManageDeadline || !readOnly}
+            />
+          )}
 
           {readOnly ? (
             <div className="flex gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-[11.5px] text-blue-800">

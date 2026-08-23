@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { canUserReviewTask } from "../../src/app/features/reviews/selectors";
+import {
+  canUserReviewTask,
+  isTaskVisibleInReviewQueue,
+} from "../../src/app/features/reviews/selectors";
 import type { Task } from "../../src/app/services/taskService";
 
 const task: Task = {
@@ -33,5 +36,20 @@ describe("review routing", () => {
 
   it("allows a super admin override when they are not the submitter", () => {
     expect(canUserReviewTask(task, "admin-1", "super_admin")).toBe(true);
+  });
+
+  it("keeps an explicitly assigned governance reviewer in the queue across organizations", () => {
+    const governedTask: Task = {
+      ...task,
+      orgId: "ledipo",
+      reviewerId: "orcham-head",
+      reviewRouteMode: "governance",
+    };
+
+    expect(isTaskVisibleInReviewQueue(governedTask, "orcham-head", "dept_head")).toBe(true);
+  });
+
+  it("keeps unrelated users out of the queue", () => {
+    expect(isTaskVisibleInReviewQueue(task, "unrelated-head", "dept_head")).toBe(false);
   });
 });

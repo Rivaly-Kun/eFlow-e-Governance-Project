@@ -15,6 +15,8 @@ export interface Project {
   programTitle?: string;
   sourceType?: ProjectSourceType;
   sourceFileName?: string;
+  sourceCollaborationDraftId?: string;
+  sourceCollaborationRevisionId?: string;
   status: ProjectStatus;
   priority: ProjectPriority;
   startDate?: string;

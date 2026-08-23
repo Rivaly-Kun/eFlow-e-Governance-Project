@@ -41,9 +41,10 @@ export interface ProjectCommandWorkspaceProps {
   onDeleted: () => void;
   canReviewTasks: boolean;
   canExport?: boolean;
+  onOpenSourceGovernance?: (draftId: string) => void;
 }
 
-export function ProjectCommandWorkspace({ project, onBack, orgs, canArchive, canManage, canDelete, onDeleted, canReviewTasks, canExport = true }: ProjectCommandWorkspaceProps) {
+export function ProjectCommandWorkspace({ project, onBack, orgs, canArchive, canManage, canDelete, onDeleted, canReviewTasks, canExport = true, onOpenSourceGovernance }: ProjectCommandWorkspaceProps) {
   const { tasks } = useTasks();
   const { profiles } = useProfiles();
   const { toast } = useToast();
@@ -67,7 +68,7 @@ export function ProjectCommandWorkspace({ project, onBack, orgs, canArchive, can
 
   return (
     <div className="min-h-full space-y-5 p-6 sm:p-8">
-      <ProjectHeader project={project} organizations={orgs} canArchive={canArchive} canDelete={canDelete} onBack={onBack} onArchive={() => void archive()} onRestore={() => void restore()} onDelete={() => setDeleteOpen(true)} />
+      <ProjectHeader project={project} organizations={orgs} canArchive={canArchive} canDelete={canDelete} onBack={onBack} onArchive={() => void archive()} onRestore={() => void restore()} onDelete={() => setDeleteOpen(true)} onOpenSourceGovernance={project.sourceCollaborationDraftId && onOpenSourceGovernance ? () => onOpenSourceGovernance(project.sourceCollaborationDraftId!) : undefined} />
       <ProjectHealthStrip metrics={data.metrics} />
       <nav className="flex gap-1 overflow-x-auto rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-sm">
         {TABS.map((item) => {

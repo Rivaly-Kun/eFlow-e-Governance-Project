@@ -39,11 +39,31 @@ async function verifyLiveSchema() {
 
   for (const table of [
     "audit_events",
+    "budget_commitments",
+    "budget_ledger_entries",
+    "department_budget_lines",
+    "department_fiscal_budgets",
     "milestones",
     "hierarchy_deadline_reminders",
     "monthly_productivity_snapshots",
     "project_members",
+    "project_organizations",
     "projects",
+    "organization_memberships",
+    "proposal_collaboration_approvals",
+    "proposal_collaboration_change_requests",
+    "proposal_collaboration_drafts",
+    "proposal_collaboration_messages",
+    "proposal_collaboration_orgs",
+    "proposal_collaboration_revisions",
+    "proposal_governance_assignments",
+    "proposal_governance_signoffs",
+    "proposal_governance_records",
+    "petty_cash_liquidations",
+    "petty_cash_receipts",
+    "petty_cash_requests",
+    "proposal_delivery_closeouts",
+    "proposal_delivery_closeout_decisions",
     "role_permissions",
     "subtasks",
     "task_submissions",
@@ -56,8 +76,11 @@ async function verifyLiveSchema() {
     "subtask_templates",
     "subtask_template_items",
     "tasks",
+    "task_organizations",
+    "milestone_organizations",
     "user_permission_overrides",
     "user_org_scope_grants",
+    "work_budget_allocations",
   ]) {
     if (!definitions[table]) missing.push(`table:${table}`);
   }
@@ -71,6 +94,11 @@ async function verifyLiveSchema() {
     "cancellation_reason",
     "cancelled_at",
     "cancelled_by",
+    "review_route_mode",
+    "source_collaboration_draft_id",
+    "source_collaboration_revision_id",
+    "governance_approval_mode",
+    "governance_organization_id",
   ]) {
     if (!definitions.tasks?.properties?.[column]) missing.push(`tasks.${column}`);
   }
@@ -80,6 +108,9 @@ async function verifyLiveSchema() {
   }
   if (!definitions.organizations?.properties?.assistant_head_user_id) {
     missing.push("organizations.assistant_head_user_id");
+  }
+  for (const column of ["source_collaboration_draft_id", "source_collaboration_revision_id"]) {
+    if (!definitions.projects?.properties?.[column]) missing.push(`projects.${column}`);
   }
   for (const column of ["status", "percent_complete", "reviewer_id", "latest_submission_id", "is_standalone", "due_date", "due_date_change_reason", "due_date_changed_at", "due_date_changed_by"]) {
     if (!definitions.subtasks?.properties?.[column]) missing.push(`subtasks.${column}`);
@@ -127,6 +158,41 @@ async function verifyLiveSchema() {
     "submit_task_for_review",
     "has_permission",
     "can_access_org",
+    "can_manage_collaboration_draft",
+    "autosave_collaboration_draft",
+    "can_manage_collaboration_project",
+    "can_see_collaboration_project",
+    "collaboration_readiness",
+    "commit_collaboration_draft",
+    "create_collaboration_change_request",
+    "create_collaboration_draft",
+    "decide_collaboration_review",
+    "is_collaboration_participant",
+    "is_organization_approver",
+    "request_collaboration_review",
+    "save_collaboration_revision",
+    "save_collaboration_staffing_revision",
+    "send_collaboration_message",
+    "set_collaboration_organizations",
+    "set_proposal_governance_configuration",
+    "recuse_and_delegate_collaboration_review",
+    "save_proposal_governance_record",
+    "request_proposal_closeout",
+    "decide_proposal_closeout",
+    "complete_proposal_delivery",
+    "archive_proposal_delivery",
+    "set_task_governance_route",
+    "run_governance_review_escalations",
+    "set_organization_approvers",
+    "save_department_fiscal_budget",
+    "lock_department_fiscal_budget",
+    "create_work_budget_allocation",
+    "decide_work_budget_allocation",
+    "create_petty_cash_request",
+    "decide_petty_cash_request",
+    "submit_petty_cash_liquidation",
+    "decide_petty_cash_liquidation",
+    "department_budget_summary",
   ]) {
     if (!paths[`/rpc/${rpc}`]) missing.push(`rpc:${rpc}`);
   }
@@ -137,7 +203,7 @@ async function verifyLiveSchema() {
     return false;
   }
 
-  console.log("Live task, project, and subtask workflow schema verification passed.");
+  console.log("Live task, project, subtask, collaboration, and budget workflow schema verification passed.");
   return true;
 }
 

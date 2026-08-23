@@ -15,6 +15,7 @@ export function DraftCockpit({
   onOpenModal,
   onCommit,
   committing,
+  autoSaveState,
   commitMessage,
   source = "ai",
   proposalTitle: proposalTitleOverride,
@@ -35,6 +36,7 @@ export function DraftCockpit({
   onOpenModal: (key: string) => void;
   onCommit: () => void;
   committing: boolean;
+  autoSaveState?: "idle" | "saving" | "saved" | "error";
   commitMessage: string;
   source?: "ai" | "manual";
   proposalTitle?: string;
@@ -111,25 +113,25 @@ export function DraftCockpit({
         <div>
           {isManual && (
             <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-['Lexend:Medium',_sans-serif]">
-              Manual plan - local state
+              Manual collaboration draft
             </div>
           )}
           <div className={isManual ? "hidden" : "text-[10px] uppercase tracking-[0.2em] text-neutral-400 font-['Lexend:Medium',_sans-serif]"}>
-            AI Draft — Local State
+            AI collaboration draft
           </div>
           {isManual && (
             <div className="text-[15px] font-['Lexend:SemiBold',_sans-serif] text-white mt-0.5">
-              Build, review, and create when ready
+              Build and review · autosaved
             </div>
           )}
           <div className={isManual ? "hidden" : "text-[15px] font-['Lexend:SemiBold',_sans-serif] text-white mt-0.5"}>
-            Review & edit before committing
+            Review and edit · autosaved
           </div>
           <div className="text-[11px] text-violet-200 mt-1">
             {isManual ? "Plan" : "Proposal"}: {proposalTitle}
           </div>
           <div className="text-[12px] text-neutral-400 mt-0.5">
-            {enabledCount} of {draftTasks.length} tasks selected · not yet saved
+            {enabledCount} of {draftTasks.length} tasks selected · operational work is not created yet
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -147,6 +149,11 @@ export function DraftCockpit({
               {commitMessage}
             </div>
           )}
+          {autoSaveState && autoSaveState !== "idle" && (
+            <div className={`text-[10px] ${autoSaveState === "error" ? "text-red-300" : "text-neutral-300"}`}>
+              {autoSaveState === "saving" ? "Saving…" : autoSaveState === "saved" ? "Autosaved" : "Autosave needs attention"}
+            </div>
+          )}
           <button
             onClick={onCommit}
             disabled={committing || enabledCount === 0}
@@ -154,11 +161,11 @@ export function DraftCockpit({
           >
             {committing ? (
               <>
-                <Loader2 size={13} className="animate-spin" /> Committing…
+                <Loader2 size={13} className="animate-spin" /> Saving draft…
               </>
             ) : (
               <>
-                <Check size={13} /> {isManual ? "Create" : "Commit"} {enabledCount} Tasks & Projects
+                <Check size={13} /> Done editing
               </>
             )}
           </button>

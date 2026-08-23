@@ -104,4 +104,43 @@ describe("notification navigation", () => {
       intent: { kind: "task", taskId: "task-4" },
     });
   });
+
+  it("opens collaboration requests in Plans & Projects", () => {
+    expect(resolveNotificationDestination(notification({
+      type: "collaboration_request",
+      title: "Inter-department collaboration request",
+      message: 'LEDIPO requested review of "OCEDSIPP".',
+      proposalId: "draft-1",
+      entityType: "collaboration_draft",
+    }), "depthead")).toMatchObject({
+      section: "projects",
+      page: "Projects",
+      label: "Open collaboration review",
+      intent: { kind: "collaboration", proposalId: "draft-1" },
+    });
+  });
+
+  it("routes financial approvals and employee decisions to the correct budget workspace", () => {
+    expect(resolveNotificationDestination(notification({
+      type: "petty_cash_request",
+      title: "Petty-cash request awaiting approval",
+      taskId: "task-5",
+      taskTitle: "Prepare workshop",
+    }), "depthead")).toMatchObject({
+      section: "budget",
+      page: "Department Budget",
+      label: "Open budget approval",
+      intent: { kind: "budget", taskId: "task-5" },
+    });
+
+    expect(resolveNotificationDestination(notification({
+      type: "petty_cash_decision",
+      title: "Petty cash approved",
+      taskId: "task-5",
+    }), "employee")).toMatchObject({
+      section: "budget",
+      page: "Petty Cash & Expenses",
+      label: "Open petty cash",
+    });
+  });
 });

@@ -25,6 +25,7 @@ import { EmployeeInsights } from "./components/EmployeeInsights";
 import { TeamSupervision } from "./components/TeamSupervision";
 import { useAuth } from "../../contexts/AuthContext";
 import { getHeadWorkspaceLabel } from "../../shared/roles";
+import { DepartmentBudgetWorkspace } from "../budget";
 
 export function DeptHeadTaskBoard() {
   const {
@@ -100,6 +101,9 @@ export const deptheadPages: RolePageSections = {
   tasks: {
     "Task Board": DeptHeadTaskBoard,
   },
+  budget: {
+    "Department Budget": DepartmentBudgetWorkspace,
+  },
   subtasks: {
     "My Subtasks": SubtasksWorkspace,
   },
@@ -147,6 +151,7 @@ export const deptheadDefaultPages: Record<string, string> = {
   dashboard: "Dashboard",
   projects: "Projects",
   tasks: "Task Board",
+  budget: "Department Budget",
   subtasks: "My Subtasks",
   reviews: "For Review",
   team: "Team Supervision",

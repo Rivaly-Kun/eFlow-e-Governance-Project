@@ -6,6 +6,8 @@ import { useToast } from "../../../../components/ui/Toast";
 import type { Organization, OrgType, UserProfile } from "../../../../types";
 import {
   assignOrganizationLeadership,
+  assignOrganizationApprovers,
+  fetchOrganizationApprovers,
 } from "../../services/leadershipService";
 import { ORG_TYPE_OPTIONS } from "./orgTreeModel";
 import { LeadershipAssignmentFields } from "./LeadershipAssignmentFields";
@@ -60,6 +62,16 @@ export function OrgModal({
     }
   }, [org, parentId, isOpen]);
 
+  React.useEffect(() => {
+    if (!isOpen || !org || !["board", "committee"].includes(org.org_type)) return;
+    let cancelled = false;
+    void fetchOrganizationApprovers(org.id).then((leadership) => {
+      if (cancelled) return;
+      setForm((current) => ({ ...current, head_user_id: leadership.headUserId || "", assistant_head_user_id: leadership.assistantHeadUserId || "" }));
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [isOpen, org]);
+
   const validate = () => {
     const errs: Record<string, string> = {};
     if (!form.name.trim()) errs.name = 'Required';
@@ -83,7 +95,7 @@ export function OrgModal({
           form.head_user_id !== org.head_user_id ||
           form.assistant_head_user_id !== org.assistant_head_user_id
         ) {
-          await assignOrganizationLeadership(org.id, {
+          await (["board", "committee"].includes(form.org_type) ? assignOrganizationApprovers : assignOrganizationLeadership)(org.id, {
             headUserId: form.head_user_id || null,
             assistantHeadUserId: form.assistant_head_user_id || null,
           });
@@ -97,7 +109,7 @@ export function OrgModal({
           description: form.description.trim(),
         });
         if (form.head_user_id || form.assistant_head_user_id) {
-          await assignOrganizationLeadership(newOrg.id, {
+          await (["board", "committee"].includes(form.org_type) ? assignOrganizationApprovers : assignOrganizationLeadership)(newOrg.id, {
             headUserId: form.head_user_id || null,
             assistantHeadUserId: form.assistant_head_user_id || null,
           });
@@ -172,6 +184,7 @@ export function OrgModal({
           onHeadChange={(userId) => setForm({ ...form, head_user_id: userId })}
           onAssistantHeadChange={(userId) => setForm({ ...form, assistant_head_user_id: userId })}
           assistantHeadError={errors.assistant_head_user_id}
+          boardMode={["board", "committee"].includes(form.org_type)}
         />
       </div>
     </Modal>

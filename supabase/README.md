@@ -29,6 +29,23 @@ The current task-flow additions are:
 21. `20260819000005_proposal_portfolios_and_unique_leadership.sql` — persists Proposal and Program identity on operational projects, groups imported work reliably even when projects are empty, limits Head/Assistant project scope to their exact organization, and enforces one active Head plus one active Assistant Head per organization.
 22. `20260819000006_super_admin_project_read_only.sql` — makes Super Admin proposal/project access oversight-only in the database while Heads and Assistant Heads retain exact-organization project management.
 23. `20260819000007_super_admin_task_read_only.sql` — makes Super Admin task access oversight-only while operational task changes remain with the responsible organization and workflow participants.
+24. `20260821000000_collaboration_organizations.sql` — adds Board/Committee organization types, non-destructive secondary memberships, generic organization approvers, and atomic Board Head/Assistant configuration.
+25. `20260821000001_collaboration_drafts.sql` — adds persistent AI/manual proposal drafts, immutable revisions, participating organizations, owner-only revision controls, soft deletion, and source-document metadata.
+26. `20260821000002_collaboration_security.sql` — adds private discussion, formal change requests, revision-bound approvals, readiness gates, scoped staffing revision RPCs, notifications, audit records, and the private proposal source bucket.
+27. `20260821000003_collaboration_runtime.sql` — adds project/milestone/task organization relationships, separate collaboration view/manage predicates, explicit governance routing, and cross-organization staffing guards.
+28. `20260821000004_collaboration_commit.sql` — atomically validates and commits an approved collaboration revision into projects, memberships, milestones, mixed teams, responsibilities, and governance reviewers.
+29. `20260821000005_collaboration_owner_auto_accept.sql` — automatically accepts the owning organization when review begins, prevents owners from reviewing their own proposal, backfills active reviews, and notifies only external participant/governance approvers.
+30. `20260821000006_task_team_removal_guard.sql` — prevents Task Leads and managers from removing a task member while that person still owns unfinished subtask work; completed contributions remain in history while membership can be updated.
+31. `20260822000000_fix_task_team_assignment_array_types.sql` — converts PostgREST JSON member arrays to the canonical `uuid[]` and `text[]` task columns inside the assignment RPC, restoring team-member saves.
+32. `20260822000001_scope_organization_leadership_to_direct_members.sql` — limits normal Head/Assistant Head assignment to active people already assigned to that exact department, division, section, or unit; Board/Committee approvers remain secondary memberships.
+33. `20260822000002_governance_delivery_lifecycle.sql` — adds named governance rosters, approval policy metadata, recusal/delegation, formal Board records, final-delivery closeout, atomic proposal completion/archive, active-task removal, and overdue-review escalation.
+34. `20260822000003_governance_approval_routing.sql` — adds required, consulted, and observer participation; quorum/all/one-signer and sequential decision aggregation; and per-task governance routing.
+35. `20260822000004_task_governance_routes_and_storage.sql` — applies each approved task's selected governance route during atomic publication, notifies named reviewers, and secures governance-minutes storage.
+36. `20260822000005_advisory_collaboration_autosave.sql` — preserves consulted and observer organizations through draft autosave without adding them to the publication gate.
+37. `20260822000006_fix_interdepartment_department_review_routing.sql` — routes non-governed collaboration tasks to the Head of each task's responsible organization, retains reciprocal Head/Assistant Head review, and repairs eligible active tasks created under the older proposal-owner fallback.
+38. `20260822000007_inherit_activity_responsibility.sql` — removes independent task responsibility, makes every task inherit its Activity's primary/supporting offices, and keeps the duplicated snapshot keys synchronized only for backward-compatible commit contracts.
+39. `20260822000008_department_budget_and_petty_cash.sql` — adds locked annual department budgets, manual-proposal funding commitments, task/subtask allocations, configurable petty-cash limits, receipt-backed liquidation, returned-cash tracking, financial notifications, and an immutable budget ledger for the department-only flow.
+40. `20260822000009_single_department_publish_flow.sql` — removes department-only proposals from collaboration review, repairs drafts incorrectly placed in review, and enforces direct publication after normal staffing, schedule, and budget readiness checks.
 
 Apply these files in the listed order. The Assistant Head migration defensively
 creates the two reviewer columns when absent, but it does not replace the full
@@ -36,5 +53,9 @@ review-hardening migration that supplies submission history, evidence records,
 and the review RPCs.
 
 The Sir Gerson migrations must be applied in the order above. After applying them, run `npm run verify:live-schema`. A hosted Supabase project with `pg_cron` enabled schedules the previous-month productivity snapshot automatically; otherwise a Super Admin can run the audited recalculation RPC for a closed month.
+
+The collaboration and governance migrations are additive and must be applied in filename order. Do not copy their changes into `fresh_schema.sql` until they have been exercised against the required LEDIPO + CPDO + BPLO + OCIIB acceptance scenario. After applying them, restart the eFlow gateway and run `npm run verify:live-schema` so PostgREST confirms the new tables, columns, and RPC signatures.
+
+The department-budget migration currently gates only department-only manual proposals. Inter-department funding, transfers, and Finance-office release authority are intentionally deferred to the next budget phase. Apply the migration before opening the new Department Budget or Petty Cash workspaces; the live-schema verification now checks its tables and RPCs.
 
 These migrations do not require a service-role key in the browser. The frontend must use only the Supabase anonymous client; privileged behavior belongs in RLS policies, database functions, or the backend server.

@@ -12,3 +12,15 @@ export function canUserReviewTask(
     task.backupReviewerId === userId
   );
 }
+
+export function isTaskVisibleInReviewQueue(
+  task: Task,
+  userId?: string,
+  role?: string,
+): boolean {
+  return (
+    task.status === "for_review" &&
+    !task.archivedAt &&
+    canUserReviewTask(task, userId, role)
+  );
+}

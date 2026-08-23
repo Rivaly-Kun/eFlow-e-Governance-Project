@@ -13,6 +13,8 @@ export function rowToProject(row: Record<string, unknown>): Project {
     programTitle: (row.program_title as string) || undefined,
     sourceType: (row.source_type as ProjectSourceType) || undefined,
     sourceFileName: (row.source_file_name as string) || undefined,
+    sourceCollaborationDraftId: (row.source_collaboration_draft_id as string) || undefined,
+    sourceCollaborationRevisionId: (row.source_collaboration_revision_id as string) || undefined,
     status: (row.status as ProjectStatus) || 'planning',
     priority: (row.priority as ProjectPriority) || 'medium',
     startDate: (row.start_date as string) || undefined,

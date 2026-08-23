@@ -13,7 +13,7 @@ export {
   fetchSubmissionAttachments,
   fetchTaskSubmissions,
 } from "./services/reviewService";
-export { canUserReviewTask } from "./selectors";
+export { canUserReviewTask, isTaskVisibleInReviewQueue } from "./selectors";
 export { SubtaskReviewInbox } from "./components/SubtaskReviewInbox";
 export type {
   ReviewAttachment,

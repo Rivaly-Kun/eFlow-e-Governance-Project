@@ -80,6 +80,11 @@ export function rowToTask(row: Record<string, unknown>): Task {
     archivedAt: row.archived_at ? new Date(row.archived_at as string).getTime() : undefined,
     lastActivityAt: row.last_activity_at ? new Date(row.last_activity_at as string).getTime() : undefined,
     createdBy: readString(row.created_by),
+    reviewRouteMode: readString(row.review_route_mode) as Task['reviewRouteMode'],
+    governanceApprovalMode: (readString(row.governance_approval_mode) || "department") as Task['governanceApprovalMode'],
+    governanceOrganizationId: readString(row.governance_organization_id) || undefined,
+    sourceCollaborationDraftId: readString(row.source_collaboration_draft_id),
+    sourceCollaborationRevisionId: readString(row.source_collaboration_revision_id),
   };
 }
 
@@ -136,5 +141,8 @@ export function taskToRow(task: Partial<Task>): Record<string, unknown> {
   if (task.linkedProjectId !== undefined) row.linked_project_id = task.linkedProjectId || null;
   if (task.milestoneId !== undefined) row.milestone_id = task.milestoneId || null;
   if (task.percentComplete !== undefined) row.percent_complete = task.percentComplete;
+  if (task.reviewRouteMode !== undefined) row.review_route_mode = task.reviewRouteMode;
+  if (task.governanceApprovalMode !== undefined) row.governance_approval_mode = task.governanceApprovalMode;
+  if (task.governanceOrganizationId !== undefined) row.governance_organization_id = task.governanceOrganizationId;
   return row;
 }
