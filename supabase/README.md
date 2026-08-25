@@ -46,6 +46,15 @@ The current task-flow additions are:
 38. `20260822000007_inherit_activity_responsibility.sql` — removes independent task responsibility, makes every task inherit its Activity's primary/supporting offices, and keeps the duplicated snapshot keys synchronized only for backward-compatible commit contracts.
 39. `20260822000008_department_budget_and_petty_cash.sql` — adds locked annual department budgets, manual-proposal funding commitments, task/subtask allocations, configurable petty-cash limits, receipt-backed liquidation, returned-cash tracking, financial notifications, and an immutable budget ledger for the department-only flow.
 40. `20260822000009_single_department_publish_flow.sql` — removes department-only proposals from collaboration review, repairs drafts incorrectly placed in review, and enforces direct publication after normal staffing, schedule, and budget readiness checks.
+41. `20260824000001_department_proposal_budget_enforcement.sql` — closes the AI-import bypass so every single-department proposal source reserves its full approved total from the locked annual budget exactly once when published.
+42. `20260824000002_owner_department_budget_for_all_proposals.sql` — charges every published proposal to its owning department even when delivery or governance spans other organizations, and safely backfills previously published proposals skipped by the old collaboration bypass.
+43. `20260824000003_fix_governance_delegate_assignment_columns.sql` — repairs the deployed governance-delegation column contract used by review escalation.
+44. `20260824000004_fix_employee_department_budget_access.sql` — allows active direct organization members to read their permission-scoped department budget and work allocations.
+45. `20260824000005_normalize_proposal_task_leader_membership.sql` — normalizes proposal task teams so every Task Leader is included before atomic publication.
+46. `20260824000006_publish_latest_department_proposal_revision.sql` — guarantees department-only publication uses the latest saved revision and its funding schedule.
+47. `20260824000007_task_budget_daily_petty_cash_workflow.sql` — makes task budgets authoritative, creates immutable operational allocation lines, replaces the annual petty-cash pool with a configurable daily release schedule, and adds Team Leader plus department review for requests and liquidations.
+48. `20260824000008_budget_controls_and_resubmission.sql` — adds source-particular subtask allocations, correction/resubmission, recipient acknowledgement, audited appropriation adjustment and fiscal close, overdue maintenance, and financial completion guards.
+49. `20260825000001_subtask_budget_distribution_guard.sql` — makes a Task Leader's distribution of an already-approved task budget immediately usable by the assigned subtask contributors, and blocks any parent-task petty-cash amount from being allocated a second time to subtasks.
 
 Apply these files in the listed order. The Assistant Head migration defensively
 creates the two reviewer columns when absent, but it does not replace the full
@@ -56,6 +65,6 @@ The Sir Gerson migrations must be applied in the order above. After applying the
 
 The collaboration and governance migrations are additive and must be applied in filename order. Do not copy their changes into `fresh_schema.sql` until they have been exercised against the required LEDIPO + CPDO + BPLO + OCIIB acceptance scenario. After applying them, restart the eFlow gateway and run `npm run verify:live-schema` so PostgREST confirms the new tables, columns, and RPC signatures.
 
-The department-budget migration currently gates only department-only manual proposals. Inter-department funding, transfers, and Finance-office release authority are intentionally deferred to the next budget phase. Apply the migration before opening the new Department Budget or Petty Cash workspaces; the live-schema verification now checks its tables and RPCs.
+The department-budget migrations gate every proposal, whether built manually or imported with AI. For the current phase, the owning organization funds the full proposal even when other offices participate. Shared-cost funding, transfers between departments, and Finance-office release authority remain deferred. Apply all department-budget migrations before opening the Department Budget, Petty Cash, or financial Reviews workspaces; the live-schema verification checks their tables and RPCs.
 
 These migrations do not require a service-role key in the browser. The frontend must use only the Supabase anonymous client; privileged behavior belongs in RLS policies, database functions, or the backend server.

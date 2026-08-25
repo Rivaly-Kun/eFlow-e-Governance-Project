@@ -57,6 +57,8 @@ export function createManualPlanTask({
     leadMemberId: null,
     burnoutWarning: false,
     reasoning: "",
+    budgetDecision: "missing",
+    budgetLines: [],
     enabled: true,
   };
 }

@@ -8,7 +8,10 @@ import type {
   TaskUndoInput,
 } from "../taskTypes";
 import { notifyTaskListeners } from "./taskRealtimeService";
-import { assertLeadershipReviewReady } from "./leadershipReviewReadinessService";
+import {
+  assertLeadershipReviewReady,
+  assertTaskSubtasksReady,
+} from "./leadershipReviewReadinessService";
 import { getReviewDecisionErrorMessage } from "./taskReviewError";
 
 export const updateTaskStatus = async (
@@ -70,6 +73,9 @@ export const submitTaskForReview = async (
 ): Promise<void> => {
   const trimmedNote = submission.note.trim();
   if (!trimmedNote) throw new Error("Submission note is required.");
+  // Fail before uploading evidence. The database trigger repeats this check as
+  // the final authority so stale or modified clients cannot bypass the rule.
+  await assertTaskSubtasksReady(taskId);
   await assertLeadershipReviewReady(taskId);
 
   const attachments = submission.attachments || [];

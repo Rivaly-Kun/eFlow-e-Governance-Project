@@ -18,6 +18,7 @@ import {
 } from "./recommendations";
 import {
   extractActionTable,
+  extractBudgetSchedule,
   extractExplicitSubtasks,
   generateTemplateSubtasks,
 } from "./textAnalysis";
@@ -51,6 +52,7 @@ export const decomposeWholeDocument = async (
   const subtaskSchema = `,\n          "subtasks": ["Checklist step 1", "Checklist step 2", "Checklist step 3"]`;
 
   const tableText = extractActionTable(proposalText);
+  const budgetSchedule = extractBudgetSchedule(proposalText);
   const mustCoverInstruction = `IMPORTANT: This proposal has 8 Parts (Part 1 through Part 8) spanning 6 months.
 You MUST decompose ALL 8 parts. Do not stop after Part 1 or 2.
 Every Part in the methodology table must become an Activity with 2-3 tasks.
@@ -78,6 +80,10 @@ Instructions:
 6b. For each task, include a "subtasks" array of 3-6 short, actionable checklist items. Pull these from the activity's methodology/details text where available (e.g. "Technical Presentations", "Document Review and Gap Analysis"). Only invent generic steps if the source text gives no usable detail.
 7. If multiple phases/parts/sections are present, split them into separate programs/projects/activities. Avoid collapsing everything into a single program unless there is only one distinct theme.
 8. Output ONLY strict JSON. No markdown fences. No preamble. No explanation.
+9. Funding is task-specific. Use the proposal budget schedule below to attach expense class, category, and all particulars to the most appropriate task. Set budgetDecision to "funded" only when the source amount is clear, "no_cost" only when explicitly supported, otherwise "missing". Never invent an amount.
+
+Proposal budget schedule:
+${budgetSchedule || "No reliable budget schedule was extracted. Mark every task budgetDecision as missing."}
 
 ${mustCoverInstruction}
 
@@ -105,6 +111,9 @@ Required JSON shape:
           "estimatedDuration": "2 days",
           "requiredSkills": ["facilitation", "data gathering"],
           "priority": "high"${recommendationSchema}${subtaskSchema}
+          ,"budgetDecision": "missing",
+          "budgetNoCostReason": "",
+          "budgetLines": [{"expenseClass":"Professional Services","category":"Honoraria","particular":"Exact source particular","quantity":1,"unit":"service","unitCost":0,"amount":0,"fundSource":"Department Budget"}]
         }]
       }]
     }]

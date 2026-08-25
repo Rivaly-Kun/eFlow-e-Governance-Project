@@ -81,6 +81,23 @@ describe("inter-department collaboration domain", () => {
     expect(result.tasks[0].primaryOrgId).toBe(participantOrg);
   });
 
+  it("always includes the proposed Task Leader in the proposed team", () => {
+    const base = snapshot();
+    const result = buildCollaborationSnapshot({
+      title: base.title,
+      ownerOrgId: ownerOrg,
+      organizations: base.organizations,
+      tasks: base.tasks.map((task) => ({
+        ...task,
+        assignedMemberIds: ["employee-b"],
+        leadMemberId: "employee-a",
+      })),
+    });
+
+    expect(result.tasks[0].assignedMemberIds).toEqual(["employee-b", "employee-a"]);
+    expect(result.tasks[0].leadMemberId).toBe("employee-a");
+  });
+
   it("makes every task inherit its activity responsibility", () => {
     const base = snapshot();
     const inherited = buildCollaborationSnapshot({
@@ -128,6 +145,22 @@ describe("collaboration migration contracts", () => {
     expect(migrations).toContain("Task Leader cannot review their own Task");
     expect(migrations).toContain("save_collaboration_staffing_revision");
     expect(migrations).toContain("autosave_collaboration_draft");
+  });
+  it("repairs unpublished department revisions whose Task Leader is missing from the team", () => {
+    const repair = readFileSync("supabase/migrations/20260824000005_normalize_proposal_task_leader_membership.sql", "utf8");
+    expect(repair).toContain("normalize_collaboration_task_teams");
+    expect(repair).toContain("jsonb_build_array(task_item ->> 'leadMemberId')");
+    expect(repair).toContain("participant.participation_role <> 'owner'");
+    expect(repair).toContain("draft.status not in ('committed', 'archived', 'deleted')");
+  });
+  it("publishes the latest autosaved department snapshot instead of a stale revision", () => {
+    const migration = readFileSync("supabase/migrations/20260824000006_publish_latest_department_proposal_revision.sql", "utf8");
+    const service = readFileSync("src/app/features/interdepartment-collaboration/services/collaborationCommitService.ts", "utf8");
+    expect(migration).toContain("current_revision.snapshot is distinct from draft_row.working_snapshot");
+    expect(migration).toContain("draft_row.working_snapshot");
+    expect(migration).toContain("public.save_collaboration_revision");
+    expect(migration).toContain("public.commit_collaboration_draft");
+    expect(service).toContain('supabase.rpc("publish_department_proposal"');
   });
   it("auto-accepts the owner organization and blocks manual owner decisions", () => {
     expect(migrations).toContain("auto_accept_collaboration_owner");

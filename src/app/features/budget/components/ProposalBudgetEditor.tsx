@@ -44,7 +44,7 @@ export function ProposalBudgetEditor({
   };
 
   return (
-    <section className={`overflow-hidden rounded-2xl border border-neutral-200 bg-white ${compact ? "" : "shadow-sm"}`}>
+    <section data-testid="proposal-budget-editor" className={`overflow-hidden rounded-2xl border border-neutral-200 bg-white ${compact ? "" : "shadow-sm"}`}>
       <header className="flex flex-wrap items-start gap-4 border-b border-neutral-100 bg-gradient-to-r from-emerald-50/80 via-white to-white p-5">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm"><CircleDollarSign size={18} /></div>
         <div className="min-w-0 flex-1">

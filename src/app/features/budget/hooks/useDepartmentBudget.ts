@@ -3,7 +3,7 @@ import { supabase } from "../../../../lib/supabase";
 import type { DepartmentBudgetBundle } from "../types";
 import { fetchDepartmentBudgetBundle } from "../services/budgetService";
 
-const EMPTY: DepartmentBudgetBundle = { summary: null, lines: [], commitments: [], allocations: [], requests: [], liquidations: [], ledger: [] };
+const EMPTY: DepartmentBudgetBundle = { summary: null, lines: [], commitments: [], allocations: [], allocationLines: [], requests: [], releases: [], liquidations: [], ledger: [], adjustments: [] };
 
 export function useDepartmentBudget(orgId?: string, fiscalYear = new Date().getFullYear()) {
   const [data, setData] = useState<DepartmentBudgetBundle>(EMPTY);
@@ -27,8 +27,11 @@ export function useDepartmentBudget(orgId?: string, fiscalYear = new Date().getF
     if (budgetId) {
       channel = channel
         .on("postgres_changes", { event: "*", schema: "public", table: "department_budget_lines", filter: `fiscal_budget_id=eq.${budgetId}` }, refresh)
+        .on("postgres_changes", { event: "*", schema: "public", table: "department_budget_adjustments", filter: `fiscal_budget_id=eq.${budgetId}` }, refresh)
         .on("postgres_changes", { event: "*", schema: "public", table: "budget_commitments", filter: `fiscal_budget_id=eq.${budgetId}` }, refresh)
         .on("postgres_changes", { event: "*", schema: "public", table: "work_budget_allocations" }, refresh)
+        .on("postgres_changes", { event: "*", schema: "public", table: "work_budget_allocation_lines" }, refresh)
+        .on("postgres_changes", { event: "*", schema: "public", table: "petty_cash_releases" }, refresh)
         .on("postgres_changes", { event: "*", schema: "public", table: "petty_cash_liquidations" }, refresh)
         .on("postgres_changes", { event: "*", schema: "public", table: "petty_cash_receipts" }, refresh);
     }

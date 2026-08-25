@@ -4,6 +4,7 @@ import { PageWalkthroughButton } from "../guided-tours";
 import { useAuth } from "../../contexts/AuthContext";
 import { getNavigationPermission, isAdministrativeNavigationSection } from "./navigationPermissions";
 import { AccessDenied } from "./AccessDenied";
+import { getRoleNavigation } from "./roleNavigation";
 
 const SettingsContent = lazy(() => import("../../components/Settings/SettingsContent").then((module) => ({ default: module.SettingsContent })));
 const SuperAdminContent = lazy(() => import("../../components/SuperAdmin/SuperAdminContent").then((module) => ({ default: module.SuperAdminContent })));
@@ -19,6 +20,7 @@ interface RoleContentProps {
   role: string;
   activeSection: string;
   activePage?: string;
+  hasLeadingWork?: boolean;
 }
 
 function PageFrame({ children, padded = true, dark = false }: { children: ReactNode; padded?: boolean; dark?: boolean }) {
@@ -36,14 +38,20 @@ function RoleLoading() {
   return <div className="flex h-full items-center justify-center text-[12px] text-neutral-400">Loading workspace...</div>;
 }
 
-export function RoleContent({ role, activeSection, activePage }: RoleContentProps) {
+export function RoleContent({ role, activeSection, activePage, hasLeadingWork = false }: RoleContentProps) {
   const { can } = useAuth();
   if (activeSection === "settings") {
     return <Suspense fallback={<RoleLoading />}><PageFrame padded={false} dark><SettingsContent activePage={activePage} /></PageFrame></Suspense>;
   }
 
   const requiredPermission = getNavigationPermission(role, activeSection);
-  if (requiredPermission && !can(requiredPermission)) {
+  const activeNavigationItem = getRoleNavigation(role).navItems.find(
+    (item) => item.id === activeSection,
+  );
+  const hasContextualLeadershipAccess = Boolean(
+    hasLeadingWork && activeNavigationItem?.requiresLeadership,
+  );
+  if (requiredPermission && !can(requiredPermission) && !hasContextualLeadershipAccess) {
     return <PageFrame padded={false}><AccessDenied permission={requiredPermission} /></PageFrame>;
   }
 

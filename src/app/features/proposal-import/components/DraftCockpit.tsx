@@ -155,6 +155,7 @@ export function DraftCockpit({
             </div>
           )}
           <button
+            data-testid="manual-plan-done-editing"
             onClick={onCommit}
             disabled={committing || enabledCount === 0}
             className="flex items-center gap-2 px-5 py-2.5 bg-white text-neutral-900 text-[13px] font-['Lexend:SemiBold',_sans-serif] rounded-xl hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"

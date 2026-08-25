@@ -13,6 +13,7 @@
     "test": "vitest --configLoader runner run",
     "test:watch": "vitest --configLoader runner",
     "test:e2e": "playwright test",
+    "spectate:interdept": "node scripts/e2e_live_spectate.mjs",
     "verify:client-secrets": "node scripts/verify-client-secrets.mjs",
     "verify:live-schema": "node scripts/verify-live-task-schema.mjs"
   },

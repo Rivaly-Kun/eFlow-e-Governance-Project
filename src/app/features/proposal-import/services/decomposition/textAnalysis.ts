@@ -37,6 +37,15 @@ export const extractActionTable = (text: string): string => {
   return text.slice(0, 3000);
 };
 
+export const extractBudgetSchedule = (text: string): string => {
+  const start = text.search(/(?:Proposed\s+Budget|Budget\s+Schedule|Detailed\s+Budget)/i);
+  if (start < 0) return "";
+  const tail = text.slice(start);
+  const endMatch = tail.slice(1).search(/(?:Monitoring\s+and\s+Evaluation|Sustainability|Annex|Appendix)/i);
+  const section = endMatch >= 0 ? tail.slice(0, endMatch + 1) : tail;
+  return section.replace(/\s+/g, " ").trim().slice(0, 12_000);
+};
+
 export const inferSkillsFromText = (text: string): string[] => {
   const rules = [
     { keyword: "workshop", skill: "facilitation" },

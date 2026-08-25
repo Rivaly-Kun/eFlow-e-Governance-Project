@@ -7,6 +7,7 @@ import { LoadingScreen } from "./LoadingScreen";
 import { mapRoleToPanel } from "./role";
 import { runTaskMaintenance } from "../tasks";
 import { SessionSecurityProvider } from "../session-security";
+import { runDepartmentBudgetMaintenance } from "../budget";
 
 export function AuthenticatedApp() {
   const { user, userProfile, loading } = useAuth();
@@ -16,6 +17,9 @@ export function AuthenticatedApp() {
     if (!user) return;
     void runTaskMaintenance().catch((error) => {
       console.warn("Task maintenance could not run:", error);
+    });
+    void runDepartmentBudgetMaintenance().catch((error) => {
+      console.warn("Department budget maintenance could not run:", error);
     });
   }, [user]);
 

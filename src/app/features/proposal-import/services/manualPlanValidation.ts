@@ -1,4 +1,5 @@
 import type { DraftTask } from "../components/draftModel";
+import { getProposalBudgetReadiness } from "../../budget";
 
 export interface ManualPlanValidationIssue {
   id: string;
@@ -60,6 +61,16 @@ export function validateManualPlanDraft({
     } else if (!hasCalendarDate(task.deadline.trim())) {
       issues.push({ id: `${task.key}-deadline-format`, message: `${label} needs a calendar due date.` });
     }
+  });
+
+  const budgetReadiness = getProposalBudgetReadiness(enabledTasks);
+  budgetReadiness.missingTaskKeys.forEach((key) => {
+    const position = enabledTasks.findIndex((task) => task.key === key);
+    issues.push({ id: `${key}-budget-decision`, message: `${labelForTask(enabledTasks[position], position)} must be marked funded or no cost.` });
+  });
+  budgetReadiness.invalidTaskKeys.forEach((key) => {
+    const position = enabledTasks.findIndex((task) => task.key === key);
+    issues.push({ id: `${key}-budget-lines`, message: `${labelForTask(enabledTasks[position], position)} needs complete budget particulars with amounts above zero.` });
   });
 
   return issues;

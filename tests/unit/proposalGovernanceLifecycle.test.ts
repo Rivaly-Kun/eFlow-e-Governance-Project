@@ -45,6 +45,18 @@ describe("proposal governance lifecycle", () => {
     expect(packet).toContain("Audit hash");
   });
 
+  it("routes closeout and escalation notices through row-based delegate assignments", () => {
+    const lifecycle = readFileSync("supabase/migrations/20260822000002_governance_delivery_lifecycle.sql", "utf8");
+    const repair = readFileSync("supabase/migrations/20260824000003_fix_governance_delegate_assignment_columns.sql", "utf8");
+
+    for (const sql of [lifecycle, repair]) {
+      expect(sql).toContain("assignment.assignment_role in ('primary_approver', 'backup_approver', 'delegate')");
+      expect(sql).toContain("assignment.valid_until is null or assignment.valid_until > now()");
+      expect(sql).not.toContain("assignment.delegate_user_id");
+      expect(sql).not.toContain("assignment.delegation_expires_at");
+    }
+  });
+
   it("routes non-governed collaboration tasks to their responsible organization leadership", () => {
     const sql = readFileSync("supabase/migrations/20260822000006_fix_interdepartment_department_review_routing.sql", "utf8");
     expect(sql).toContain("new.source_collaboration_draft_id is not null");

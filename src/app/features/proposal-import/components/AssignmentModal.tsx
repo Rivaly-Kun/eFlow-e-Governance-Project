@@ -78,6 +78,9 @@ export function AssignmentModal({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-label="Select Team and Leader"
+        data-testid="team-assignment-dialog"
         className="bg-white rounded-2xl shadow-2xl w-[540px] max-h-[82vh] flex flex-col overflow-hidden border border-neutral-200"
         onClick={(e) => e.stopPropagation()}
         style={{ animation: "modalIn 0.18s ease" }}
@@ -184,6 +187,8 @@ export function AssignmentModal({
                     </div>
                   )}
                   <div
+                    data-testid="team-assignment-member"
+                    data-employee-name={emp.name}
                     onClick={() => toggle(emp.id)}
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all border ${
                       selected
@@ -281,6 +286,7 @@ export function AssignmentModal({
               Cancel
             </button>
             <button
+              data-testid="team-assignment-confirm"
               onClick={confirmAssignment}
               className="px-4 py-2 bg-neutral-900 text-white text-[12px] font-['Lexend:SemiBold',_sans-serif] rounded-xl hover:bg-neutral-800 transition"
             >

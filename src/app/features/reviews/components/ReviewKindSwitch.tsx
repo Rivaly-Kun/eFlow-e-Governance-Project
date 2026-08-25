@@ -1,13 +1,21 @@
+export type ReviewKind = "tasks" | "subtasks" | "budget";
+
 export function ReviewKindSwitch({
   active,
   onChange,
+  includeBudget = false,
 }: {
-  active: "tasks" | "subtasks";
-  onChange: (next: "tasks" | "subtasks") => void;
+  active: ReviewKind;
+  onChange: (next: ReviewKind) => void;
+  includeBudget?: boolean;
 }) {
+  const kinds: ReviewKind[] = includeBudget
+    ? ["tasks", "subtasks", "budget"]
+    : ["tasks", "subtasks"];
+
   return (
     <div className="inline-flex rounded-lg border border-neutral-200 bg-white p-0.5">
-      {(["tasks", "subtasks"] as const).map((kind) => (
+      {kinds.map((kind) => (
         <button
           key={kind}
           type="button"

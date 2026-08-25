@@ -336,6 +336,7 @@ export function TaskDetailDrawer({
               {canSubmit && (
                 <SubmitForReviewForm
                   task={task}
+                  subtasks={taskSubtasks}
                   onSubmitted={() => {
                     onChanged?.();
                     onClose();

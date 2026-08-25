@@ -1,4 +1,20 @@
 import type { Task } from "../../services/taskService";
+import { isHeadWorkspaceRole } from "../../shared/roles";
+
+export type ReviewWorkspaceKind = "tasks" | "subtasks";
+
+export function getInitialReviewWorkspaceKind(
+  scope: "department" | "leading",
+): ReviewWorkspaceKind {
+  return scope === "leading" ? "subtasks" : "tasks";
+}
+
+export function canOpenBudgetReviewWorkspace(
+  scope: "department" | "leading",
+  role?: string,
+): boolean {
+  return scope === "leading" || isHeadWorkspaceRole(role);
+}
 
 export function canUserReviewTask(
   task: Task,

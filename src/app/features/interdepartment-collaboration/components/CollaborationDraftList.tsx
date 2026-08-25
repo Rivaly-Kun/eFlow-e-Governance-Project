@@ -40,7 +40,7 @@ export function CollaborationDraftList({ drafts, organizations, mode, currentOrg
     const participants = draft.snapshot.organizations.map((selection) => organizations.find((org) => org.id === selection.orgId)?.name).filter(Boolean);
     const reviewerCount = draft.snapshot.organizations.filter((selection) => selection.participationRole !== "owner").length;
     return (
-      <button key={draft.id} type="button" onClick={() => onOpen(draft.id)} className="group rounded-2xl border border-neutral-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md">
+      <button key={draft.id} type="button" data-testid="collaboration-draft-card" data-draft-title={draft.title} onClick={() => onOpen(draft.id)} className="group rounded-2xl border border-neutral-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md">
         <div className="flex items-start justify-between gap-3">
           <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${draft.sourceType === "ai_pdf" ? "bg-violet-50 text-violet-700" : "bg-blue-50 text-blue-700"}`}>
             {draft.sourceType === "ai_pdf" ? <FileText size={17} /> : <Building2 size={17} />}

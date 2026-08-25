@@ -2,6 +2,7 @@ import type {
   ProposalAssignmentException,
   ProposalTeamComposition,
 } from "../types";
+import type { BudgetLineInput, TaskBudgetDecision } from "../../budget";
 
 export type PdfPhase =
   | "idle"
@@ -38,6 +39,9 @@ export interface DraftTask {
   reasoning: string;
   assignmentException?: ProposalAssignmentException;
   teamComposition?: ProposalTeamComposition;
+  budgetDecision?: TaskBudgetDecision;
+  budgetNoCostReason?: string;
+  budgetLines?: BudgetLineInput[];
   enabled: boolean;
 }
 

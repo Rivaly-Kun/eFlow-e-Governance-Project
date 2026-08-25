@@ -1,37 +1,55 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { Check, FileCheck2, WalletCards, X } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Banknote, Check, FileCheck2, WalletCards, X } from "lucide-react";
+import { useAuth } from "../../../contexts/AuthContext";
 import type { DepartmentBudgetBundle } from "../types";
 import {
   createReceiptSignedUrl,
   decidePettyCashLiquidation,
+  decidePettyCashLiquidationLeaderReview,
+  decidePettyCashLeaderReview,
   decidePettyCashRequest,
   decideWorkBudgetAllocation,
+  markPettyCashReleased,
 } from "../services/budgetService";
 import { BudgetEmpty, peso, StatusPill } from "./budgetUi";
 
 type RejectionTarget = {
   id: string;
-  kind: "allocation" | "request" | "liquidation";
+  kind: "allocation" | "request_leader" | "request_department" | "liquidation_leader" | "liquidation_department";
   title: string;
 };
 
 export function BudgetApprovalQueue({
   data,
   onChanged,
+  focusRecordId,
 }: {
   data: DepartmentBudgetBundle;
   onChanged: () => Promise<void>;
+  focusRecordId?: string;
 }) {
+  const { userProfile } = useAuth();
+  const currentUserId = userProfile?.id || "";
+  const isDepartmentApprover = ["dept_head", "department_head", "assistant_head"].includes(userProfile?.role || "");
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [rejection, setRejection] = useState<RejectionTarget | null>(null);
-  const pendingAllocations = data.allocations.filter((item) => item.status === "pending");
-  const pendingRequests = data.requests.filter((item) => item.status === "pending");
-  const pendingLiquidations = data.liquidations.filter((item) => item.status === "pending");
+  const pendingAllocations = data.allocations.filter((item) => isDepartmentApprover && item.status === "pending" && item.requestedBy !== currentUserId);
+  const pendingRequests = data.requests.filter((item) => (isDepartmentApprover && item.status === "pending_department_approval" && item.requesterId !== currentUserId) || (item.status === "pending_leader_review" && item.taskLeaderId === currentUserId && item.requesterId !== currentUserId));
+  const pendingLiquidations = data.liquidations.filter((item) => {
+    const request = data.requests.find((candidate) => candidate.id === item.requestId);
+    return (isDepartmentApprover && item.status === "pending_department_settlement" && request?.cashRecipientId !== currentUserId) || (item.status === "pending_leader_review" && request?.taskLeaderId === currentUserId && request?.cashRecipientId !== currentUserId);
+  });
+  const dueReleases = data.releases.filter((item) => isDepartmentApprover && item.status === "scheduled" && item.scheduledDate <= new Date().toISOString().slice(0, 10));
   const requestById = useMemo(
     () => new Map(data.requests.map((item) => [item.id, item])),
     [data.requests],
   );
+  useEffect(() => {
+    if (!focusRecordId) return;
+    const timer = window.setTimeout(() => document.getElementById(`financial-record-${focusRecordId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
+    return () => window.clearTimeout(timer);
+  }, [focusRecordId]);
 
   const act = async (id: string, operation: () => Promise<void>) => {
     setBusy(id);
@@ -52,13 +70,17 @@ export function BudgetApprovalQueue({
     if (!rejection) return;
     const operation = rejection.kind === "allocation"
       ? () => decideWorkBudgetAllocation(rejection.id, false, reason)
-      : rejection.kind === "request"
-        ? () => decidePettyCashRequest(rejection.id, false, reason)
-        : () => decidePettyCashLiquidation(rejection.id, false, reason);
+      : rejection.kind === "request_leader"
+        ? () => decidePettyCashLeaderReview(rejection.id, false, reason)
+        : rejection.kind === "request_department"
+          ? () => decidePettyCashRequest(rejection.id, false, reason)
+          : rejection.kind === "liquidation_leader"
+            ? () => decidePettyCashLiquidationLeaderReview(rejection.id, false, reason)
+            : () => decidePettyCashLiquidation(rejection.id, false, reason);
     if (await act(rejection.id, operation)) setRejection(null);
   };
 
-  if (!pendingAllocations.length && !pendingRequests.length && !pendingLiquidations.length) {
+  if (!pendingAllocations.length && !pendingRequests.length && !pendingLiquidations.length && !dueReleases.length) {
     return <BudgetEmpty title="Approval inbox is clear" description="New subtask allocation requests, petty-cash requests, and receipt liquidations will appear here." />;
   }
 
@@ -71,6 +93,8 @@ export function BudgetApprovalQueue({
           {pendingAllocations.map((item) => (
             <QueueRow
               key={item.id}
+              recordId={item.id}
+              focused={focusRecordId === item.id}
               title={item.reason}
               meta={`Requested allocation · ${peso.format(item.amount)}`}
               status={item.status}
@@ -91,14 +115,16 @@ export function BudgetApprovalQueue({
           {pendingRequests.map((item) => (
             <QueueRow
               key={item.id}
+              recordId={item.id}
+              focused={focusRecordId === item.id}
               title={item.taskTitle || "Assigned work"}
-              meta={`${item.requesterName || "Employee"} · ${item.purpose} · ${peso.format(item.requestedAmount)}`}
+              meta={`${item.requesterName || "Employee"} · ${item.purpose} · ${peso.format(item.requestedAmount)} · ${item.status === "pending_leader_review" ? "Team Leader endorsement" : "Department approval"}`}
               status={item.status}
               actions={(
                 <DecisionButtons
                   busy={busy === item.id}
-                  onApprove={() => void act(item.id, () => decidePettyCashRequest(item.id, true, "Approved operational petty cash"))}
-                  onReject={() => setRejection({ id: item.id, kind: "request", title: "Decline petty-cash request" })}
+                  onApprove={() => void act(item.id, () => item.status === "pending_leader_review" ? decidePettyCashLeaderReview(item.id, true, "Endorsed for department approval") : decidePettyCashRequest(item.id, true, "Approved operational petty cash"))}
+                  onReject={() => setRejection({ id: item.id, kind: item.status === "pending_leader_review" ? "request_leader" : "request_department", title: item.status === "pending_leader_review" ? "Return petty-cash request" : "Decline petty-cash request" })}
                 />
               )}
             />
@@ -111,7 +137,7 @@ export function BudgetApprovalQueue({
           {pendingLiquidations.map((item) => {
             const request = requestById.get(item.requestId);
             return (
-              <div key={item.id} className="border-b border-neutral-100 p-4 last:border-0">
+              <div id={`financial-record-${item.id}`} key={item.id} className={`border-b border-neutral-100 p-4 last:border-0 ${focusRecordId === item.id ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="text-[11.5px] font-['Lexend:Medium',_sans-serif] text-neutral-900">{request?.taskTitle || "Petty-cash liquidation"}</div>
@@ -120,8 +146,8 @@ export function BudgetApprovalQueue({
                   </div>
                   <DecisionButtons
                     busy={busy === item.id}
-                    onApprove={() => void act(item.id, () => decidePettyCashLiquidation(item.id, true, "Receipts verified"))}
-                    onReject={() => setRejection({ id: item.id, kind: "liquidation", title: "Request receipt corrections" })}
+                    onApprove={() => void act(item.id, () => item.status === "pending_leader_review" ? decidePettyCashLiquidationLeaderReview(item.id, true, "Receipts endorsed for department settlement") : decidePettyCashLiquidation(item.id, true, "Receipts verified and settled"))}
+                    onReject={() => setRejection({ id: item.id, kind: item.status === "pending_leader_review" ? "liquidation_leader" : "liquidation_department", title: "Request receipt corrections" })}
                   />
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -138,6 +164,15 @@ export function BudgetApprovalQueue({
                 </div>
               </div>
             );
+          })}
+        </QueueSection>
+      )}
+
+      {dueReleases.length > 0 && (
+        <QueueSection icon={<Banknote size={14} />} title="Cash releases due" count={dueReleases.length}>
+          {dueReleases.map((release) => {
+            const request = requestById.get(release.requestId);
+            return <QueueRow key={release.id} recordId={release.id} focused={focusRecordId === release.id} title={`PC-${String(request?.requestNumber || 0).padStart(5, "0")} · ${request?.taskTitle || "Funded work"}`} meta={`${release.scheduledDate} · recipient ${request?.cashRecipientName || request?.requesterName || "Employee"} · ${peso.format(release.amount)}`} status={release.status} actions={<button disabled={busy === release.id} onClick={() => void act(release.id, () => markPettyCashReleased(release.id))} className="inline-flex h-8 items-center gap-1 rounded-lg bg-emerald-700 px-3 text-[9.5px] text-white disabled:opacity-40"><Check size={11} /> Record release</button>} />;
           })}
         </QueueSection>
       )}
@@ -167,9 +202,9 @@ function QueueSection({ icon, title, count, children }: { icon: ReactNode; title
   );
 }
 
-function QueueRow({ title, meta, status, actions }: { title: string; meta: string; status: string; actions: ReactNode }) {
+function QueueRow({ recordId, title, meta, status, actions, focused = false }: { recordId: string; title: string; meta: string; status: string; actions: ReactNode; focused?: boolean }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 border-b border-neutral-100 p-4 last:border-0">
+    <div id={`financial-record-${recordId}`} className={`flex flex-wrap items-center gap-3 border-b border-neutral-100 p-4 last:border-0 ${focused ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}`}>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <div className="truncate text-[11.5px] font-['Lexend:Medium',_sans-serif] text-neutral-900">{title}</div>

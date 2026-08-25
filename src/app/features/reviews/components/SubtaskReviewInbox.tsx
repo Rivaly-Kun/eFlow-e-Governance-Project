@@ -20,9 +20,11 @@ import type { NotificationNavigationIntent } from "../../notifications";
 
 export function SubtaskReviewInbox({
   onShowTasks,
+  onShowBudget,
   focus,
 }: {
   onShowTasks: () => void;
+  onShowBudget?: () => void;
   focus?: NotificationNavigationIntent | null;
 }) {
   const { user, userProfile } = useAuth();
@@ -98,7 +100,14 @@ export function SubtaskReviewInbox({
         subtitle="Approve evidence before a subtask contributes to parent-task completion."
         actions={
           <div className="flex items-center gap-2">
-            <ReviewKindSwitch active="subtasks" onChange={(kind) => { if (kind === "tasks") onShowTasks(); }} />
+            <ReviewKindSwitch
+              active="subtasks"
+              includeBudget={Boolean(onShowBudget)}
+              onChange={(kind) => {
+                if (kind === "tasks") onShowTasks();
+                if (kind === "budget") onShowBudget?.();
+              }}
+            />
             <div className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-[12px] text-amber-700">
               <Inbox size={14} /> {items.length} awaiting review
             </div>

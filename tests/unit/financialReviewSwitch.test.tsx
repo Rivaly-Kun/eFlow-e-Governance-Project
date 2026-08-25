@@ -1,0 +1,32 @@
+// @vitest-environment jsdom
+
+import { useState } from "react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { ReviewKindSwitch, type ReviewKind } from "../../src/app/features/reviews/components/ReviewKindSwitch";
+import { canOpenBudgetReviewWorkspace } from "../../src/app/features/reviews/selectors";
+
+function Harness() {
+  const [active, setActive] = useState<ReviewKind>("tasks");
+  return (
+    <div>
+      <ReviewKindSwitch active={active} includeBudget onChange={setActive} />
+      <output>{active}</output>
+    </div>
+  );
+}
+
+describe("financial review navigation", () => {
+  it("keeps financial approvals inside the Head review workspace", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "budget" }));
+    expect(screen.getByText("budget", { selector: "output" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "budget" }).className).toContain("bg-neutral-900");
+  });
+
+  it("exposes financial approvals to a Task Leader without granting department-wide scope", () => {
+    expect(canOpenBudgetReviewWorkspace("leading", "employee")).toBe(true);
+    expect(canOpenBudgetReviewWorkspace("department", "employee")).toBe(false);
+    expect(canOpenBudgetReviewWorkspace("department", "assistant_head")).toBe(true);
+  });
+});

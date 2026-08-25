@@ -48,7 +48,13 @@ export function canOpenNavigationSection(
   role: string,
   section: string,
   can: (permission: string) => boolean,
+  contextualLeadershipAccess = false,
 ): boolean {
+  // Task leadership is assigned operationally, not through a permanent
+  // account role. An assigned Task Lead must always be able to open both the
+  // leading-work surface and its paired review queue. Database reviewer/RLS
+  // rules still decide which records and actions are actually available.
+  if (contextualLeadershipAccess) return true;
   const permission = getNavigationPermission(role, section);
   return !permission || can(permission);
 }

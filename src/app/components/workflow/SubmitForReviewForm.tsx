@@ -1,17 +1,23 @@
 import { useState } from "react";
-import { Paperclip, Send, X } from "lucide-react";
+import { CircleAlert, Paperclip, Send, X } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import {
   submitTaskForReview,
   type Task,
 } from "../../services/taskService";
 import { useToast } from "../ui/Toast";
+import {
+  getTaskSubmissionReadiness,
+  type SubtaskReadinessRecord,
+} from "../../features/tasks/selectors/submissionReadiness";
 
 export function SubmitForReviewForm({
   task,
+  subtasks = [],
   onSubmitted,
 }: {
   task: Task;
+  subtasks?: SubtaskReadinessRecord[];
   onSubmitted?: () => void;
 }) {
   const { user, userProfile } = useAuth();
@@ -19,10 +25,18 @@ export function SubmitForReviewForm({
   const [note, setNote] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const readiness = getTaskSubmissionReadiness(task, subtasks);
 
   const submit = async () => {
     if (!user?.id) {
       toast("You must be signed in.", "error");
+      return;
+    }
+    if (!readiness.ready) {
+      toast(
+        "Every subtask must be approved before the parent task can be submitted.",
+        "error",
+      );
       return;
     }
     if (!note.trim()) {
@@ -52,6 +66,29 @@ export function SubmitForReviewForm({
       setSubmitting(false);
     }
   };
+
+  if (!readiness.ready) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4">
+        <div className="flex items-start gap-2.5">
+          <CircleAlert size={16} className="mt-0.5 shrink-0 text-amber-600" />
+          <div>
+            <div className="text-[12px] font-['Lexend:Medium',_sans-serif] text-amber-950">
+              Finish subtask review first
+            </div>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800">
+              {readiness.approvedSubtasks} of {readiness.totalSubtasks} subtasks approved. The parent task can be submitted only after every subtask is approved by its reviewer.
+            </p>
+            {readiness.awaitingReviewSubtasks > 0 && (
+              <div className="mt-2 inline-flex rounded-full border border-amber-200 bg-white/80 px-2 py-1 text-[10.5px] font-['Lexend:Medium',_sans-serif] text-amber-800">
+                {readiness.awaitingReviewSubtasks} awaiting Team Leader review
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4">

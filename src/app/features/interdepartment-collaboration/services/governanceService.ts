@@ -11,6 +11,7 @@ import type {
   TaskGovernanceMode,
 } from "../types";
 import { notifyCollaborationDraftsChanged } from "./collaborationDraftEvents";
+import { getGovernanceLifecycleErrorMessage } from "./governanceLifecycleError";
 
 const timestamp = (value: unknown) => value ? new Date(String(value)).getTime() : undefined;
 
@@ -23,7 +24,7 @@ export async function fetchProposalGovernanceState(draftId: string): Promise<Pro
     supabase.from("proposal_delivery_closeout_decisions").select("*").eq("draft_id", draftId).order("created_at", { ascending: false }),
   ]);
   const error = assignments.error || signoffs.error || records.error || closeout.error || decisions.error;
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(getGovernanceLifecycleErrorMessage(error));
   return {
     assignments: (assignments.data || []).map(mapAssignment),
     signoffs: (signoffs.data || []).map(mapSignoff),
@@ -105,7 +106,7 @@ export async function getGovernanceMinutesUrl(path: string) {
 
 export async function requestProposalCloseout(draftId: string, note?: string) {
   const { error } = await supabase.rpc("request_proposal_closeout", { p_draft_id: draftId, p_note: note || null });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(getGovernanceLifecycleErrorMessage(error));
   notifyCollaborationDraftsChanged();
 }
 
@@ -125,19 +126,19 @@ export async function decideProposalCloseout(input: {
     p_resolution_number: input.resolutionNumber || null,
     p_meeting_date: input.meetingDate || null,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(getGovernanceLifecycleErrorMessage(error));
   notifyCollaborationDraftsChanged();
 }
 
 export async function completeProposalDelivery(draftId: string, note?: string) {
   const { error } = await supabase.rpc("complete_proposal_delivery", { p_draft_id: draftId, p_note: note || null });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(getGovernanceLifecycleErrorMessage(error));
   notifyCollaborationDraftsChanged();
 }
 
 export async function archiveProposalDelivery(draftId: string, reason: string) {
   const { error } = await supabase.rpc("archive_proposal_delivery", { p_draft_id: draftId, p_reason: reason });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(getGovernanceLifecycleErrorMessage(error));
   notifyCollaborationDraftsChanged();
 }
 

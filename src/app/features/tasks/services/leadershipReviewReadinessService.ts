@@ -1,6 +1,21 @@
 import { supabase } from "../../../../lib/supabase";
 import { resolveLeadershipReviewer } from "../../../shared/organizationLeadership";
 
+export async function assertTaskSubtasksReady(taskId: string): Promise<void> {
+  const { data: unfinishedSubtasks, error } = await supabase
+    .from("subtasks")
+    .select("id")
+    .eq("task_id", taskId)
+    .eq("is_completed", false)
+    .limit(1);
+  if (error) throw new Error(error.message);
+  if (unfinishedSubtasks && unfinishedSubtasks.length > 0) {
+    throw new Error(
+      "Every subtask must be approved before the parent task can be submitted.",
+    );
+  }
+}
+
 export async function assertLeadershipReviewReady(taskId: string): Promise<void> {
   const { data: task, error: taskError } = await supabase
     .from("tasks")

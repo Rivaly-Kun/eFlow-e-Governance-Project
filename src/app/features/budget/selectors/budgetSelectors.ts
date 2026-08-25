@@ -1,9 +1,108 @@
 import type {
   BudgetLineInput,
+  DepartmentBudgetBundle,
   DepartmentBudgetSummary,
   PettyCashRequest,
   ProposalBudgetExpenseGroup,
+  ProposalBudgetDraft,
+  ProposalTaskBudget,
+  TaskBudgetDecision,
+  WorkBudgetAllocation,
 } from "../types";
+
+export interface BudgetExpenseReportRow {
+  id: string;
+  requestNumber: number;
+  proposal: string;
+  task: string;
+  subtask?: string;
+  employee: string;
+  purpose: string;
+  expenseClasses: string[];
+  categories: string[];
+  actualAmount: number;
+  returnedAmount: number;
+  receiptCount: number;
+  settledAt: number;
+  monthKey: string;
+}
+
+export interface BudgetTaskMembership {
+  id: string;
+  recommendationLeadId?: string;
+  assigneeId?: string;
+  teamMemberIds?: string[];
+}
+
+export interface TaskBudgetSource {
+  key: string;
+  title: string;
+  enabled?: boolean;
+  budgetDecision?: TaskBudgetDecision;
+  budgetNoCostReason?: string;
+  budgetLines?: BudgetLineInput[];
+}
+
+export function getBudgetLineAmount(line: BudgetLineInput) {
+  const quantity = Math.max(0, Number(line.quantity) || 0);
+  const unitCost = Math.max(0, Number(line.unitCost) || 0);
+  if (quantity > 0 && unitCost > 0) return quantity * unitCost;
+  return Math.max(0, Number(line.amount) || 0);
+}
+
+export function normalizeTaskBudgetLines(taskKey: string, lines: BudgetLineInput[]) {
+  return lines.map((line, position) => ({
+    ...line,
+    draftTaskKey: taskKey,
+    amount: getBudgetLineAmount(line),
+    position,
+  }));
+}
+
+export function buildProposalBudgetFromTasks(
+  tasks: TaskBudgetSource[],
+  fiscalYear = new Date().getFullYear(),
+): ProposalBudgetDraft {
+  const taskBudgets: ProposalTaskBudget[] = tasks
+    .filter((task) => task.enabled !== false)
+    .map((task) => {
+      const decision = task.budgetDecision || "missing";
+      const lines = decision === "funded"
+        ? normalizeTaskBudgetLines(task.key, task.budgetLines || [])
+        : [];
+      return {
+        taskKey: task.key,
+        taskTitle: task.title,
+        decision,
+        noCostReason: task.budgetNoCostReason,
+        totalAmount: lines.reduce((sum, line) => sum + line.amount, 0),
+        lines,
+      };
+    });
+  const lines = taskBudgets.flatMap((task) => task.lines);
+  return {
+    fiscalYear,
+    lines,
+    taskBudgets,
+    totalAmount: lines.reduce((sum, line) => sum + line.amount, 0),
+  };
+}
+
+export function getProposalBudgetReadiness(tasks: TaskBudgetSource[]) {
+  const enabled = tasks.filter((task) => task.enabled !== false);
+  const missing = enabled.filter((task) => !task.budgetDecision || task.budgetDecision === "missing");
+  const invalid = enabled.filter((task) => task.budgetDecision === "funded" && (
+    !(task.budgetLines || []).length
+    || (task.budgetLines || []).some((line) => !line.expenseClass.trim() || !line.category.trim() || !line.particular.trim() || getBudgetLineAmount(line) <= 0)
+  ));
+  return {
+    ready: missing.length === 0 && invalid.length === 0,
+    missingTaskKeys: missing.map((task) => task.key),
+    invalidTaskKeys: invalid.map((task) => task.key),
+    fundedCount: enabled.filter((task) => task.budgetDecision === "funded").length,
+    noCostCount: enabled.filter((task) => task.budgetDecision === "no_cost").length,
+  };
+}
 
 export function groupProposalBudgetLines(lines: BudgetLineInput[]): ProposalBudgetExpenseGroup[] {
   const expenseGroups = new Map<string, ProposalBudgetExpenseGroup>();
@@ -36,7 +135,7 @@ export function groupProposalBudgetLines(lines: BudgetLineInput[]): ProposalBudg
       expenseGroup.categories.push(categoryGroup);
     }
 
-    const amount = Math.max(0, Number(line.amount) || 0);
+    const amount = getBudgetLineAmount(line);
     categoryGroup.particulars.push(line);
     categoryGroup.amount += amount;
     expenseGroup.amount += amount;
@@ -53,7 +152,7 @@ export function getBudgetScheduleTotals(lines: BudgetLineInput[]) {
     const categoryTotals = totals.get(expenseClass) || new Map<string, number>();
     categoryTotals.set(
       category,
-      (categoryTotals.get(category) || 0) + Math.max(0, Number(line.amount) || 0),
+      (categoryTotals.get(category) || 0) + getBudgetLineAmount(line),
     );
     totals.set(expenseClass, categoryTotals);
   }
@@ -66,8 +165,14 @@ export function getBudgetScheduleTotals(lines: BudgetLineInput[]) {
 
 const RESERVED_REQUEST_STATES = new Set([
   "approved",
+  "scheduled_for_release",
+  "partially_released",
+  "released",
   "liquidation_submitted",
+  "pending_leader_liquidation_review",
+  "pending_department_settlement",
   "changes_requested",
+  "overdue_liquidation",
 ]);
 
 export function getAllocationCashPosition(
@@ -88,6 +193,43 @@ export function getAllocationCashPosition(
   };
 }
 
+/**
+ * A task-level allocation may be used directly by its Task Leader or delegated
+ * to subtasks, but never both for the same peso. This keeps the UI aligned with
+ * the database guard that prevents double allocation.
+ */
+export function getTaskBudgetDistribution(
+  taskAllocationAmount: number,
+  taskLevelRequests: PettyCashRequest[],
+  subtaskAllocations: WorkBudgetAllocation[],
+) {
+  const taskCash = getAllocationCashPosition(taskAllocationAmount, taskLevelRequests);
+  const taskCashCommitted = taskLevelRequests
+    .filter((request) => ![
+      "draft",
+      "rejected",
+      "cancelled",
+      "leader_changes_requested",
+      "department_changes_requested",
+    ].includes(request.status))
+    .reduce(
+      (total, request) => total + (request.status === "settled"
+        ? request.actualSpent || 0
+        : request.approvedAmount || request.requestedAmount || 0),
+      0,
+    );
+  const allocatedToSubtasks = subtaskAllocations
+    .filter((allocation) => ["pending", "approved"].includes(allocation.status))
+    .reduce((total, allocation) => total + allocation.amount, 0);
+
+  return {
+    taskCash,
+    taskCashCommitted,
+    allocatedToSubtasks,
+    distributable: Math.max(0, taskAllocationAmount - taskCashCommitted - allocatedToSubtasks),
+  };
+}
+
 export function getBudgetUtilizationSignal(
   summary: DepartmentBudgetSummary,
   monthIndex = new Date().getMonth(),
@@ -102,4 +244,56 @@ export function getBudgetUtilizationSignal(
     isQ4,
     underTarget: isQ4 && utilization < summary.underutilizationThreshold,
   };
+}
+
+export function getEligiblePettyCashAllocations(
+  allocations: WorkBudgetAllocation[],
+  tasks: BudgetTaskMembership[],
+  userId: string,
+) {
+  if (!userId) return [];
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
+  return allocations.filter((allocation) => {
+    if (allocation.status !== "approved") return false;
+    const task = taskById.get(allocation.taskId);
+    if (!task) return false;
+    const leaderId = task.recommendationLeadId || task.assigneeId;
+    if (allocation.subtaskId) {
+      return leaderId === userId || Boolean(allocation.subtaskAssigneeIds?.includes(userId));
+    }
+    return leaderId === userId;
+  });
+}
+
+export function buildBudgetExpenseReportRows(data: DepartmentBudgetBundle): BudgetExpenseReportRow[] {
+  const commitmentById = new Map(data.commitments.map((item) => [item.id, item]));
+  const allocationById = new Map(data.allocations.map((item) => [item.id, item]));
+
+  return data.requests
+    .filter((request) => request.status === "settled")
+    .map((request) => {
+      const allocation = allocationById.get(request.allocationId);
+      const latest = data.liquidations
+        .filter((item) => item.requestId === request.id)
+        .sort((a, b) => b.version - a.version)[0];
+      const lines = data.allocationLines.filter((line) => line.allocationId === request.allocationId);
+      const settledAt = Math.max(request.updatedAt, latest?.submittedAt || 0);
+      return {
+        id: request.id,
+        requestNumber: request.requestNumber,
+        proposal: commitmentById.get(request.commitmentId)?.title || "Funded proposal",
+        task: request.taskTitle || "Assigned task",
+        subtask: request.subtaskTitle || allocation?.subtaskTitle,
+        employee: request.cashRecipientName || request.requesterName || "Assigned employee",
+        purpose: request.purpose,
+        expenseClasses: Array.from(new Set(lines.map((line) => line.expenseClass).filter(Boolean))),
+        categories: Array.from(new Set(lines.map((line) => line.category).filter(Boolean))),
+        actualAmount: request.actualSpent ?? latest?.declaredSpent ?? 0,
+        returnedAmount: request.returnedAmount ?? latest?.returnedAmount ?? 0,
+        receiptCount: latest?.receipts.length || 0,
+        settledAt,
+        monthKey: new Date(settledAt).toISOString().slice(0, 7),
+      };
+    })
+    .sort((a, b) => b.settledAt - a.settledAt);
 }

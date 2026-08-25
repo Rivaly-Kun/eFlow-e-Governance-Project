@@ -42,6 +42,7 @@ async function verifyLiveSchema() {
     "budget_commitments",
     "budget_ledger_entries",
     "department_budget_lines",
+    "department_budget_adjustments",
     "department_fiscal_budgets",
     "milestones",
     "hierarchy_deadline_reminders",
@@ -60,6 +61,7 @@ async function verifyLiveSchema() {
     "proposal_governance_signoffs",
     "proposal_governance_records",
     "petty_cash_liquidations",
+    "petty_cash_releases",
     "petty_cash_receipts",
     "petty_cash_requests",
     "proposal_delivery_closeouts",
@@ -81,6 +83,7 @@ async function verifyLiveSchema() {
     "user_permission_overrides",
     "user_org_scope_grants",
     "work_budget_allocations",
+    "work_budget_allocation_lines",
   ]) {
     if (!definitions[table]) missing.push(`table:${table}`);
   }
@@ -116,6 +119,9 @@ async function verifyLiveSchema() {
     if (!definitions.subtasks?.properties?.[column]) missing.push(`subtasks.${column}`);
   }
   for (const column of ["project_id", "proposal_id", "org_id", "entity_type"]) {
+    if (!definitions.notifications?.properties?.[column]) missing.push(`notifications.${column}`);
+  }
+  for (const column of ["financial_record_id", "financial_record_type"]) {
     if (!definitions.notifications?.properties?.[column]) missing.push(`notifications.${column}`);
   }
   if (definitions.subtasks?.properties?.assigned_to_ids?.format !== "uuid[]") {
@@ -185,13 +191,23 @@ async function verifyLiveSchema() {
     "run_governance_review_escalations",
     "set_organization_approvers",
     "save_department_fiscal_budget",
+    "save_department_fiscal_budget_v2",
     "lock_department_fiscal_budget",
     "create_work_budget_allocation",
     "decide_work_budget_allocation",
     "create_petty_cash_request",
     "decide_petty_cash_request",
+    "decide_petty_cash_leader_review",
+    "mark_petty_cash_released",
+    "acknowledge_petty_cash_release",
+    "resubmit_petty_cash_request",
     "submit_petty_cash_liquidation",
     "decide_petty_cash_liquidation",
+    "decide_petty_cash_liquidation_leader_review",
+    "create_subtask_budget_allocation",
+    "adjust_department_fiscal_budget",
+    "close_department_fiscal_budget",
+    "run_department_budget_maintenance",
     "department_budget_summary",
   ]) {
     if (!paths[`/rpc/${rpc}`]) missing.push(`rpc:${rpc}`);
@@ -200,6 +216,16 @@ async function verifyLiveSchema() {
   if (missing.length > 0) {
     console.error("Live eFlow schema is missing required workflow objects:");
     for (const item of missing) console.error(`- ${item}`);
+    if (missing.some((item) =>
+      item.includes("proposal_delivery_closeout") ||
+      item.includes("proposal_governance") ||
+      item.includes("request_proposal_closeout") ||
+      item.includes("decide_proposal_closeout") ||
+      item.includes("complete_proposal_delivery") ||
+      item.includes("archive_proposal_delivery")
+    )) {
+      console.error("Apply supabase/migrations/20260822000002_governance_delivery_lifecycle.sql, then reload the PostgREST schema cache.");
+    }
     return false;
   }
 

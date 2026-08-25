@@ -3,7 +3,7 @@ import { AssignmentModal } from "./AssignmentModal";
 import { DraftCockpit } from "./DraftCockpit";
 import { useManualPlanController } from "../hooks/useManualPlanController";
 import { OrganizationScopePicker } from "../../interdepartment-collaboration";
-import { ProposalBudgetEditor } from "../../budget";
+import { ProposalTaskBudgetSummary } from "../../budget";
 
 export function ManualPlanBuilder({ onClose }: { onClose: () => void }) {
   const {
@@ -15,7 +15,6 @@ export function ManualPlanBuilder({ onClose }: { onClose: () => void }) {
     employeeNotes,
     planTitle,
     planDescription,
-    proposalBudget,
     draftTasks,
     committing,
     autoSaveState,
@@ -24,7 +23,6 @@ export function ManualPlanBuilder({ onClose }: { onClose: () => void }) {
     assignModalTaskKey,
     currentDraftTask,
     setPlanDescription,
-    setProposalBudget,
     setAssignModalTaskKey,
     updatePlanTitle,
     handleAddProgram,
@@ -40,7 +38,7 @@ export function ManualPlanBuilder({ onClose }: { onClose: () => void }) {
   } = useManualPlanController(onClose);
 
   return (
-    <div className="p-6 font-['Lexend:Regular',_sans-serif]">
+    <div className="p-6 font-['Lexend:Regular',_sans-serif]" data-testid="manual-plan-builder">
       <div className="mx-auto max-w-4xl space-y-6">
         <header className="flex items-start justify-between gap-5 border-b border-neutral-100 pb-4">
           <div className="flex min-w-0 gap-3">
@@ -68,6 +66,8 @@ export function ManualPlanBuilder({ onClose }: { onClose: () => void }) {
           <label className="block">
             <span className="text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-700">Plan title <span className="text-red-500">*</span></span>
             <input
+              aria-label="Plan title"
+              data-testid="manual-plan-title"
               value={planTitle}
               onChange={(event) => updatePlanTitle(event.target.value)}
               placeholder="e.g. 2026 Coastal Resilience Plan"
@@ -77,6 +77,8 @@ export function ManualPlanBuilder({ onClose }: { onClose: () => void }) {
           <label className="block">
             <span className="text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-700">Plan description</span>
             <textarea
+              aria-label="Plan description"
+              data-testid="manual-plan-description"
               value={planDescription}
               onChange={(event) => setPlanDescription(event.target.value)}
               placeholder="What is this plan intended to deliver?"
@@ -93,7 +95,7 @@ export function ManualPlanBuilder({ onClose }: { onClose: () => void }) {
           onChange={setCollaborationOrganizations}
         />
 
-        <ProposalBudgetEditor value={proposalBudget} onChange={setProposalBudget} />
+        {draftTasks.length > 0 && <ProposalTaskBudgetSummary tasks={draftTasks} />}
 
         {validationIssues.length > 0 && (
           <section
@@ -126,6 +128,7 @@ export function ManualPlanBuilder({ onClose }: { onClose: () => void }) {
               A Program can contain multiple Projects. Each Project can contain Activities, and every Activity can contain one or more tasks.
             </p>
             <button
+              data-testid="manual-plan-add-first-program"
               onClick={handleAddProgram}
               className="mt-5 inline-flex items-center gap-1.5 rounded-xl bg-neutral-900 px-4 py-2.5 text-[12px] font-['Lexend:Medium',_sans-serif] text-white transition hover:bg-neutral-800"
             >

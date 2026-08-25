@@ -200,6 +200,7 @@ export function ProjectsWorkspace({ scope, eyebrow, proposalGrouping = true, rea
             <div className="flex flex-wrap items-center justify-end gap-2">
               {access.canCreate && (
               <button
+                data-testid="build-work-plan"
                 onClick={() => setManualPlanOpen(true)}
                 className="inline-flex h-[34px] items-center gap-1.5 rounded-lg bg-neutral-900 px-3 py-2 text-[12px] font-['Lexend:Medium',_sans-serif] text-white transition-colors hover:bg-neutral-800"
               >
@@ -236,7 +237,7 @@ export function ProjectsWorkspace({ scope, eyebrow, proposalGrouping = true, rea
             { id: "portfolio", label: "Operational portfolio", count: proposalGroups.length, icon: <Icons.Folders size={13} /> },
             { id: "drafts", label: readOnly ? "Collaboration drafts" : "My drafts", count: activeCollaborationDrafts.filter((draft) => readOnly || draft.ownerOrgId === currentOrgId).length, icon: <Icons.FileClock size={13} /> },
             { id: "incoming", label: "Incoming reviews", count: activeCollaborationDrafts.filter((draft) => draft.snapshot.organizations.some((item) => item.participationRole !== "owner" && [currentOrgId, ...collaboration.membershipOrgIds].includes(item.orgId))).length, icon: <Icons.Inbox size={13} /> },
-          ] as const).map((item) => <button key={item.id} type="button" onClick={() => setWorkspaceView(item.id)} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-[10px] font-['Lexend:Medium',_sans-serif] transition ${workspaceView === item.id ? "bg-neutral-900 text-white" : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800"}`}>{item.icon}{item.label}<span className={`rounded-full px-1.5 py-0.5 text-[8px] ${workspaceView === item.id ? "bg-white/15 text-white" : "bg-neutral-100 text-neutral-500"}`}>{item.count}</span></button>)}
+          ] as const).map((item) => <button key={item.id} type="button" data-testid={`projects-view-${item.id}`} onClick={() => setWorkspaceView(item.id)} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-[10px] font-['Lexend:Medium',_sans-serif] transition ${workspaceView === item.id ? "bg-neutral-900 text-white" : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800"}`}>{item.icon}{item.label}<span className={`rounded-full px-1.5 py-0.5 text-[8px] ${workspaceView === item.id ? "bg-white/15 text-white" : "bg-neutral-100 text-neutral-500"}`}>{item.count}</span></button>)}
           <span className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-[9px] font-['Lexend:Medium',_sans-serif] text-emerald-700"><Icons.CheckCircle2 size={12} /> Ready to commit {activeCollaborationDrafts.filter((draft) => draft.status === "ready_to_commit" && (readOnly || draft.ownerOrgId === currentOrgId)).length}</span>
         </div>
       )}

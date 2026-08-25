@@ -367,22 +367,33 @@ begin
     select assignment.user_id as approver_id
     from public.proposal_governance_assignments assignment
     where assignment.draft_id = p_draft_id and assignment.organization_id = participant.org_id
-      and assignment.assignment_role = 'primary_approver'
-    union
-    select assignment.delegate_user_id
-    from public.proposal_governance_assignments assignment
-    where assignment.draft_id = p_draft_id and assignment.organization_id = participant.org_id
-      and assignment.assignment_role = 'primary_approver'
-      and assignment.delegate_user_id is not null
-      and (assignment.delegation_expires_at is null or assignment.delegation_expires_at > now())
+      and assignment.assignment_role in ('primary_approver', 'backup_approver', 'delegate')
+      and (assignment.valid_until is null or assignment.valid_until > now())
+      and not exists (
+        select 1
+        from public.proposal_governance_signoffs signoff
+        where signoff.revision_id = draft_row.current_revision_id
+          and signoff.organization_id = participant.org_id
+          and signoff.user_id = assignment.user_id
+          and signoff.decision = 'recused'
+      )
     union
     select fallback_id
     from public.organization_approver_ids(participant.org_id) fallback_id
     where not exists (
       select 1 from public.proposal_governance_assignments assignment
       where assignment.draft_id = p_draft_id and assignment.organization_id = participant.org_id
-        and assignment.assignment_role = 'primary_approver'
+        and assignment.assignment_role in ('primary_approver', 'backup_approver', 'delegate')
+        and (assignment.valid_until is null or assignment.valid_until > now())
     )
+      and not exists (
+        select 1
+        from public.proposal_governance_signoffs signoff
+        where signoff.revision_id = draft_row.current_revision_id
+          and signoff.organization_id = participant.org_id
+          and signoff.user_id = fallback_id
+          and signoff.decision = 'recused'
+      )
   ) reviewer
   where participant.draft_id = p_draft_id and participant.participation_role = 'governance'
     and reviewer.approver_id <> caller;
@@ -549,22 +560,33 @@ begin
     select assignment.user_id as approver_id
     from public.proposal_governance_assignments assignment
     where assignment.draft_id = draft.id and assignment.organization_id = participant.org_id
-      and assignment.assignment_role = 'primary_approver'
-    union
-    select assignment.delegate_user_id
-    from public.proposal_governance_assignments assignment
-    where assignment.draft_id = draft.id and assignment.organization_id = participant.org_id
-      and assignment.assignment_role = 'primary_approver'
-      and assignment.delegate_user_id is not null
-      and (assignment.delegation_expires_at is null or assignment.delegation_expires_at > now())
+      and assignment.assignment_role in ('primary_approver', 'backup_approver', 'delegate')
+      and (assignment.valid_until is null or assignment.valid_until > now())
+      and not exists (
+        select 1
+        from public.proposal_governance_signoffs signoff
+        where signoff.revision_id = draft.current_revision_id
+          and signoff.organization_id = participant.org_id
+          and signoff.user_id = assignment.user_id
+          and signoff.decision = 'recused'
+      )
     union
     select fallback_id
     from public.organization_approver_ids(participant.org_id) fallback_id
     where not exists (
       select 1 from public.proposal_governance_assignments assignment
       where assignment.draft_id = draft.id and assignment.organization_id = participant.org_id
-        and assignment.assignment_role = 'primary_approver'
+        and assignment.assignment_role in ('primary_approver', 'backup_approver', 'delegate')
+        and (assignment.valid_until is null or assignment.valid_until > now())
     )
+      and not exists (
+        select 1
+        from public.proposal_governance_signoffs signoff
+        where signoff.revision_id = draft.current_revision_id
+          and signoff.organization_id = participant.org_id
+          and signoff.user_id = fallback_id
+          and signoff.decision = 'recused'
+      )
   ) reviewer
   where participant.participation_role in ('participant', 'governance')
     and draft.status in ('in_review', 'changes_requested', 'ready_to_commit')
@@ -590,14 +612,19 @@ alter table public.proposal_governance_signoffs enable row level security;
 alter table public.proposal_governance_records enable row level security;
 alter table public.proposal_delivery_closeouts enable row level security;
 alter table public.proposal_delivery_closeout_decisions enable row level security;
+drop policy if exists proposal_governance_assignments_read on public.proposal_governance_assignments;
 create policy proposal_governance_assignments_read on public.proposal_governance_assignments
 for select to authenticated using (public.is_collaboration_participant(draft_id, auth.uid()));
+drop policy if exists proposal_governance_signoffs_read on public.proposal_governance_signoffs;
 create policy proposal_governance_signoffs_read on public.proposal_governance_signoffs
 for select to authenticated using (public.is_collaboration_participant(draft_id, auth.uid()));
+drop policy if exists proposal_governance_records_read on public.proposal_governance_records;
 create policy proposal_governance_records_read on public.proposal_governance_records
 for select to authenticated using (public.is_collaboration_participant(draft_id, auth.uid()));
+drop policy if exists proposal_delivery_closeouts_read on public.proposal_delivery_closeouts;
 create policy proposal_delivery_closeouts_read on public.proposal_delivery_closeouts
 for select to authenticated using (public.is_collaboration_participant(draft_id, auth.uid()));
+drop policy if exists proposal_delivery_closeout_decisions_read on public.proposal_delivery_closeout_decisions;
 create policy proposal_delivery_closeout_decisions_read on public.proposal_delivery_closeout_decisions
 for select to authenticated using (public.is_collaboration_participant(draft_id, auth.uid()));
 

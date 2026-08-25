@@ -361,7 +361,12 @@ function TwoLevelSidebar({ role }: { role: string }) {
   const hasLeadingWork = !!user?.id && tasks.some((task) => isTaskLead(task, user.id));
   const visibleNavItems = getRoleNavigationCandidates(role).filter(
     (item) => isRoleNavigationItemVisible(item, hasLeadingWork)
-      && canOpenNavigationSection(role, item.id, can),
+      && canOpenNavigationSection(
+        role,
+        item.id,
+        can,
+        Boolean(item.requiresLeadership && hasLeadingWork),
+      ),
   );
 
   useEffect(() => {
@@ -393,7 +398,12 @@ function TwoLevelSidebar({ role }: { role: string }) {
           onPageSelect={selectPage}
           navigationItems={visibleNavItems}
         />
-        <RoleContent role={role} activeSection={activeSection} activePage={activePage} />
+        <RoleContent
+          role={role}
+          activeSection={activeSection}
+          activePage={activePage}
+          hasLeadingWork={hasLeadingWork}
+        />
       </div>
     </GuidedTourProvider>
   );

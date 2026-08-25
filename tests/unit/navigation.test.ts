@@ -89,4 +89,12 @@ describe("role navigation compatibility", () => {
     expect(isRoleNavigationItemVisible(employeeLeading, true)).toBe(true);
     expect(isRoleNavigationItemVisible(employeeReviews, true)).toBe(true);
   });
+
+  it("keeps both contextual leadership pages available to an assigned Task Lead", () => {
+    const denied = () => false;
+
+    expect(canOpenNavigationSection("employee", "leading", denied, true)).toBe(true);
+    expect(canOpenNavigationSection("employee", "reviews", denied, true)).toBe(true);
+    expect(canOpenNavigationSection("employee", "reviews", denied)).toBe(false);
+  });
 });

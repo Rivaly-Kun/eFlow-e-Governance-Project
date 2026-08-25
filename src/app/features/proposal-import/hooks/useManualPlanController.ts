@@ -22,7 +22,7 @@ import {
   updateManualActivity,
 } from "../services/manualPlanDraft";
 import type { DraftTask } from "../components/draftModel";
-import { createEmptyProposalBudget, type ProposalBudgetDraft } from "../../budget";
+import { buildProposalBudgetFromTasks } from "../../budget";
 import {
   type ManualPlanValidationIssue,
   validateManualPlanDraft,
@@ -46,8 +46,8 @@ export function useManualPlanController(onClose?: () => void) {
   const { toast } = useToast();
   const [planTitle, setPlanTitle] = useState("");
   const [planDescription, setPlanDescription] = useState("");
-  const [proposalBudget, setProposalBudget] = useState<ProposalBudgetDraft>(() => createEmptyProposalBudget());
   const [draftTasks, setDraftTasks] = useState<DraftTask[]>([]);
+  const proposalBudget = useMemo(() => buildProposalBudgetFromTasks(draftTasks), [draftTasks]);
   const [committing, setCommitting] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [validationIssues, setValidationIssues] = useState<ManualPlanValidationIssue[]>([]);
@@ -197,7 +197,6 @@ export function useManualPlanController(onClose?: () => void) {
     assignModalTaskKey,
     currentDraftTask,
     setPlanDescription,
-    setProposalBudget,
     setAssignModalTaskKey,
     updatePlanTitle,
     handleAddProgram,

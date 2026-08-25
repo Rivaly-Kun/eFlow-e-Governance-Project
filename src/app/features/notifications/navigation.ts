@@ -20,6 +20,8 @@ export interface NotificationNavigationIntent {
   projectId?: string;
   proposalId?: string;
   entityLabel?: string;
+  financialRecordId?: string;
+  financialRecordType?: string;
 }
 
 export interface NotificationDestination {
@@ -75,7 +77,7 @@ function destinationForProject(role: string) {
 
 function destinationForBudget(role: string) {
   if (role === "depthead") {
-    return { section: "budget", page: "Department Budget" };
+    return { section: "reviews", page: "For Review" };
   }
   if (role === "employee" || role === "teamleader") {
     return { section: "budget", page: "Petty Cash & Expenses" };
@@ -101,6 +103,8 @@ function makeDestination(
       projectId: notification.projectId,
       proposalId: notification.proposalId,
       entityLabel,
+      financialRecordId: notification.financialRecordId,
+      financialRecordType: notification.financialRecordType,
     },
   };
 }

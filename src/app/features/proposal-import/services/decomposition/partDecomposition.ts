@@ -7,7 +7,7 @@ import type {
   ProposalDecompositionTask,
 } from "../../types";
 import { callDecompositionLLM } from "./llmClient";
-import { extractPartSections, type PartSection } from "./textAnalysis";
+import { extractBudgetSchedule, extractPartSections, type PartSection } from "./textAnalysis";
 import {
   buildCompactEmployeesContext,
   getRecommendedValues,
@@ -19,6 +19,7 @@ export async function decomposeSinglePart(
   employees?: Employee[],
   employeeNotes?: EmployeeNotesMap,
   onQueueUpdate?: (update: AiQueueUpdate) => void,
+  budgetSchedule = "",
 ): Promise<ProposalDecompositionActivity> {
   const employeeList = buildCompactEmployeesContext(employees || [], employeeNotes);
 
@@ -41,6 +42,15 @@ Assignment rules:
 - Consider current workload and spread leadership when alternatives have similar task fit.
 - Do not use an equal quota or pick a weaker person merely for variety.
 
+Funding rules:
+- Budget belongs to individual tasks. Use the proposal budget schedule below only when a line is clearly attributable to this section and task.
+- If a task has attributable funding, set budgetDecision to "funded" and return every category and particular with quantity, unit, unitCost, and amount.
+- If the source explicitly says the task needs no funding, set budgetDecision to "no_cost" and explain why.
+- If the source is unclear, set budgetDecision to "missing" and return no budget lines. Never invent an amount.
+
+Proposal budget schedule:
+${budgetSchedule || "No reliable budget schedule was extracted; use budgetDecision=\"missing\"."}
+
 Respond with JSON only, no preamble, no markdown fences:
 {
   "tasks": [{
@@ -50,6 +60,18 @@ Respond with JSON only, no preamble, no markdown fences:
     "priority": "high",
     "recommendedEmployeeIds": ["lead-exact-id", "support-exact-id-if-needed", "additional-exact-id-if-needed"],
     "recommendationReasoning": "Why this team size is sufficient and what each selected person contributes, or why one person can deliver it solo.",
+    "budgetDecision": "missing",
+    "budgetNoCostReason": "",
+    "budgetLines": [{
+      "expenseClass": "Professional Services",
+      "category": "Honoraria",
+      "particular": "Exact source particular",
+      "quantity": 1,
+      "unit": "service",
+      "unitCost": 0,
+      "amount": 0,
+      "fundSource": "Department Budget"
+    }],
     "subtasks": ["step 1", "step 2", "step 3"]
   }]
 }
@@ -109,6 +131,7 @@ export async function decomposeProposalByPart(
   }
 
   const activities: ProposalDecompositionActivity[] = [];
+  const budgetSchedule = extractBudgetSchedule(proposalText);
   for (let i = 0; i < parts.length; i++) {
     if (onProgress) onProgress(i + 1, parts.length, parts[i].title);
     const activity = await decomposeSinglePart(
@@ -116,6 +139,7 @@ export async function decomposeProposalByPart(
       employees,
       employeeNotes,
       onQueueUpdate,
+      budgetSchedule,
     );
     activities.push(activity);
   }

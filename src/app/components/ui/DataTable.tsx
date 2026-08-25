@@ -20,6 +20,8 @@ interface DataTableProps<T> {
   loading?: boolean;
   emptyMessage?: string;
   emptyIcon?: React.ReactNode;
+  toolbar?: React.ReactNode;
+  totalRecords?: number;
 }
 
 export function DataTable<T>({
@@ -32,6 +34,8 @@ export function DataTable<T>({
   loading,
   emptyMessage = "No data found",
   emptyIcon,
+  toolbar,
+  totalRecords,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<string | null>(null);
@@ -71,17 +75,20 @@ export function DataTable<T>({
       {/* Search */}
       {searchFilter && (
         <div className="px-4 py-3 border-b border-neutral-100">
-          <div className="relative">
-            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" fill="currentColor">
-              <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242.156a5 5 0 1 1 0-10 5 5 0 0 1 0 10z" />
-            </svg>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={searchPlaceholder}
-              className="w-full pl-9 pr-3 py-2 rounded-lg border border-neutral-200 text-[12px] font-['Lexend:Regular',_sans-serif] outline-none focus:border-neutral-400 focus:ring-1 focus:ring-neutral-200 bg-neutral-50"
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[260px] flex-1">
+              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" fill="currentColor">
+                <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242.156a5 5 0 1 1 0-10 5 5 0 0 1 0 10z" />
+              </svg>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={searchPlaceholder}
+                className="w-full pl-9 pr-3 py-2 rounded-lg border border-neutral-200 text-[12px] font-['Lexend:Regular',_sans-serif] outline-none focus:border-neutral-400 focus:ring-1 focus:ring-neutral-200 bg-neutral-50"
+              />
+            </div>
+            {toolbar}
           </div>
         </div>
       )}
@@ -154,7 +161,7 @@ export function DataTable<T>({
       {/* Row count */}
       {!loading && (
         <div className="px-4 py-2 border-t border-neutral-100 text-[10px] font-['Lexend:Regular',_sans-serif] text-neutral-400">
-          {filtered.length} of {data.length} records
+          {filtered.length} of {totalRecords ?? data.length} records
         </div>
       )}
     </div>

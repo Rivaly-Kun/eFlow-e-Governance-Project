@@ -120,15 +120,15 @@ describe("notification navigation", () => {
     });
   });
 
-  it("routes financial approvals and employee decisions to the correct budget workspace", () => {
+  it("routes financial approvals into Reviews and employee decisions into petty cash", () => {
     expect(resolveNotificationDestination(notification({
       type: "petty_cash_request",
       title: "Petty-cash request awaiting approval",
       taskId: "task-5",
       taskTitle: "Prepare workshop",
     }), "depthead")).toMatchObject({
-      section: "budget",
-      page: "Department Budget",
+      section: "reviews",
+      page: "For Review",
       label: "Open budget approval",
       intent: { kind: "budget", taskId: "task-5" },
     });

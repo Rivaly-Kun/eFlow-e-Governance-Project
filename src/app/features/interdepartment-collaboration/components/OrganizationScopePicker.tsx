@@ -30,7 +30,7 @@ export function OrganizationScopePicker({
 
   const owner = organizations.find((org) => org.id === ownerOrgId);
   return (
-    <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+    <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm" data-testid="organization-scope-picker">
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-[10px] font-['Lexend:Medium',_sans-serif] uppercase tracking-[0.2em] text-neutral-400">{interDepartmental ? "Collaboration scope" : "Department scope"}</div>
@@ -73,11 +73,11 @@ export function OrganizationScopePicker({
       </div>
 
       <div className="mt-3 flex gap-2">
-        <select value={candidateId} onChange={(event) => setCandidateId(event.target.value)} className="h-9 min-w-0 flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 text-[11px] text-neutral-700 outline-none focus:border-violet-400">
+        <select aria-label="Add participating organization" data-testid="organization-scope-candidate" value={candidateId} onChange={(event) => setCandidateId(event.target.value)} className="h-9 min-w-0 flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 text-[11px] text-neutral-700 outline-none focus:border-violet-400">
           <option value="">Add a participating office, board, or committee…</option>
           {options.map((org) => <option key={org.id} value={org.id}>{org.name} · {org.org_type}</option>)}
         </select>
-        <button type="button" onClick={add} disabled={!candidateId} className="inline-flex h-9 items-center gap-1 rounded-xl bg-neutral-900 px-3 text-[11px] font-['Lexend:Medium',_sans-serif] text-white disabled:opacity-40"><Plus size={13} /> Add</button>
+        <button type="button" data-testid="organization-scope-add" onClick={add} disabled={!candidateId} className="inline-flex h-9 items-center gap-1 rounded-xl bg-neutral-900 px-3 text-[11px] font-['Lexend:Medium',_sans-serif] text-white disabled:opacity-40"><Plus size={13} /> Add</button>
       </div>
     </section>
   );
@@ -94,7 +94,7 @@ function OrganizationRow({ name, type, role, staffingEnabled, onRoleChange, onSt
 }) {
   const Icon = role === "governance" ? Landmark : role === "owner" ? ShieldCheck : Building2;
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2.5">
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50/70 px-3 py-2.5" data-testid="organization-scope-row" data-organization-name={name}>
       <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${role === "governance" ? "bg-amber-50 text-amber-700" : role === "owner" ? "bg-violet-50 text-violet-700" : "bg-blue-50 text-blue-700"}`}><Icon size={15} /></div>
       <div className="min-w-[150px] flex-1"><div className="text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-900">{name}</div><div className="text-[10px] capitalize text-neutral-400">{type}</div></div>
       {onRoleChange ? (

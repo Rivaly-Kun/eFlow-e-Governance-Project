@@ -55,6 +55,9 @@ export interface CollaborationSnapshotTask {
   enabled: boolean;
   governanceMode?: TaskGovernanceMode;
   governanceOrgId?: string;
+  budgetDecision?: TaskBudgetDecision;
+  budgetNoCostReason?: string;
+  budgetLines?: BudgetLineInput[];
 }
 
 export interface CollaborationDraftSnapshot {
@@ -65,7 +68,7 @@ export interface CollaborationDraftSnapshot {
   planningAnchor: string;
   organizations: CollaborationOrganizationSelection[];
   tasks: CollaborationSnapshotTask[];
-  budget?: import("../budget/types").ProposalBudgetDraft;
+  budget?: ProposalBudgetDraft;
 }
 
 export interface CollaborationDraft {
@@ -242,3 +245,4 @@ export interface CollaborationCommitResult {
   projectIds: string[];
   projectCount: number;
 }
+import type { BudgetLineInput, ProposalBudgetDraft, TaskBudgetDecision } from "../budget";

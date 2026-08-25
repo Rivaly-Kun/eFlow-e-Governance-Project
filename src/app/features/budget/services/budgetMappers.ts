@@ -1,12 +1,15 @@
 import type {
   BudgetCommitment,
+  DepartmentBudgetAdjustment,
   BudgetLedgerEntry,
   DepartmentBudgetLine,
   DepartmentBudgetSummary,
   PettyCashLiquidation,
+  PettyCashRelease,
   PettyCashReceipt,
   PettyCashRequest,
   WorkBudgetAllocation,
+  WorkBudgetAllocationLine,
 } from "../types";
 
 const number = (value: unknown) => Number(value || 0);
@@ -20,13 +23,20 @@ export const mapBudgetSummary = (row: Record<string, unknown>): DepartmentBudget
   commitmentRemaining: number(row.commitmentRemaining), pettyCashLimit: number(row.pettyCashLimit),
   pettyCashRequestLimit: number(row.pettyCashRequestLimit), pettyCashReserved: number(row.pettyCashReserved),
   pettyCashSpent: number(row.pettyCashSpent), pettyCashAvailable: number(row.pettyCashAvailable),
+  dailyPettyCashReleaseLimit: number(row.dailyPettyCashReleaseLimit ?? row.pettyCashLimit),
+  perReceiptLimit: number(row.perReceiptLimit ?? row.pettyCashRequestLimit),
+  liquidationDueDays: number(row.liquidationDueDays || 5),
+  allowReceiptLimitOverride: Boolean(row.allowReceiptLimitOverride),
+  releasedToday: number(row.releasedToday), scheduledToday: number(row.scheduledToday),
+  dailyReleaseRemaining: number(row.dailyReleaseRemaining ?? row.pettyCashAvailable),
   underutilizationThreshold: number(row.underutilizationThreshold), notes: row.notes ? String(row.notes) : undefined,
   lockedAt: millis(row.lockedAt), updatedAt: millis(row.updatedAt),
 });
 
 export const mapBudgetLine = (row: Record<string, unknown>): DepartmentBudgetLine => ({
   id: String(row.id), fiscalBudgetId: String(row.fiscal_budget_id), expenseClass: String(row.expense_class || "Other Expenses"), category: String(row.category || ""),
-  particular: String(row.particular || ""), amount: number(row.approved_amount),
+  particular: String(row.particular || ""), quantity: number(row.quantity || 1), unit: String(row.unit || "item"),
+  unitCost: number(row.unit_cost ?? row.approved_amount), amount: number(row.approved_amount),
   fundSource: String(row.fund_source || ""), position: number(row.position),
 });
 
@@ -40,10 +50,24 @@ export const mapCommitment = (row: Record<string, unknown>): BudgetCommitment =>
 export const mapAllocation = (row: Record<string, unknown>): WorkBudgetAllocation => ({
   id: String(row.id), commitmentId: String(row.commitment_id), taskId: String(row.task_id),
   subtaskId: row.subtask_id ? String(row.subtask_id) : undefined, amount: number(row.amount),
+  subtaskTitle: (row.subtask as { title?: string } | null)?.title,
+  subtaskAssigneeIds: Array.isArray((row.subtask as { assigned_to_ids?: unknown[] } | null)?.assigned_to_ids)
+    ? ((row.subtask as { assigned_to_ids?: unknown[] }).assigned_to_ids || []).map(String)
+    : [],
+  parentAllocationLineId: row.parent_allocation_line_id ? String(row.parent_allocation_line_id) : undefined,
   status: String(row.status) as WorkBudgetAllocation["status"], reason: String(row.reason || ""),
   requestedBy: String(row.requested_by), decidedBy: row.decided_by ? String(row.decided_by) : undefined,
   decisionReason: row.decision_reason ? String(row.decision_reason) : undefined,
   requestedAt: millis(row.requested_at) || 0, decidedAt: millis(row.decided_at),
+});
+
+export const mapAllocationLine = (row: Record<string, unknown>): WorkBudgetAllocationLine => ({
+  id: String(row.id), allocationId: String(row.allocation_id),
+  draftTaskKey: row.draft_task_key ? String(row.draft_task_key) : undefined,
+  expenseClass: String(row.expense_class || "Other Expenses"), category: String(row.category || ""),
+  particular: String(row.particular || ""), quantity: number(row.quantity || 1), unit: String(row.unit || "item"),
+  unitCost: number(row.unit_cost), amount: number(row.amount), fundSource: String(row.fund_source || "Department Budget"),
+  position: number(row.position),
 });
 
 export const mapRequest = (row: Record<string, unknown>): PettyCashRequest => ({
@@ -51,15 +75,34 @@ export const mapRequest = (row: Record<string, unknown>): PettyCashRequest => ({
   commitmentId: String(row.commitment_id), allocationId: String(row.allocation_id), orgId: String(row.org_id),
   taskId: String(row.task_id), subtaskId: row.subtask_id ? String(row.subtask_id) : undefined,
   requesterId: String(row.requester_id), requesterName: (row.requester as { full_name?: string } | null)?.full_name,
+  taskLeaderId: row.task_leader_id ? String(row.task_leader_id) : undefined,
+  cashRecipientId: row.cash_recipient_id ? String(row.cash_recipient_id) : undefined,
+  taskLeaderName: (row.task_leader as { full_name?: string } | null)?.full_name,
+  cashRecipientName: (row.cash_recipient as { full_name?: string } | null)?.full_name,
   taskTitle: (row.task as { title?: string } | null)?.title, subtaskTitle: (row.subtask as { title?: string } | null)?.title,
   purpose: String(row.purpose || ""), requestedAmount: number(row.requested_amount),
   neededBy: row.needed_by ? String(row.needed_by) : undefined,
   status: String(row.status) as PettyCashRequest["status"],
   approvedAmount: row.approved_amount == null ? undefined : number(row.approved_amount),
   approvalReason: row.approval_reason ? String(row.approval_reason) : undefined,
+  leaderDecisionReason: row.leader_decision_reason ? String(row.leader_decision_reason) : undefined,
+  departmentDecisionReason: row.department_decision_reason ? String(row.department_decision_reason) : undefined,
+  scheduledAmount: row.scheduled_amount == null ? undefined : number(row.scheduled_amount),
+  releasedAmount: row.released_amount == null ? undefined : number(row.released_amount),
+  liquidationDueAt: millis(row.liquidation_due_at),
   actualSpent: row.actual_spent == null ? undefined : number(row.actual_spent),
   returnedAmount: row.returned_amount == null ? undefined : number(row.returned_amount),
   createdAt: millis(row.created_at) || 0, updatedAt: millis(row.updated_at) || 0,
+});
+
+export const mapRelease = (row: Record<string, unknown>): PettyCashRelease => ({
+  id: String(row.id), requestId: String(row.request_id), orgId: String(row.org_id),
+  scheduledDate: String(row.scheduled_date || ""), amount: number(row.amount),
+  status: String(row.status) as PettyCashRelease["status"], recipientId: row.recipient_id ? String(row.recipient_id) : undefined,
+  releasedBy: row.released_by ? String(row.released_by) : undefined, releasedAt: millis(row.released_at),
+  acknowledgedBy: row.acknowledged_by ? String(row.acknowledged_by) : undefined,
+  acknowledgedAt: millis(row.acknowledged_at),
+  createdAt: millis(row.created_at) || 0,
 });
 
 export const mapReceipt = (row: Record<string, unknown>): PettyCashReceipt => ({
@@ -68,6 +111,7 @@ export const mapReceipt = (row: Record<string, unknown>): PettyCashReceipt => ({
   receiptDate: String(row.receipt_date || ""), description: String(row.description || ""), amount: number(row.amount),
   fileName: String(row.file_name || "Receipt"), filePath: String(row.file_path || ""),
   mimeType: String(row.mime_type || "application/octet-stream"), fileSize: number(row.file_size),
+  overrideReason: row.override_reason ? String(row.override_reason) : undefined,
 });
 
 export const mapLiquidation = (row: Record<string, unknown>, receipts: PettyCashReceipt[]): PettyCashLiquidation => ({
@@ -82,4 +126,11 @@ export const mapLedger = (row: Record<string, unknown>): BudgetLedgerEntry => ({
   id: String(row.id), entryType: String(row.entry_type || ""), amount: number(row.amount),
   description: String(row.description || ""), actorId: row.actor_id ? String(row.actor_id) : undefined,
   createdAt: millis(row.created_at) || 0,
+});
+
+export const mapAdjustment = (row: Record<string, unknown>): DepartmentBudgetAdjustment => ({
+  id: String(row.id), fiscalBudgetId: String(row.fiscal_budget_id),
+  previousAmount: number(row.previous_amount), adjustedAmount: number(row.adjusted_amount),
+  reason: String(row.reason || ""), supportFilePath: row.support_file_path ? String(row.support_file_path) : undefined,
+  createdBy: String(row.created_by), createdAt: millis(row.created_at) || 0,
 });

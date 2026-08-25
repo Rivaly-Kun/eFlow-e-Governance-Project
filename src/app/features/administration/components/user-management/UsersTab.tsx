@@ -7,7 +7,13 @@ import { useToast } from "../../../../components/ui/Toast";
 import type { UserProfile } from "../../../../types";
 import { CreateUserModal } from "./CreateUserModal";
 import { EditUserModal } from "./EditUserModal";
+import { UserDirectoryFiltersBar } from "./UserDirectoryFiltersBar";
 import { RoleBadge, StatusBadge, WorkloadBar } from "./userManagementPrimitives";
+import {
+  DEFAULT_USER_DIRECTORY_FILTERS,
+  filterAndSortUserDirectory,
+  type UserDirectoryFilters,
+} from "../../selectors/userDirectory";
 
 export function UsersTab({ onOpenAccess }: { onOpenAccess: (userId: string) => void }) {
   const { profiles, loading } = useProfiles();
@@ -15,8 +21,13 @@ export function UsersTab({ onOpenAccess }: { onOpenAccess: (userId: string) => v
   const { toast } = useToast();
   const [showCreate, setShowCreate] = useState(false);
   const [editUser, setEditUser] = useState<UserProfile | null>(null);
-  const orgOptions = useMemo(() => orgs.filter((org) => org.is_active).map((org) => ({ value: org.id, label: org.name })), [orgs]);
+  const [filters, setFilters] = useState<UserDirectoryFilters>(DEFAULT_USER_DIRECTORY_FILTERS);
+  const orgOptions = useMemo(() => orgs.filter((org) => org.is_active).map((org) => ({ value: org.id, label: org.name })).sort((left, right) => left.label.localeCompare(right.label)), [orgs]);
   const orgMap = useMemo(() => Object.fromEntries(orgs.map((org) => [org.id, org.name])), [orgs]);
+  const directoryProfiles = useMemo(
+    () => filterAndSortUserDirectory(profiles, orgMap, filters),
+    [filters, orgMap, profiles],
+  );
 
   const handleToggleStatus = async (profile: UserProfile) => {
     try {
@@ -37,7 +48,19 @@ export function UsersTab({ onOpenAccess }: { onOpenAccess: (userId: string) => v
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3"><div><h3 className="text-[14px] font-semibold text-neutral-900">Account directory</h3><p className="mt-0.5 text-[10.5px] text-neutral-500">Identity, role, organization, workload, and access are managed from one workspace.</p></div><button type="button" onClick={() => setShowCreate(true)} className="inline-flex items-center gap-1.5 rounded-xl bg-neutral-900 px-4 py-2.5 text-[11px] font-semibold text-white hover:bg-neutral-800"><Plus size={14} /> Create user</button></div>
-      <DataTable data={profiles} columns={columns} keyExtractor={(profile) => profile.id} onRowClick={setEditUser} loading={loading} searchPlaceholder="Search by name, email, role, or organization…" searchFilter={(profile, query) => profile.full_name.toLowerCase().includes(query) || profile.email.toLowerCase().includes(query) || (orgMap[profile.org_id || ""] || "").toLowerCase().includes(query) || profile.role.toLowerCase().includes(query)} emptyMessage="No users found" />
+      <DataTable
+        key={filters.sort}
+        data={directoryProfiles}
+        totalRecords={profiles.length}
+        columns={columns}
+        keyExtractor={(profile) => profile.id}
+        onRowClick={setEditUser}
+        loading={loading}
+        searchPlaceholder="Search by name, email, role, or organization…"
+        searchFilter={(profile, query) => profile.full_name.toLowerCase().includes(query) || profile.email.toLowerCase().includes(query) || (orgMap[profile.org_id || ""] || "").toLowerCase().includes(query) || profile.role.toLowerCase().includes(query)}
+        emptyMessage="No accounts match the current filters"
+        toolbar={<UserDirectoryFiltersBar value={filters} organizations={orgOptions} onChange={setFilters} />}
+      />
       <CreateUserModal isOpen={showCreate} onClose={() => setShowCreate(false)} orgOptions={orgOptions} organizations={orgs} profiles={profiles} />
       <EditUserModal isOpen={Boolean(editUser)} onClose={() => setEditUser(null)} user={editUser} orgOptions={orgOptions} organizations={orgs} profiles={profiles} />
     </div>

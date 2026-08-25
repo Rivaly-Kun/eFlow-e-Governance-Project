@@ -31,6 +31,8 @@ describe("proposal draft team assignment modal", () => {
       }),
     );
 
+    expect(screen.getByRole("dialog", { name: "Select Team and Leader" })).toBeTruthy();
+
     fireEvent.click(screen.getByText("Planning Staff One"));
 
     expect(document.body.textContent).toContain("1 member selected");

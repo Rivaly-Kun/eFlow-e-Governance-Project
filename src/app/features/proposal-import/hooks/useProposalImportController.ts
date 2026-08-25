@@ -20,6 +20,8 @@ import { filterEmployeesByPdfMentions } from "../selectors/employeeMentions";
 import { withTeamIntelligenceCandidateWorkload } from "../selectors/candidateWorkload";
 import { buildHierarchyIds, type DraftTask, type PdfPhase } from "../components/draftModel";
 import type { AiQueueUpdate } from "../../ai";
+import { buildProposalBudgetFromTasks } from "../../budget";
+import { normalizeImportedTaskBudgetLines } from "../services/proposalBudgetImport";
 
 export function useProposalImportController(onClose?: () => void) {
   const { notes: employeeNotes } = useEmployeeNotes();
@@ -132,8 +134,9 @@ export function useProposalImportController(onClose?: () => void) {
             ai,
           );
           act.tasks.forEach((t, ti) => {
+            const taskKey = `${pi}-${pj}-${ai}-${ti}`;
             out.push({
-              key: `${pi}-${pj}-${ai}-${ti}`,
+              key: taskKey,
               proposalTitle,
               proposalId: hierarchyIds.proposalId,
               programIdx: pi,
@@ -158,6 +161,9 @@ export function useProposalImportController(onClose?: () => void) {
               reasoning: t.recommendationReasoning || "",
               assignmentException: t.assignmentException,
               teamComposition: t.teamComposition,
+              budgetDecision: t.budgetDecision || "missing",
+              budgetNoCostReason: t.budgetNoCostReason,
+              budgetLines: normalizeImportedTaskBudgetLines(taskKey, t.budgetLines),
               enabled: true,
             });
           });
@@ -232,6 +238,7 @@ export function useProposalImportController(onClose?: () => void) {
         organizations: detectedScope,
         ownerOrgId: departmentFilter,
         planningAnchor: planningAnchor.current,
+        budget: buildProposalBudgetFromTasks(generatedTasks),
       });
       setAutoSaveState("saving");
       const persistedDraft = await createCollaborationDraft({
@@ -267,6 +274,7 @@ export function useProposalImportController(onClose?: () => void) {
       organizations: collaborationOrganizations,
       ownerOrgId: departmentFilter,
       planningAnchor: planningAnchor.current,
+      budget: buildProposalBudgetFromTasks(draftTasks),
     });
     const signature = JSON.stringify(snapshot);
     if (signature === lastSavedSnapshot.current) return;
@@ -344,6 +352,8 @@ export function useProposalImportController(onClose?: () => void) {
         reasoning: "",
         assignmentException: undefined,
         teamComposition: undefined,
+        budgetDecision: "missing",
+        budgetLines: [],
         enabled: true,
       },
     ]);
@@ -361,6 +371,7 @@ export function useProposalImportController(onClose?: () => void) {
         organizations: collaborationOrganizations,
         ownerOrgId: departmentFilter,
         planningAnchor: planningAnchor.current,
+        budget: buildProposalBudgetFromTasks(draftTasks),
       });
       if (draftId) await autosaveCollaborationDraft(draftId, snapshot.title, snapshot);
       else await createCollaborationDraft({ title: snapshot.title, ownerOrgId: departmentFilter, sourceType: "ai_pdf", snapshot, sourceFile: pdfFile || undefined });

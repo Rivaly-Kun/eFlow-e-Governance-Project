@@ -20,7 +20,11 @@ import { useAuth } from "../../../contexts/AuthContext";
 import { useTasks } from "../../../hooks/useFirebaseData";
 import { useProjectsData, useScopedOrgIds } from "../../../hooks/useSupabaseData";
 import type { Task } from "../../../services/taskService";
-import { canUserReviewTask, isTaskVisibleInReviewQueue } from "../selectors";
+import {
+  canUserReviewTask,
+  getInitialReviewWorkspaceKind,
+  isTaskVisibleInReviewQueue,
+} from "../selectors";
 import {
   fetchProgressUpdates,
   type ProgressUpdate,
@@ -37,8 +41,10 @@ import { InitialsAvatar, PriorityPill } from "../../../components/workflow/Statu
 import { TaskReviewPanel } from "./TaskReviewPanel";
 import { TaskActivityTimeline } from "../../../components/workflow/TaskActivityTimeline";
 import { getHeadWorkspaceLabel } from "../../../shared/roles";
+import { canOpenBudgetReviewWorkspace } from "../selectors";
+import { BudgetReviewInbox } from "../../budget";
 import { SubtaskReviewInbox } from "./SubtaskReviewInbox";
-import { ReviewKindSwitch } from "./ReviewKindSwitch";
+import { ReviewKindSwitch, type ReviewKind } from "./ReviewKindSwitch";
 import { TaskReviewStandards } from "./TaskReviewStandards";
 import { TaskSubtaskEvidenceSection } from "./TaskSubtaskEvidenceSection";
 import { ReviewDecisionForm } from "./ReviewDecisionForm";
@@ -70,10 +76,14 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
   const [sort, setSort] = useState("oldest");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressUpdate[]>([]);
-  const [reviewKind, setReviewKind] = useState<"tasks" | "subtasks">("tasks");
+  const [reviewKind, setReviewKind] = useState<ReviewKind>(
+    getInitialReviewWorkspaceKind(scope),
+  );
   const [subtaskFocus, setSubtaskFocus] = useState<NotificationNavigationIntent | null>(null);
+  const [budgetFocus, setBudgetFocus] = useState<NotificationNavigationIntent | null>(null);
 
   const { user, userProfile } = useAuth();
+  const canReviewBudget = canOpenBudgetReviewWorkspace(scope, userProfile?.role);
   const queue = useMemo(() => {
     let rows = tasks.filter(
       (task) => isTaskVisibleInReviewQueue(
@@ -118,10 +128,13 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
   const selected = queue.find((t) => t.id === selectedId) || null;
 
   useNotificationNavigationIntent(
-    (intent) => intent.kind === "task_review" || intent.kind === "subtask_review",
+    (intent) => intent.kind === "task_review" || intent.kind === "subtask_review" || intent.kind === "budget",
     (intent) => {
       if (loading) return false;
-      if (intent.kind === "subtask_review") {
+      if (intent.kind === "budget" && canReviewBudget) {
+        setBudgetFocus(intent);
+        setReviewKind("budget");
+      } else if (intent.kind === "subtask_review") {
         setSubtaskFocus(intent);
         setReviewKind("subtasks");
       } else {
@@ -131,7 +144,7 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
       }
       return true;
     },
-    [loading, queue],
+    [canReviewBudget, loading, queue],
   );
   const canReviewSelected = Boolean(
     selected &&
@@ -150,11 +163,22 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
     error: subtaskEvidenceError,
   } = useTaskReviewEvidence(selected?.id);
 
+  if (reviewKind === "budget" && canReviewBudget) {
+    return (
+      <BudgetReviewInbox
+        focus={budgetFocus}
+        scope={scope}
+        actions={<ReviewKindSwitch active="budget" includeBudget onChange={setReviewKind} />}
+      />
+    );
+  }
+
   if (reviewKind === "subtasks") {
     return (
       <SubtaskReviewInbox
         focus={subtaskFocus}
         onShowTasks={() => setReviewKind("tasks")}
+        onShowBudget={canReviewBudget ? () => setReviewKind("budget") : undefined}
       />
     );
   }
@@ -175,7 +199,7 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
         subtitle="Validate submitted work and keep the pipeline moving."
         actions={
           <div className="flex items-center gap-2">
-            <ReviewKindSwitch active="tasks" onChange={setReviewKind} />
+            <ReviewKindSwitch active="tasks" includeBudget={canReviewBudget} onChange={setReviewKind} />
             <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 text-[12px] font-['Lexend:Medium',_sans-serif] text-amber-700">
               <Inbox size={14} /> {queue.length} awaiting review
             </div>

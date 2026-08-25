@@ -45,11 +45,18 @@ export function buildCollaborationSnapshot({
     const activityPrimaryOrgId = task.activityPrimaryOrgId || task.primaryOrgId || ownerOrgId;
     const activitySupportingOrgIds = Array.from(new Set(task.activitySupportingOrgIds || task.supportingOrgIds || []))
       .filter((orgId) => orgId && orgId !== activityPrimaryOrgId);
+    const leadMemberId = task.leadMemberId || null;
+    const assignedMemberIds = Array.from(new Set([
+      ...(task.assignedMemberIds || []).filter(Boolean),
+      ...(leadMemberId ? [leadMemberId] : []),
+    ]));
     const deadline = resolveScheduleDateInput(task.deadline || task.activitySchedule, planningAnchor)
       || task.deadline
       || "";
     return {
       ...task,
+      assignedMemberIds,
+      leadMemberId,
       deadline,
       activityPrimaryOrgId,
       activitySupportingOrgIds,

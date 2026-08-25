@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertCircle, Check, ChevronRight, Clock, Edit2, Trash2 } from "lucide-react";
+import { AlertCircle, Banknote, Check, ChevronRight, Clock, Edit2, Trash2 } from "lucide-react";
 import type { Employee } from "../../../services/employeeService";
 import type { EmployeeNotesMap } from "../../../services/employeeNotesService";
 import { priorityMeta } from "./draftModel";
@@ -7,6 +7,7 @@ import type { DraftTask } from "./draftModel";
 import { TaskAssignmentSummary } from "./TaskAssignmentSummary";
 import { AssignmentExceptionNote } from "./AssignmentExceptionNote";
 import { TeamCompositionNote } from "./TeamCompositionNote";
+import { getBudgetLineAmount, TaskBudgetDialog } from "../../budget";
 
 export function DraftTaskRow({
   dt,
@@ -24,13 +25,17 @@ export function DraftTaskRow({
   onOpenModal: (key: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [budgetOpen, setBudgetOpen] = useState(false);
   const assignedEmps = dt.assignedMemberIds
     .map((id) => employees.find((e) => e.id === id))
     .filter((emp): emp is Employee => Boolean(emp));
   const pm = priorityMeta[dt.priority] || priorityMeta.medium;
+  const budgetTotal = (dt.budgetLines || []).reduce((sum, line) => sum + getBudgetLineAmount(line), 0);
 
   return (
     <div
+      data-testid="manual-task-row"
+      data-task-key={dt.key}
       className={`px-6 py-3 flex items-start gap-3 group transition-all ${
         dt.enabled ? "" : "opacity-40"
       } hover:bg-neutral-50/60`}
@@ -57,12 +62,16 @@ export function DraftTaskRow({
         {editing ? (
           <div className="space-y-2">
             <input
+              aria-label="Task title"
+              data-testid="manual-task-title"
               autoFocus
               value={dt.title}
               onChange={(e) => onUpdate(dt.key, { title: e.target.value })}
               className="w-full text-[13px] font-['Lexend:Medium',_sans-serif] text-neutral-900 border border-neutral-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-neutral-500"
             />
             <textarea
+              aria-label="Task description"
+              data-testid="manual-task-description"
               rows={2}
               value={dt.description}
               onChange={(e) =>
@@ -72,6 +81,8 @@ export function DraftTaskRow({
             />
             <div className="flex items-center gap-2 flex-wrap">
               <input
+                aria-label="Task deadline"
+                data-testid="manual-task-deadline"
                 type="date"
                 value={dt.deadline}
                 onChange={(e) => onUpdate(dt.key, { deadline: e.target.value })}
@@ -91,6 +102,7 @@ export function DraftTaskRow({
                 <option value="high">High</option>
               </select>
               <button
+                data-testid="manual-task-finish-editing"
                 onClick={() => setEditing(false)}
                 className="text-[11px] font-['Lexend:Medium',_sans-serif] text-white bg-neutral-800 border border-neutral-200 rounded-lg px-3 py-1 hover:bg-neutral-900 transition"
               >
@@ -134,12 +146,21 @@ export function DraftTaskRow({
                   Burnout risk
                 </span>
               )}
+              <button
+                type="button"
+                onClick={() => setBudgetOpen(true)}
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition ${dt.budgetDecision === "funded" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : dt.budgetDecision === "no_cost" ? "border-neutral-200 bg-neutral-100 text-neutral-600" : "border-amber-200 bg-amber-50 text-amber-700"}`}
+              >
+                <Banknote size={9} />
+                {dt.budgetDecision === "funded" ? `Budget ${new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(budgetTotal)}` : dt.budgetDecision === "no_cost" ? "No cost" : "Set task budget"}
+              </button>
             </div>
           </>
         )}
 
         {/* Team and leader assignment */}
         <button
+          data-testid="manual-task-assignment"
           onClick={() => onOpenModal(dt.key)}
           className="group/assign mt-3 flex w-full max-w-md items-center gap-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50/70 px-3 py-2.5 text-left transition hover:border-violet-400 hover:bg-violet-50/50"
           aria-label={
@@ -176,6 +197,7 @@ export function DraftTaskRow({
       {/* Action buttons */}
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition shrink-0 mt-0.5">
         <button
+          data-testid="manual-task-edit"
           onClick={() => setEditing(!editing)}
           className="p-1.5 rounded-lg hover:bg-neutral-100 text-neutral-400 hover:text-neutral-700 transition"
           title="Edit task"
@@ -190,6 +212,16 @@ export function DraftTaskRow({
           <Trash2 size={12} />
         </button>
       </div>
+      <TaskBudgetDialog
+        open={budgetOpen}
+        taskKey={dt.key}
+        taskTitle={dt.title || "Untitled task"}
+        decision={dt.budgetDecision || "missing"}
+        noCostReason={dt.budgetNoCostReason}
+        lines={dt.budgetLines || []}
+        onChange={(patch) => onUpdate(dt.key, patch)}
+        onClose={() => setBudgetOpen(false)}
+      />
     </div>
   );
 }

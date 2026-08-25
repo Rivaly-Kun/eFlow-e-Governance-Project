@@ -1,0 +1,74 @@
+import { useMemo, useState, type ReactNode } from "react";
+import { CheckCircle2, Inbox, ReceiptText } from "lucide-react";
+import { useAuth } from "../../../contexts/AuthContext";
+import { LoadingState, PageHeader } from "../../../components/workflow/primitives";
+import { useDepartmentBudget } from "../hooks/useDepartmentBudget";
+import { BudgetApprovalQueue } from "./BudgetApprovalQueue";
+import { BudgetCard, BudgetEmpty } from "./budgetUi";
+import { FiscalYearControl } from "./FiscalYearControl";
+import { getCurrentFiscalYear } from "../constants";
+import type { NotificationNavigationIntent } from "../../notifications";
+
+export function BudgetReviewInbox({
+  actions,
+  focus,
+  scope = "department",
+}: {
+  actions?: ReactNode;
+  focus?: NotificationNavigationIntent | null;
+  scope?: "department" | "leading";
+}) {
+  const { userProfile } = useAuth();
+  const orgId = userProfile?.org_id || userProfile?.departmentId || "";
+  const [fiscalYear, setFiscalYear] = useState(getCurrentFiscalYear());
+  const budget = useDepartmentBudget(orgId, fiscalYear);
+  const currentUserId = userProfile?.id || "";
+  const isDepartmentApprover = ["dept_head", "department_head", "assistant_head"].includes(userProfile?.role || "");
+  const counts = useMemo(() => ({
+    allocations: budget.allocations.filter((item) => isDepartmentApprover && item.status === "pending" && item.requestedBy !== currentUserId).length,
+    requests: budget.requests.filter((item) => (isDepartmentApprover && item.status === "pending_department_approval" && item.requesterId !== currentUserId) || (item.status === "pending_leader_review" && item.taskLeaderId === currentUserId && item.requesterId !== currentUserId)).length,
+    liquidations: budget.liquidations.filter((item) => {
+      const request = budget.requests.find((candidate) => candidate.id === item.requestId);
+      return (isDepartmentApprover && item.status === "pending_department_settlement" && request?.cashRecipientId !== currentUserId) || (item.status === "pending_leader_review" && request?.taskLeaderId === currentUserId && request?.cashRecipientId !== currentUserId);
+    }).length,
+    releases: budget.releases.filter((item) => isDepartmentApprover && item.status === "scheduled" && item.scheduledDate <= new Date().toISOString().slice(0, 10)).length,
+  }), [budget.allocations, budget.liquidations, budget.releases, budget.requests, currentUserId, isDepartmentApprover]);
+  const total = counts.allocations + counts.requests + counts.liquidations + counts.releases;
+
+  return (
+    <div className="min-h-full p-6 sm:p-8">
+      <PageHeader
+        eyebrow={scope === "leading" ? "Leader Workspace · Financial Reviews" : "Department · Reviews"}
+        title="Financial Approvals"
+        subtitle={scope === "leading" ? "Review only the petty-cash requests and receipt liquidations routed from contributors on work you lead." : "Review work allocations, employee petty-cash requests, releases, and receipt settlements from the same approval inbox."}
+        actions={(
+          <div className="flex flex-wrap items-center gap-2">
+            {actions}
+            <FiscalYearControl value={fiscalYear} onChange={setFiscalYear} compact />
+            <div className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-[12px] text-amber-700">
+              <Inbox size={14} /> {total} awaiting review
+            </div>
+          </div>
+        )}
+      />
+
+      {budget.loading ? (
+        <div className="rounded-xl border border-neutral-200 bg-white p-8"><LoadingState label="Loading financial approvals…" /></div>
+      ) : budget.error ? (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-[11px] text-rose-700">{budget.error}</div>
+      ) : !budget.summary ? (
+        <BudgetEmpty title={`No ${fiscalYear} department budget`} description="Create and lock the annual department budget before employees can request petty cash." />
+      ) : (
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <BudgetCard label="Allocation proposals" value={String(counts.allocations)} note="Task Leader requests" icon={<ReceiptText size={15} />} tone={counts.allocations ? "warn" : "good"} />
+            <BudgetCard label="Petty-cash requests" value={String(counts.requests)} note="Employee requests" icon={<Inbox size={15} />} tone={counts.requests ? "warn" : "good"} />
+            <BudgetCard label="Receipt packages" value={String(counts.liquidations)} note="Liquidations to verify" icon={<CheckCircle2 size={15} />} tone={counts.liquidations ? "warn" : "good"} />
+            <BudgetCard label="Cash releases" value={String(counts.releases)} note="Scheduled tranches due" icon={<ReceiptText size={15} />} tone={counts.releases ? "warn" : "good"} />
+          </div>
+          <BudgetApprovalQueue data={budget} onChanged={budget.refresh} focusRecordId={focus?.financialRecordId} />
+        </div>
+      )}
+    </div>
+  );
+}

@@ -26,6 +26,17 @@ export interface ProposalTeamComposition {
   memberReasons: ProposalTeamMemberReason[];
 }
 
+export interface ProposalDecompositionBudgetLine {
+  expenseClass: string;
+  category: string;
+  particular: string;
+  quantity?: number;
+  unit?: string;
+  unitCost?: number;
+  amount: number;
+  fundSource?: string;
+}
+
 export interface ProposalDecompositionTask {
   title: string;
   description: string;
@@ -39,6 +50,9 @@ export interface ProposalDecompositionTask {
   recommendationSource?: "llm" | "fallback" | "import";
   assignmentException?: ProposalAssignmentException;
   teamComposition?: ProposalTeamComposition;
+  budgetDecision?: "missing" | "funded" | "no_cost";
+  budgetNoCostReason?: string;
+  budgetLines?: ProposalDecompositionBudgetLine[];
 }
 
 export interface ProposalDecompositionActivity {

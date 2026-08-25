@@ -1,28 +1,55 @@
 export type FiscalBudgetStatus = "draft" | "locked" | "closed";
 export type AllocationStatus = "pending" | "approved" | "rejected" | "cancelled";
+export type TaskBudgetDecision = "missing" | "funded" | "no_cost";
 export type PettyCashStatus =
+  | "draft"
   | "pending"
+  | "pending_leader_review"
+  | "leader_changes_requested"
+  | "pending_department_approval"
+  | "department_changes_requested"
   | "approved"
+  | "scheduled_for_release"
+  | "partially_released"
+  | "released"
   | "rejected"
   | "cancelled"
+  | "liquidation_draft"
   | "liquidation_submitted"
+  | "pending_leader_liquidation_review"
+  | "pending_department_settlement"
   | "changes_requested"
+  | "overdue_liquidation"
   | "settled";
 
 export interface BudgetLineInput {
   id: string;
+  draftTaskKey?: string;
   expenseClass: string;
   category: string;
   particular: string;
+  quantity?: number;
+  unit?: string;
+  unitCost?: number;
   amount: number;
   fundSource: string;
   position: number;
+}
+
+export interface ProposalTaskBudget {
+  taskKey: string;
+  taskTitle: string;
+  decision: TaskBudgetDecision;
+  noCostReason?: string;
+  totalAmount: number;
+  lines: BudgetLineInput[];
 }
 
 export interface ProposalBudgetDraft {
   fiscalYear: number;
   totalAmount: number;
   lines: BudgetLineInput[];
+  taskBudgets?: ProposalTaskBudget[];
 }
 
 export interface ProposalBudgetCategoryGroup {
@@ -50,6 +77,13 @@ export interface DepartmentBudgetSummary {
   spentAmount: number;
   availableAmount: number;
   commitmentRemaining: number;
+  dailyPettyCashReleaseLimit: number;
+  perReceiptLimit: number;
+  liquidationDueDays: number;
+  allowReceiptLimitOverride: boolean;
+  releasedToday: number;
+  scheduledToday: number;
+  dailyReleaseRemaining: number;
   pettyCashLimit: number;
   pettyCashRequestLimit: number;
   pettyCashReserved: number;
@@ -81,6 +115,9 @@ export interface WorkBudgetAllocation {
   commitmentId: string;
   taskId: string;
   subtaskId?: string;
+  subtaskTitle?: string;
+  subtaskAssigneeIds?: string[];
+  parentAllocationLineId?: string;
   amount: number;
   status: AllocationStatus;
   reason: string;
@@ -89,6 +126,10 @@ export interface WorkBudgetAllocation {
   decisionReason?: string;
   requestedAt: number;
   decidedAt?: number;
+}
+
+export interface WorkBudgetAllocationLine extends BudgetLineInput {
+  allocationId: string;
 }
 
 export interface PettyCashRequest {
@@ -101,7 +142,11 @@ export interface PettyCashRequest {
   taskId: string;
   subtaskId?: string;
   requesterId: string;
+  taskLeaderId?: string;
+  cashRecipientId?: string;
   requesterName?: string;
+  taskLeaderName?: string;
+  cashRecipientName?: string;
   taskTitle?: string;
   subtaskTitle?: string;
   purpose: string;
@@ -110,10 +155,30 @@ export interface PettyCashRequest {
   status: PettyCashStatus;
   approvedAmount?: number;
   approvalReason?: string;
+  leaderDecisionReason?: string;
+  departmentDecisionReason?: string;
+  scheduledAmount?: number;
+  releasedAmount?: number;
+  liquidationDueAt?: number;
   actualSpent?: number;
   returnedAmount?: number;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface PettyCashRelease {
+  id: string;
+  requestId: string;
+  orgId: string;
+  scheduledDate: string;
+  amount: number;
+  status: "scheduled" | "released" | "cancelled";
+  recipientId?: string;
+  releasedBy?: string;
+  releasedAt?: number;
+  acknowledgedBy?: string;
+  acknowledgedAt?: number;
+  createdAt: number;
 }
 
 export interface PettyCashReceipt {
@@ -128,6 +193,18 @@ export interface PettyCashReceipt {
   filePath: string;
   mimeType: string;
   fileSize: number;
+  overrideReason?: string;
+}
+
+export interface DepartmentBudgetAdjustment {
+  id: string;
+  fiscalBudgetId: string;
+  previousAmount: number;
+  adjustedAmount: number;
+  reason: string;
+  supportFilePath?: string;
+  createdBy: string;
+  createdAt: number;
 }
 
 export interface PettyCashLiquidation {
@@ -137,7 +214,7 @@ export interface PettyCashLiquidation {
   declaredSpent: number;
   returnedAmount: number;
   note: string;
-  status: "pending" | "approved" | "changes_requested";
+  status: "pending" | "pending_leader_review" | "pending_department_settlement" | "approved" | "changes_requested";
   submittedBy: string;
   submittedAt: number;
   decisionReason?: string;
@@ -158,9 +235,13 @@ export interface DepartmentBudgetBundle {
   lines: DepartmentBudgetLine[];
   commitments: BudgetCommitment[];
   allocations: WorkBudgetAllocation[];
+  allocationLines: WorkBudgetAllocationLine[];
   requests: PettyCashRequest[];
+  releases: PettyCashRelease[];
   liquidations: PettyCashLiquidation[];
   ledger: BudgetLedgerEntry[];
+  adjustments: DepartmentBudgetAdjustment[];
+  schemaWarnings?: string[];
 }
 
 export interface ReceiptDraft {
@@ -170,5 +251,6 @@ export interface ReceiptDraft {
   receiptDate: string;
   description: string;
   amount: number;
+  overrideReason?: string;
   file?: File;
 }
