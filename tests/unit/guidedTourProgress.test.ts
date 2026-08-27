@@ -7,6 +7,22 @@ import {
   writeGuidedTourProgress,
 } from "../../src/app/features/guided-tours";
 
+const storage = new Map<string, string>();
+const storageMock = {
+  getItem: (key: string) => storage.get(key) ?? null,
+  setItem: (key: string, value: string) => { storage.set(key, String(value)); },
+  removeItem: (key: string) => { storage.delete(key); },
+  clear: () => { storage.clear(); },
+  key: (index: number) => Array.from(storage.keys())[index] ?? null,
+  get length() { return storage.size; },
+};
+
+Object.defineProperty(window, "localStorage", {
+  value: storageMock,
+  configurable: true,
+  writable: true,
+});
+
 beforeEach(() => window.localStorage.clear());
 
 describe("guided tour progress", () => {

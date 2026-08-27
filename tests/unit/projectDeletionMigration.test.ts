@@ -12,7 +12,7 @@ describe("permanent project deletion migration", () => {
     const projectDeleteAt = sql.indexOf("delete from public.projects");
 
     expect(clearLinksAt).toBeGreaterThan(-1);
-    expect(sql).toContain("set linked_project_id = null,\n      milestone_id = null");
+    expect(sql.replace(/\r\n/g, "\n")).toContain("set linked_project_id = null,\n      milestone_id = null");
     expect(projectDeleteAt).toBeGreaterThan(clearLinksAt);
   });
 });

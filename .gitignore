@@ -17,6 +17,8 @@ dist-ssr/
 # Python runtime artifacts
 __pycache__/
 *.py[cod]
+.venv/
+server/.venv/
 
 # Environment files
 .env

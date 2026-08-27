@@ -25,10 +25,27 @@ def _requirements_hash() -> str:
     return sha256(REQUIREMENTS.read_bytes()).hexdigest()
 
 
-def _prepare_runtime() -> None:
+def _is_venv_valid() -> bool:
     if not PYTHON.exists():
+        return False
+    try:
+        res = subprocess.run(
+            [str(PYTHON), "-c", "import sys"],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
+def _prepare_runtime() -> None:
+    if not _is_venv_valid():
         print(f"[GATEWAY] Creating isolated Python environment at {VENV_DIR}", flush=True)
-        subprocess.run([sys.executable, "-m", "venv", str(VENV_DIR)], check=True)
+        subprocess.run([sys.executable, "-m", "venv", "--clear", str(VENV_DIR)], check=True)
+        if REQUIREMENTS_MARKER.exists():
+            REQUIREMENTS_MARKER.unlink()
 
     current_hash = _requirements_hash()
     installed_hash = (
