@@ -21,7 +21,15 @@ export type NotificationType =
   | 'collaboration_revision'
   | 'collaboration_approved'
   | 'collaboration_declined'
-  | 'collaboration_ready';
+  | 'collaboration_ready'
+  | 'petty_cash_leader_review'
+  | 'petty_cash_department_approval'
+  | 'petty_cash_changes'
+  | 'petty_cash_decision'
+  | 'petty_cash_liquidation'
+  | 'petty_cash_liquidation_changes'
+  | 'petty_cash_liquidation_overdue'
+  | 'petty_cash_request_expired';
 
 export interface Notification {
   id: string;
@@ -98,7 +106,15 @@ export function subscribeToNotifications(
     }, () => load())
     .subscribe();
 
-  return () => supabase.removeChannel(channel);
+  // Realtime can be unavailable briefly during reconnects or when a table was
+  // newly added to the publication. Polling keeps reviewer alerts reliable
+  // without waiting for the user to reload the app.
+  const refreshTimer = window.setInterval(() => { void load(); }, 15_000);
+
+  return () => {
+    window.clearInterval(refreshTimer);
+    void supabase.removeChannel(channel);
+  };
 }
 
 export async function createNotification(

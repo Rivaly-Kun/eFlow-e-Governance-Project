@@ -45,6 +45,8 @@ export function BudgetApprovalQueue({
     () => new Map(data.requests.map((item) => [item.id, item])),
     [data.requests],
   );
+  const commitmentById = useMemo(() => new Map(data.commitments.map((item) => [item.id, item])), [data.commitments]);
+  const lineById = useMemo(() => new Map(data.allocationLines.map((item) => [item.id, item])), [data.allocationLines]);
   useEffect(() => {
     if (!focusRecordId) return;
     const timer = window.setTimeout(() => document.getElementById(`financial-record-${focusRecordId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
@@ -81,7 +83,7 @@ export function BudgetApprovalQueue({
   };
 
   if (!pendingAllocations.length && !pendingRequests.length && !pendingLiquidations.length && !dueReleases.length) {
-    return <BudgetEmpty title="Approval inbox is clear" description="New subtask allocation requests, petty-cash requests, and receipt liquidations will appear here." />;
+    return <BudgetEmpty title="Approval inbox is clear" description="New task-linked cash requests, release actions, and receipt settlements will appear here." />;
   }
 
   return (
@@ -89,7 +91,7 @@ export function BudgetApprovalQueue({
       {message && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-[10.5px] text-rose-700">{message}</div>}
 
       {pendingAllocations.length > 0 && (
-        <QueueSection icon={<WalletCards size={14} />} title="Subtask budget proposals" count={pendingAllocations.length}>
+        <QueueSection icon={<WalletCards size={14} />} title="Legacy subtask allocation proposals" count={pendingAllocations.length}>
           {pendingAllocations.map((item) => (
             <QueueRow
               key={item.id}
@@ -111,24 +113,30 @@ export function BudgetApprovalQueue({
       )}
 
       {pendingRequests.length > 0 && (
-        <QueueSection icon={<WalletCards size={14} />} title="Petty-cash requests" count={pendingRequests.length}>
-          {pendingRequests.map((item) => (
+        <QueueSection icon={<WalletCards size={14} />} title="Task-linked cash requests" count={pendingRequests.length}>
+          {pendingRequests.map((item) => {
+            const line = item.allocationLineId ? lineById.get(item.allocationLineId) : undefined;
+            const attachments = data.requestAttachments.filter((attachment) => attachment.requestId === item.id);
+            const hierarchy = [commitmentById.get(item.commitmentId)?.title, item.taskTitle, item.subtaskTitle].filter(Boolean).join(" → ");
+            return (
             <QueueRow
               key={item.id}
               recordId={item.id}
               focused={focusRecordId === item.id}
-              title={item.taskTitle || "Assigned work"}
-              meta={`${item.requesterName || "Employee"} · ${item.purpose} · ${peso.format(item.requestedAmount)} · ${item.status === "pending_leader_review" ? "Team Leader endorsement" : "Department approval"}`}
+              title={hierarchy || "Funded work"}
+              meta={`${item.requesterName || "Employee"} · ${item.purpose} · ${peso.format(item.requestedAmount)} · ${item.status === "pending_leader_review" ? "Operational endorsement" : "Fiscal authorization"}${line ? ` · ${line.category} / ${line.particular} / ${line.fundSource}` : ""}`}
               status={item.status}
+              details={attachments.length ? <div className="mt-2 flex flex-wrap gap-1.5">{attachments.map((attachment) => <button key={attachment.id} type="button" onClick={async () => window.open(await createReceiptSignedUrl(attachment.filePath), "_blank", "noopener,noreferrer")} className="rounded-md border border-neutral-200 bg-white px-2 py-1 text-[8.8px] text-neutral-600">{attachment.fileName}</button>)}</div> : undefined}
               actions={(
                 <DecisionButtons
                   busy={busy === item.id}
-                  onApprove={() => void act(item.id, () => item.status === "pending_leader_review" ? decidePettyCashLeaderReview(item.id, true, "Endorsed for department approval") : decidePettyCashRequest(item.id, true, "Approved operational petty cash"))}
-                  onReject={() => setRejection({ id: item.id, kind: item.status === "pending_leader_review" ? "request_leader" : "request_department", title: item.status === "pending_leader_review" ? "Return petty-cash request" : "Decline petty-cash request" })}
+                  approveLabel={item.status === "pending_leader_review" ? "Endorse" : "Authorize"}
+                  onApprove={() => void act(item.id, () => item.status === "pending_leader_review" ? decidePettyCashLeaderReview(item.id, true, "Operationally endorsed for fiscal authorization") : decidePettyCashRequest(item.id, true, "Fiscal authorization approved"))}
+                  onReject={() => setRejection({ id: item.id, kind: item.status === "pending_leader_review" ? "request_leader" : "request_department", title: item.status === "pending_leader_review" ? "Return cash request" : "Decline cash request" })}
                 />
               )}
             />
-          ))}
+          );})}
         </QueueSection>
       )}
 
@@ -140,7 +148,7 @@ export function BudgetApprovalQueue({
               <div id={`financial-record-${item.id}`} key={item.id} className={`border-b border-neutral-100 p-4 last:border-0 ${focusRecordId === item.id ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="text-[11.5px] font-['Lexend:Medium',_sans-serif] text-neutral-900">{request?.taskTitle || "Petty-cash liquidation"}</div>
+                    <div className="text-[11.5px] font-['Lexend:Medium',_sans-serif] text-neutral-900">{[request ? commitmentById.get(request.commitmentId)?.title : undefined, request?.taskTitle, request?.subtaskTitle].filter(Boolean).join(" → ") || "Cash liquidation"}</div>
                     <div className="mt-1 text-[10px] text-neutral-500">{request?.requesterName} · spent {peso.format(item.declaredSpent)} · return {peso.format(item.returnedAmount)}</div>
                     <div className="mt-1 text-[10px] text-neutral-600">{item.note}</div>
                   </div>
@@ -172,7 +180,7 @@ export function BudgetApprovalQueue({
         <QueueSection icon={<Banknote size={14} />} title="Cash releases due" count={dueReleases.length}>
           {dueReleases.map((release) => {
             const request = requestById.get(release.requestId);
-            return <QueueRow key={release.id} recordId={release.id} focused={focusRecordId === release.id} title={`PC-${String(request?.requestNumber || 0).padStart(5, "0")} · ${request?.taskTitle || "Funded work"}`} meta={`${release.scheduledDate} · recipient ${request?.cashRecipientName || request?.requesterName || "Employee"} · ${peso.format(release.amount)}`} status={release.status} actions={<button disabled={busy === release.id} onClick={() => void act(release.id, () => markPettyCashReleased(release.id))} className="inline-flex h-8 items-center gap-1 rounded-lg bg-emerald-700 px-3 text-[9.5px] text-white disabled:opacity-40"><Check size={11} /> Record release</button>} />;
+            return <QueueRow key={release.id} recordId={release.id} focused={focusRecordId === release.id} title={`FR-${String(request?.requestNumber || 0).padStart(5, "0")} · ${[request ? commitmentById.get(request.commitmentId)?.title : undefined, request?.taskTitle, request?.subtaskTitle].filter(Boolean).join(" → ") || "Funded work"}`} meta={`${release.scheduledDate} · recipient ${request?.cashRecipientName || request?.requesterName || "Employee"} · ${peso.format(release.amount)}`} status={release.status} actions={<button disabled={busy === release.id} onClick={() => void act(release.id, () => markPettyCashReleased(release.id))} className="inline-flex h-8 items-center gap-1 rounded-lg bg-emerald-700 px-3 text-[9.5px] text-white disabled:opacity-40"><Check size={11} /> Record release</button>} />;
           })}
         </QueueSection>
       )}
@@ -202,7 +210,7 @@ function QueueSection({ icon, title, count, children }: { icon: ReactNode; title
   );
 }
 
-function QueueRow({ recordId, title, meta, status, actions, focused = false }: { recordId: string; title: string; meta: string; status: string; actions: ReactNode; focused?: boolean }) {
+function QueueRow({ recordId, title, meta, status, actions, details, focused = false }: { recordId: string; title: string; meta: string; status: string; actions: ReactNode; details?: ReactNode; focused?: boolean }) {
   return (
     <div id={`financial-record-${recordId}`} className={`flex flex-wrap items-center gap-3 border-b border-neutral-100 p-4 last:border-0 ${focused ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}`}>
       <div className="min-w-0 flex-1">
@@ -211,17 +219,18 @@ function QueueRow({ recordId, title, meta, status, actions, focused = false }: {
           <StatusPill status={status} />
         </div>
         <div className="mt-1 text-[10px] text-neutral-500">{meta}</div>
+        {details}
       </div>
       {actions}
     </div>
   );
 }
 
-function DecisionButtons({ busy, onApprove, onReject }: { busy: boolean; onApprove: () => void; onReject: () => void }) {
+function DecisionButtons({ busy, onApprove, onReject, approveLabel = "Approve" }: { busy: boolean; onApprove: () => void; onReject: () => void; approveLabel?: string }) {
   return (
     <div className="flex gap-2">
       <button disabled={busy} onClick={onReject} className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-200 px-3 text-[9.5px] text-rose-700 disabled:opacity-40"><X size={11} /> Decline</button>
-      <button disabled={busy} onClick={onApprove} className="inline-flex h-8 items-center gap-1 rounded-lg bg-neutral-900 px-3 text-[9.5px] text-white disabled:opacity-40"><Check size={11} /> Approve</button>
+      <button disabled={busy} onClick={onApprove} className="inline-flex h-8 items-center gap-1 rounded-lg bg-neutral-900 px-3 text-[9.5px] text-white disabled:opacity-40"><Check size={11} /> {approveLabel}</button>
     </div>
   );
 }

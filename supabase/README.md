@@ -55,6 +55,10 @@ The current task-flow additions are:
 47. `20260824000007_task_budget_daily_petty_cash_workflow.sql` — makes task budgets authoritative, creates immutable operational allocation lines, replaces the annual petty-cash pool with a configurable daily release schedule, and adds Team Leader plus department review for requests and liquidations.
 48. `20260824000008_budget_controls_and_resubmission.sql` — adds source-particular subtask allocations, correction/resubmission, recipient acknowledgement, audited appropriation adjustment and fiscal close, overdue maintenance, and financial completion guards.
 49. `20260825000001_subtask_budget_distribution_guard.sql` — makes a Task Leader's distribution of an already-approved task budget immediately usable by the assigned subtask contributors, and blocks any parent-task petty-cash amount from being allocated a second time to subtasks.
+50. `20260826000001_fix_subtask_budget_allocation_fiscal_reference.sql` — qualifies the fiscal-budget lookup in subtask allocation so the RPC cannot fail with an ambiguous `fiscal_budget_id` reference.
+51. `20260826000002_task_leader_only_subtask_management.sql` — enforces Task Leader authority for subtask creation, ordering, standalone conversion, assignment, deadline, and deletion operations.
+52. `20260826000003_dynamic_task_funding.sql` — consolidates cash into task/subtask context, reserves the shared proposal pool atomically, makes subtask caps optional, requires a source line and fund, skips self-endorsement for Task Leaders, records an append-only audit trail, and repairs proven collaboration workspace membership paths.
+53. `20260826000004_release_correction_holds_and_notify_reviewers.sql` — releases temporary holds while a cash request is returned for correction, restores the hold atomically on resubmission, and alerts the Team Leader or fiscal reviewer when corrected funding re-enters their queue.
 
 Apply these files in the listed order. The Assistant Head migration defensively
 creates the two reviewer columns when absent, but it does not replace the full
@@ -65,6 +69,6 @@ The Sir Gerson migrations must be applied in the order above. After applying the
 
 The collaboration and governance migrations are additive and must be applied in filename order. Do not copy their changes into `fresh_schema.sql` until they have been exercised against the required LEDIPO + CPDO + BPLO + OCIIB acceptance scenario. After applying them, restart the eFlow gateway and run `npm run verify:live-schema` so PostgREST confirms the new tables, columns, and RPC signatures.
 
-The department-budget migrations gate every proposal, whether built manually or imported with AI. For the current phase, the owning organization funds the full proposal even when other offices participate. Shared-cost funding, transfers between departments, and Finance-office release authority remain deferred. Apply all department-budget migrations before opening the Department Budget, Petty Cash, or financial Reviews workspaces; the live-schema verification checks their tables and RPCs.
+The department-budget migrations gate every proposal, whether built manually or imported with AI. For the current phase, the owning organization funds the full proposal even when other offices participate. Shared-cost funding, transfers between departments, and Finance-office release authority remain deferred. Apply all department-budget migrations before opening Department Budget, contextual task funding, or financial Reviews; the live-schema verification checks their tables and RPCs.
 
 These migrations do not require a service-role key in the browser. The frontend must use only the Supabase anonymous client; privileged behavior belongs in RLS policies, database functions, or the backend server.

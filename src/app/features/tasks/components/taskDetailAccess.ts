@@ -19,3 +19,11 @@ export function resolveTaskDetailCapabilities(
     canDiscuss: false,
   };
 }
+
+/** Subtask structure belongs exclusively to the effective Task Leader. */
+export function resolveSubtaskManagementCapability(
+  readOnly: boolean,
+  currentUserIsTaskLead: boolean,
+): boolean {
+  return !readOnly && currentUserIsTaskLead;
+}

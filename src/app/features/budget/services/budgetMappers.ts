@@ -72,7 +72,9 @@ export const mapAllocationLine = (row: Record<string, unknown>): WorkBudgetAlloc
 
 export const mapRequest = (row: Record<string, unknown>): PettyCashRequest => ({
   id: String(row.id), requestNumber: number(row.request_number), fiscalBudgetId: String(row.fiscal_budget_id),
-  commitmentId: String(row.commitment_id), allocationId: String(row.allocation_id), orgId: String(row.org_id),
+  commitmentId: String(row.commitment_id), allocationId: String(row.allocation_id),
+  allocationLineId: row.allocation_line_id ? String(row.allocation_line_id) : undefined,
+  orgId: String(row.org_id),
   taskId: String(row.task_id), subtaskId: row.subtask_id ? String(row.subtask_id) : undefined,
   requesterId: String(row.requester_id), requesterName: (row.requester as { full_name?: string } | null)?.full_name,
   taskLeaderId: row.task_leader_id ? String(row.task_leader_id) : undefined,
@@ -82,6 +84,7 @@ export const mapRequest = (row: Record<string, unknown>): PettyCashRequest => ({
   taskTitle: (row.task as { title?: string } | null)?.title, subtaskTitle: (row.subtask as { title?: string } | null)?.title,
   purpose: String(row.purpose || ""), requestedAmount: number(row.requested_amount),
   neededBy: row.needed_by ? String(row.needed_by) : undefined,
+  reservationExpiresAt: millis(row.reservation_expires_at),
   status: String(row.status) as PettyCashRequest["status"],
   approvedAmount: row.approved_amount == null ? undefined : number(row.approved_amount),
   approvalReason: row.approval_reason ? String(row.approval_reason) : undefined,
@@ -125,6 +128,15 @@ export const mapLiquidation = (row: Record<string, unknown>, receipts: PettyCash
 export const mapLedger = (row: Record<string, unknown>): BudgetLedgerEntry => ({
   id: String(row.id), entryType: String(row.entry_type || ""), amount: number(row.amount),
   description: String(row.description || ""), actorId: row.actor_id ? String(row.actor_id) : undefined,
+  actorRole: row.actor_role ? String(row.actor_role) : undefined,
+  taskId: row.task_id ? String(row.task_id) : undefined,
+  subtaskId: row.subtask_id ? String(row.subtask_id) : undefined,
+  allocationLineId: row.allocation_line_id ? String(row.allocation_line_id) : undefined,
+  previousState: row.previous_state ? String(row.previous_state) : undefined,
+  newState: row.new_state ? String(row.new_state) : undefined,
+  reason: row.reason ? String(row.reason) : undefined,
+  correlationKey: row.correlation_key ? String(row.correlation_key) : undefined,
+  metadata: row.metadata && typeof row.metadata === "object" ? row.metadata as Record<string, unknown> : {},
   createdAt: millis(row.created_at) || 0,
 });
 

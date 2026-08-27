@@ -75,12 +75,15 @@ function destinationForProject(role: string) {
   return null;
 }
 
-function destinationForBudget(role: string) {
+function destinationForBudget(notification: Notification, role: string) {
   if (role === "depthead") {
     return { section: "reviews", page: "For Review" };
   }
   if (role === "employee" || role === "teamleader") {
-    return { section: "budget", page: "Petty Cash & Expenses" };
+    if (notification.type.includes("leader_review")) {
+      return { section: "reviews", page: "Leader Reviews" };
+    }
+    return { section: "tasks", page: "My Tasks" };
   }
   return null;
 }
@@ -128,9 +131,9 @@ export function resolveNotificationDestination(
   ) {
     return makeDestination(
       notification,
-      destinationForBudget(role),
+      destinationForBudget(notification, role),
       "budget",
-      role === "depthead" ? "Open budget approval" : "Open petty cash",
+      role === "depthead" || notification.type.includes("leader_review") ? "Open funding review" : "Open task funding",
       notification.taskTitle || messageLabels[0],
     );
   }

@@ -42,11 +42,15 @@ export async function fetchCollaborationDrafts(): Promise<CollaborationDraft[]> 
 
 export async function fetchCollaborationDraft(draftId: string) {
   const [draftResult, participantResult, revisionResult] = await Promise.all([
-    supabase.from("proposal_collaboration_drafts").select("*").eq("id", draftId).single(),
+    // A primary-key lookup cannot legitimately return multiple rows. Using
+    // maybeSingle distinguishes an absent/RLS-hidden draft from a cardinality
+    // problem instead of surfacing PostgREST's misleading coercion error.
+    supabase.from("proposal_collaboration_drafts").select("*").eq("id", draftId).maybeSingle(),
     supabase.from("proposal_collaboration_orgs").select("*").eq("draft_id", draftId).order("created_at"),
     supabase.from("proposal_collaboration_revisions").select("*").eq("draft_id", draftId).order("revision_number", { ascending: false }),
   ]);
   if (draftResult.error) throw databaseUpgradeError(draftResult.error);
+  if (!draftResult.data) throw new Error("This proposal could not be found or your account does not have access to its Source & governance workspace.");
   if (participantResult.error) throw participantResult.error;
   if (revisionResult.error) throw revisionResult.error;
   return {

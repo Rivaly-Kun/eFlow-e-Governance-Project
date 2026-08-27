@@ -10,6 +10,30 @@ import type {
   WorkBudgetAllocation,
 } from "../types";
 
+export function getTaskScopedBudgetBundle(data: DepartmentBudgetBundle, taskIds: string[]): DepartmentBudgetBundle {
+  const taskIdSet = new Set(taskIds);
+  const allocations = data.allocations.filter((item) => taskIdSet.has(item.taskId));
+  const allocationIds = new Set(allocations.map((item) => item.id));
+  const requests = data.requests.filter((item) => taskIdSet.has(item.taskId));
+  const requestIds = new Set(requests.map((item) => item.id));
+  const liquidations = data.liquidations.filter((item) => requestIds.has(item.requestId));
+  const commitmentIds = new Set([
+    ...allocations.map((item) => item.commitmentId),
+    ...requests.map((item) => item.commitmentId),
+  ]);
+  return {
+    ...data,
+    commitments: data.commitments.filter((item) => commitmentIds.has(item.id)),
+    allocations,
+    allocationLines: data.allocationLines.filter((item) => allocationIds.has(item.allocationId)),
+    requests,
+    requestAttachments: data.requestAttachments.filter((item) => requestIds.has(item.requestId)),
+    releases: data.releases.filter((item) => requestIds.has(item.requestId)),
+    liquidations,
+    ledger: data.ledger.filter((item) => item.taskId ? taskIdSet.has(item.taskId) : requestIds.has(String(item.metadata?.requestId || ""))),
+  };
+}
+
 export interface BudgetExpenseReportRow {
   id: string;
   requestNumber: number;
@@ -163,16 +187,14 @@ export function getBudgetScheduleTotals(lines: BudgetLineInput[]) {
   }));
 }
 
-const RESERVED_REQUEST_STATES = new Set([
-  "approved",
-  "scheduled_for_release",
-  "partially_released",
-  "released",
-  "liquidation_submitted",
-  "pending_leader_liquidation_review",
-  "pending_department_settlement",
-  "changes_requested",
-  "overdue_liquidation",
+const NON_RESERVING_REQUEST_STATES = new Set([
+  "draft",
+  "leader_changes_requested",
+  "department_changes_requested",
+  "rejected",
+  "cancelled",
+  "expired",
+  "settled",
 ]);
 
 export function getAllocationCashPosition(
@@ -180,8 +202,8 @@ export function getAllocationCashPosition(
   requests: PettyCashRequest[],
 ) {
   const reserved = requests
-    .filter((request) => RESERVED_REQUEST_STATES.has(request.status))
-    .reduce((total, request) => total + (request.approvedAmount || 0), 0);
+    .filter((request) => !NON_RESERVING_REQUEST_STATES.has(request.status))
+    .reduce((total, request) => total + (request.approvedAmount ?? request.requestedAmount), 0);
   const spent = requests
     .filter((request) => request.status === "settled")
     .reduce((total, request) => total + (request.actualSpent || 0), 0);
@@ -209,8 +231,7 @@ export function getTaskBudgetDistribution(
       "draft",
       "rejected",
       "cancelled",
-      "leader_changes_requested",
-      "department_changes_requested",
+      "expired",
     ].includes(request.status))
     .reduce(
       (total, request) => total + (request.status === "settled"
@@ -257,7 +278,7 @@ export function getEligiblePettyCashAllocations(
     if (allocation.status !== "approved") return false;
     const task = taskById.get(allocation.taskId);
     if (!task) return false;
-    const leaderId = task.recommendationLeadId || task.assigneeId;
+    const leaderId = task.assigneeId || task.recommendationLeadId;
     if (allocation.subtaskId) {
       return leaderId === userId || Boolean(allocation.subtaskAssigneeIds?.includes(userId));
     }
@@ -276,7 +297,9 @@ export function buildBudgetExpenseReportRows(data: DepartmentBudgetBundle): Budg
       const latest = data.liquidations
         .filter((item) => item.requestId === request.id)
         .sort((a, b) => b.version - a.version)[0];
-      const lines = data.allocationLines.filter((line) => line.allocationId === request.allocationId);
+      const lines = request.allocationLineId
+        ? data.allocationLines.filter((line) => line.id === request.allocationLineId)
+        : data.allocationLines.filter((line) => line.allocationId === request.allocationId);
       const settledAt = Math.max(request.updatedAt, latest?.submittedAt || 0);
       return {
         id: request.id,

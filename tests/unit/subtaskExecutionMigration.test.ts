@@ -14,4 +14,15 @@ describe("subtask execution dependency migration", () => {
     expect(sql).toContain("prerequisite.is_standalone = false");
     expect(sql).toContain("Complete Step %");
   });
+
+  it("restricts subtask structure management to the effective Task Leader", () => {
+    const sql = readFileSync(resolve(
+      process.cwd(),
+      "supabase/migrations/20260826000002_task_leader_only_subtask_management.sql",
+    ), "utf8");
+    expect(sql).toContain(
+      "coalesce(task_row.assigned_to, task_row.recommendation_lead_id) = caller_id",
+    );
+    expect(sql).not.toContain("public.can_manage_task(target_task, caller_id)");
+  });
 });

@@ -1,0 +1,123 @@
+import { useMemo, useRef, useState } from "react";
+import { Paperclip, Send } from "lucide-react";
+import type { PettyCashRequest, TaskFundingContext } from "../types";
+import {
+  createContextualCashRequest,
+  resubmitContextualCashRequest,
+  uploadCashRequestAttachment,
+} from "../services/budgetService";
+import { peso } from "./budgetUi";
+
+export function CashRequestForm({
+  context,
+  orgId,
+  taskId,
+  subtaskId,
+  currentUserId,
+  correction,
+  onCancel,
+  onSaved,
+}: {
+  context: TaskFundingContext;
+  orgId: string;
+  taskId: string;
+  subtaskId?: string;
+  currentUserId: string;
+  correction?: PettyCashRequest;
+  onCancel: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const defaultLineId = correction?.allocationLineId || context.cap?.allocationLineId || context.lines.find((line) => line.available > 0)?.id || context.lines[0]?.id || "";
+  const [lineId, setLineId] = useState(defaultLineId);
+  const [amount, setAmount] = useState(correction?.requestedAmount || 0);
+  const [purpose, setPurpose] = useState(correction?.purpose || "");
+  const [neededBy, setNeededBy] = useState(correction?.neededBy || "");
+  const [attachment, setAttachment] = useState<File>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const idempotencyKey = useRef(crypto.randomUUID());
+  const selectedLine = context.lines.find((line) => line.id === lineId);
+  const requestable = useMemo(
+    () => Math.max(0, (selectedLine?.available || 0) + (correction?.allocationLineId === lineId ? correction.requestedAmount : 0)),
+    [correction, lineId, selectedLine?.available],
+  );
+
+  const submit = async () => {
+    if (!selectedLine) return;
+    setBusy(true);
+    setError("");
+    try {
+      const requestId = correction?.id || await createContextualCashRequest({
+        taskId,
+        subtaskId,
+        allocationLineId: selectedLine.id,
+        amount,
+        purpose,
+        neededBy,
+        idempotencyKey: idempotencyKey.current,
+      });
+      if (correction) {
+        await resubmitContextualCashRequest({
+          requestId: correction.id,
+          allocationLineId: selectedLine.id,
+          amount,
+          purpose,
+          neededBy,
+        });
+      }
+      if (attachment) await uploadCashRequestAttachment({ orgId, requestId, file: attachment });
+      await onSaved();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The cash request could not be submitted.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 space-y-3 rounded-xl border border-emerald-200 bg-white p-3">
+      <div>
+        <div className="text-[10.5px] font-semibold text-neutral-900">{correction ? "Correct cash request" : "What needs to be purchased?"}</div>
+        <div className="mt-0.5 text-[9px] text-neutral-500">
+          {currentUserId === context.taskLeaderId
+            ? "Your task-level request skips self-endorsement and routes directly to fiscal authorization."
+            : "Submitting reserves the amount immediately. Your Task Leader endorses it before fiscal authorization."}
+        </div>
+      </div>
+      <label className="block">
+        <span className="text-[9.5px] text-neutral-500">Proposal budget line and fund source</span>
+        <select value={lineId} onChange={(event) => { setLineId(event.target.value); setAmount(0); }} className="mt-1 h-9 w-full rounded-lg border border-emerald-200 bg-white px-2.5 text-[10px]">
+          <option value="">Select accounting source…</option>
+          {context.lines.map((line) => (
+            <option key={line.id} value={line.id} disabled={line.available <= 0 && correction?.allocationLineId !== line.id}>
+              {line.category} · {line.particular} · {line.fundSource} · {peso.format(line.available)} available
+            </option>
+          ))}
+        </select>
+      </label>
+      {selectedLine && <div className="rounded-lg bg-emerald-50 px-3 py-2 text-[9.5px] text-emerald-800">Requestable now: <strong>{peso.format(requestable)}</strong></div>}
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Field label="Amount" type="number" value={amount || ""} onChange={(value) => setAmount(Number(value))} />
+        <Field label="Needed by" type="date" value={neededBy} onChange={setNeededBy} />
+      </div>
+      <label className="block">
+        <span className="text-[9.5px] text-neutral-500">Purchase and purpose</span>
+        <textarea value={purpose} onChange={(event) => setPurpose(event.target.value)} rows={3} placeholder="Example: Buy two boxes of ball pens for the registration desk" className="mt-1 w-full rounded-lg border border-neutral-200 px-2.5 py-2 text-[10px]" />
+      </label>
+      <label className="block rounded-lg border border-dashed border-neutral-200 p-2.5">
+        <span className="flex items-center gap-1 text-[9.5px] text-neutral-500"><Paperclip size={11} /> Optional quote or supporting file</span>
+        <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => setAttachment(event.target.files?.[0])} className="mt-2 block w-full text-[9px] text-neutral-500 file:mr-2 file:rounded-md file:border-0 file:bg-neutral-100 file:px-2 file:py-1.5 file:text-[9px]" />
+      </label>
+      {correction && <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[9.5px] text-amber-800">Reviewer note: {correction.leaderDecisionReason || correction.departmentDecisionReason || correction.approvalReason || "Update the request and resubmit it."}</div>}
+      {error && <div className="rounded-lg bg-rose-50 p-2.5 text-[9.5px] text-rose-700">{error}</div>}
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onCancel} className="h-8 rounded-lg border border-neutral-200 px-3 text-[9.5px]">Cancel</button>
+        <button type="button" disabled={busy || !selectedLine || amount <= 0 || amount > requestable || !purpose.trim()} onClick={() => void submit()} className="inline-flex h-8 items-center gap-1 rounded-lg bg-emerald-700 px-3 text-[9.5px] text-white disabled:opacity-40"><Send size={10} /> {busy ? "Submitting…" : correction ? "Resubmit" : "Request cash"}</button>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, value, onChange, type = "text" }: { label: string; value: string | number; onChange: (value: string) => void; type?: string }) {
+  return <label><span className="text-[9.5px] text-neutral-500">{label}</span><input type={type} min={type === "number" ? 0 : undefined} step={type === "number" ? "0.01" : undefined} value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-neutral-200 px-2.5 text-[10px]" /></label>;
+}

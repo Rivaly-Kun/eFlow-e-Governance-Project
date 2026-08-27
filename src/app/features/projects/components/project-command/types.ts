@@ -1,6 +1,7 @@
 import type { Milestone, Project, ProjectMember } from "../../services/types";
 import type { Task } from "../../../tasks";
 import type { TeamAttentionItem, TeamWorkflowFacts } from "../../../team-management";
+import type { DepartmentBudgetBundle } from "../../../budget";
 
 export type ProjectCommandTab = "overview" | "plan" | "work" | "people" | "reviews" | "activity" | "reports";
 export type ProjectScheduleHealth = "on_track" | "due_soon" | "overdue" | "at_risk" | "completed";
@@ -41,6 +42,9 @@ export interface ProjectCommandData {
   attention: TeamAttentionItem[];
   metrics: ProjectCommandMetrics;
   activity: ProjectActivityItem[];
+  financial: DepartmentBudgetBundle;
+  financialLoading: boolean;
+  financialError: string;
   loading: boolean;
   error: string;
   refreshMembers: () => Promise<void>;

@@ -61,6 +61,7 @@ async function verifyLiveSchema() {
     "proposal_governance_signoffs",
     "proposal_governance_records",
     "petty_cash_liquidations",
+    "petty_cash_request_attachments",
     "petty_cash_releases",
     "petty_cash_receipts",
     "petty_cash_requests",
@@ -123,6 +124,15 @@ async function verifyLiveSchema() {
   }
   for (const column of ["financial_record_id", "financial_record_type"]) {
     if (!definitions.notifications?.properties?.[column]) missing.push(`notifications.${column}`);
+  }
+  for (const column of ["allocation_line_id", "reservation_expires_at", "idempotency_key"]) {
+    if (!definitions.petty_cash_requests?.properties?.[column]) missing.push(`petty_cash_requests.${column}`);
+  }
+  if (!definitions.petty_cash_liquidations?.properties?.idempotency_key) {
+    missing.push("petty_cash_liquidations.idempotency_key");
+  }
+  for (const column of ["task_id", "subtask_id", "allocation_line_id", "actor_role", "previous_state", "new_state", "reason", "correlation_key"]) {
+    if (!definitions.budget_ledger_entries?.properties?.[column]) missing.push(`budget_ledger_entries.${column}`);
   }
   if (definitions.subtasks?.properties?.assigned_to_ids?.format !== "uuid[]") {
     missing.push(
@@ -196,6 +206,14 @@ async function verifyLiveSchema() {
     "create_work_budget_allocation",
     "decide_work_budget_allocation",
     "create_petty_cash_request",
+    "get_task_funding_context",
+    "create_contextual_cash_request",
+    "resubmit_contextual_cash_request",
+    "set_subtask_budget_cap",
+    "remove_subtask_budget_cap",
+    "cancel_contextual_cash_request",
+    "add_cash_request_attachment",
+    "submit_contextual_cash_liquidation",
     "decide_petty_cash_request",
     "decide_petty_cash_leader_review",
     "mark_petty_cash_released",

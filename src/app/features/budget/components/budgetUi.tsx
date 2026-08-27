@@ -19,7 +19,7 @@ export function StatusPill({ status }: { status: string }) {
     ? "bg-emerald-50 text-emerald-700"
     : ["pending", "pending_leader_review", "pending_department_approval", "scheduled_for_release", "partially_released", "liquidation_submitted", "pending_leader_liquidation_review", "pending_department_settlement", "overdue_liquidation"].includes(status)
       ? "bg-amber-50 text-amber-700"
-      : ["rejected", "changes_requested", "leader_changes_requested", "department_changes_requested", "cancelled"].includes(status)
+      : ["rejected", "changes_requested", "leader_changes_requested", "department_changes_requested", "cancelled", "expired"].includes(status)
         ? "bg-rose-50 text-rose-700"
         : "bg-neutral-100 text-neutral-600";
   return <span className={`rounded-full px-2 py-1 text-[9px] font-['Lexend:Medium',_sans-serif] capitalize ${tone}`}>{status.split("_").join(" ")}</span>;

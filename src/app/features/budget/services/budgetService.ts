@@ -1,5 +1,5 @@
 import { supabase } from "../../../../lib/supabase";
-import type { BudgetLineInput, DepartmentBudgetBundle, ReceiptDraft } from "../types";
+import type { BudgetLineInput, DepartmentBudgetBundle, ReceiptDraft, TaskFundingContext } from "../types";
 import { mapAdjustment, mapAllocation, mapAllocationLine, mapBudgetLine, mapBudgetSummary, mapCommitment, mapLedger, mapLiquidation, mapReceipt, mapRelease, mapRequest } from "./budgetMappers";
 
 const throwIf = (error: { message: string } | null) => { if (error) throw new Error(error.message); };
@@ -24,7 +24,7 @@ export async function fetchDepartmentBudgetBundle(orgId: string, fiscalYear: num
     throw new Error(summaryResult.error.message);
   }
   const summary = summaryResult.data ? mapBudgetSummary(summaryResult.data as Record<string, unknown>) : null;
-  if (!summary) return { summary: null, lines: [], commitments: [], allocations: [], allocationLines: [], requests: [], releases: [], liquidations: [], ledger: [], adjustments: [] };
+  if (!summary) return { summary: null, lines: [], commitments: [], allocations: [], allocationLines: [], requests: [], requestAttachments: [], releases: [], liquidations: [], ledger: [], adjustments: [] };
   const [linesResult, commitmentsResult, requestsResult, ledgerResult, adjustmentsResult] = await Promise.all([
     supabase.from("department_budget_lines").select("*").eq("fiscal_budget_id", summary.id).order("position"),
     supabase.from("budget_commitments").select("*").eq("fiscal_budget_id", summary.id).order("created_at", { ascending: false }),
@@ -58,12 +58,14 @@ export async function fetchDepartmentBudgetBundle(orgId: string, fiscalYear: num
     subtask: requestSubtaskById.get(String(row.subtask_id || "")),
   }));
   const requestIds = requests.map((item) => item.id);
-  const [allocationsResult, liquidationsResult, releasesResult] = await Promise.all([
+  const [allocationsResult, liquidationsResult, releasesResult, requestAttachmentsResult] = await Promise.all([
     commitmentIds.length ? supabase.from("work_budget_allocations").select("*").in("commitment_id", commitmentIds).order("requested_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
     requestIds.length ? supabase.from("petty_cash_liquidations").select("*").in("request_id", requestIds).order("submitted_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
     requestIds.length ? supabase.from("petty_cash_releases").select("*").in("request_id", requestIds).order("scheduled_date", { ascending: false }) : Promise.resolve({ data: [], error: null }),
+    requestIds.length ? supabase.from("petty_cash_request_attachments").select("*").in("request_id", requestIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [], error: null }),
   ]);
   throwIf(allocationsResult.error); throwIf(liquidationsResult.error); throwIf(releasesResult.error);
+  if (requestAttachmentsResult.error && !isMissingSchemaObject(requestAttachmentsResult.error.message)) throwIf(requestAttachmentsResult.error);
   const allocationRows = (allocationsResult.data || []) as Array<Record<string, unknown>>;
   const allocationSubtaskIds = uniqueIds(allocationRows.map((row) => row.subtask_id));
   const allocationSubtasksResult = allocationSubtaskIds.length
@@ -94,6 +96,11 @@ export async function fetchDepartmentBudgetBundle(orgId: string, fiscalYear: num
     allocations,
     allocationLines: (allocationLinesResult.data || []).map((row) => mapAllocationLine(row as Record<string, unknown>)),
     requests,
+    requestAttachments: requestAttachmentsResult.error ? [] : (requestAttachmentsResult.data || []).map((row) => ({
+      id: String(row.id), requestId: String(row.request_id), fileName: String(row.file_name || "Attachment"),
+      filePath: String(row.file_path || ""), mimeType: String(row.mime_type || "application/octet-stream"),
+      fileSize: Number(row.file_size || 0), createdAt: row.created_at ? new Date(String(row.created_at)).getTime() : 0,
+    })),
     releases: (releasesResult.data || []).map((row) => mapRelease(row as Record<string, unknown>)),
     liquidations: liquidationRows.map((row) => mapLiquidation(row as Record<string, unknown>, receipts)),
     ledger: (ledgerResult.data || []).map((row) => mapLedger(row as Record<string, unknown>)),
@@ -146,6 +153,112 @@ export async function createPettyCashRequest(input: { allocationId: string; amou
   }); throwIf(error); return String(data);
 }
 
+export async function fetchTaskFundingContext(taskId: string, subtaskId?: string): Promise<TaskFundingContext> {
+  const { data, error } = await supabase.rpc("get_task_funding_context", {
+    p_task_id: taskId,
+    p_subtask_id: subtaskId || null,
+  });
+  throwIf(error);
+  const row = (data || {}) as Record<string, unknown>;
+  const cap = row.cap && typeof row.cap === "object" ? row.cap as Record<string, unknown> : undefined;
+  const lines = Array.isArray(row.lines) ? row.lines as Array<Record<string, unknown>> : [];
+  return {
+    funded: Boolean(row.funded),
+    taskId: String(row.taskId || taskId),
+    subtaskId: row.subtaskId ? String(row.subtaskId) : undefined,
+    taskAllocationId: row.taskAllocationId ? String(row.taskAllocationId) : undefined,
+    taskBudget: Number(row.taskBudget || 0),
+    available: Number(row.available || 0),
+    taskLeaderId: row.taskLeaderId ? String(row.taskLeaderId) : undefined,
+    cap: cap ? {
+      id: String(cap.id), amount: Number(cap.amount || 0), available: Number(cap.available || 0),
+      allocationLineId: String(cap.allocationLineId || ""), reason: String(cap.reason || ""),
+    } : undefined,
+    lines: lines.map((line) => ({
+      id: String(line.id), expenseClass: String(line.expenseClass || ""),
+      category: String(line.category || ""), particular: String(line.particular || ""),
+      fundSource: String(line.fundSource || ""), amount: Number(line.amount || 0),
+      available: Number(line.available || 0),
+    })),
+  };
+}
+
+export async function createContextualCashRequest(input: {
+  taskId: string;
+  subtaskId?: string;
+  allocationLineId: string;
+  amount: number;
+  purpose: string;
+  neededBy?: string;
+  idempotencyKey: string;
+}) {
+  const { data, error } = await supabase.rpc("create_contextual_cash_request", {
+    p_task_id: input.taskId,
+    p_subtask_id: input.subtaskId || null,
+    p_allocation_line_id: input.allocationLineId,
+    p_amount: input.amount,
+    p_purpose: input.purpose,
+    p_needed_by: input.neededBy || null,
+    p_idempotency_key: input.idempotencyKey,
+  });
+  throwIf(error);
+  return String(data);
+}
+
+export async function resubmitContextualCashRequest(input: {
+  requestId: string;
+  allocationLineId: string;
+  amount: number;
+  purpose: string;
+  neededBy?: string;
+}) {
+  const { error } = await supabase.rpc("resubmit_contextual_cash_request", {
+    p_request_id: input.requestId,
+    p_allocation_line_id: input.allocationLineId,
+    p_amount: input.amount,
+    p_purpose: input.purpose,
+    p_needed_by: input.neededBy || null,
+  });
+  throwIf(error);
+}
+
+export async function setSubtaskBudgetCap(input: {
+  taskId: string;
+  subtaskId: string;
+  allocationLineId: string;
+  amount: number;
+  reason: string;
+  idempotencyKey: string;
+}) {
+  const { data, error } = await supabase.rpc("set_subtask_budget_cap", {
+    p_task_id: input.taskId,
+    p_subtask_id: input.subtaskId,
+    p_parent_allocation_line_id: input.allocationLineId,
+    p_amount: input.amount,
+    p_reason: input.reason,
+    p_idempotency_key: input.idempotencyKey,
+  });
+  throwIf(error);
+  return String(data);
+}
+
+export async function removeSubtaskBudgetCap(input: { capId: string; reason: string; idempotencyKey: string }) {
+  const { error } = await supabase.rpc("remove_subtask_budget_cap", {
+    p_cap_allocation_id: input.capId,
+    p_reason: input.reason,
+    p_idempotency_key: input.idempotencyKey,
+  });
+  throwIf(error);
+}
+
+export async function cancelContextualCashRequest(requestId: string, reason: string) {
+  const { error } = await supabase.rpc("cancel_contextual_cash_request", {
+    p_request_id: requestId,
+    p_reason: reason,
+  });
+  throwIf(error);
+}
+
 export async function resubmitPettyCashRequest(input: { requestId: string; amount: number; purpose: string; neededBy?: string }) {
   const { error } = await supabase.rpc("resubmit_petty_cash_request", {
     p_request_id: input.requestId, p_amount: input.amount,
@@ -194,13 +307,35 @@ export function runDepartmentBudgetMaintenance() {
 
 function safeFileName(name: string) { return (name.trim() || "receipt").replace(/[^a-zA-Z0-9._-]/g, "_"); }
 
-export async function submitPettyCashLiquidation(input: { orgId: string; requestId: string; spent: number; note: string; receipts: ReceiptDraft[] }) {
+export async function uploadCashRequestAttachment(input: { orgId: string; requestId: string; file: File }) {
+  const filePath = `${input.orgId}/${input.requestId}/requests/${crypto.randomUUID()}-${safeFileName(input.file.name)}`;
+  const { error: uploadError } = await supabase.storage.from("budget-receipts").upload(filePath, input.file, { upsert: false });
+  throwIf(uploadError);
+  const { data, error } = await supabase.rpc("add_cash_request_attachment", {
+    p_request_id: input.requestId,
+    p_file_name: input.file.name,
+    p_file_path: filePath,
+    p_mime_type: input.file.type || "application/octet-stream",
+    p_file_size: input.file.size,
+  });
+  if (error) {
+    await supabase.storage.from("budget-receipts").remove([filePath]);
+    throw new Error(error.message);
+  }
+  return String(data);
+}
+
+export async function submitPettyCashLiquidation(input: { orgId: string; requestId: string; spent: number; note: string; receipts: ReceiptDraft[]; idempotencyKey?: string }) {
   const uploaded: Array<{ fileName: string; filePath: string; mimeType: string; fileSize: number }> = [];
+  const idempotencyKey = input.idempotencyKey || crypto.randomUUID();
+  let rpcStarted = false;
   try {
-    for (const receipt of input.receipts) {
+    for (const [index, receipt] of input.receipts.entries()) {
       if (!receipt.file) throw new Error("Attach a file for every receipt row.");
-      const filePath = `${input.orgId}/${input.requestId}/${crypto.randomUUID()}-${safeFileName(receipt.file.name)}`;
-      const { error } = await supabase.storage.from("budget-receipts").upload(filePath, receipt.file, { upsert: false });
+      // A stable command-scoped path makes a network retry idempotent at the
+      // storage layer as well as in PostgreSQL, avoiding orphaned duplicates.
+      const filePath = `${input.orgId}/${input.requestId}/${idempotencyKey}-${index}-${safeFileName(receipt.file.name)}`;
+      const { error } = await supabase.storage.from("budget-receipts").upload(filePath, receipt.file, { upsert: true });
       throwIf(error);
       uploaded.push({ fileName: receipt.file.name, filePath, mimeType: receipt.file.type || "application/octet-stream", fileSize: receipt.file.size });
     }
@@ -208,13 +343,17 @@ export async function submitPettyCashLiquidation(input: { orgId: string; request
       vendor: receipt.vendor, receiptNumber: receipt.receiptNumber, receiptDate: receipt.receiptDate,
       description: receipt.description, amount: receipt.amount, overrideReason: receipt.overrideReason, ...uploaded[index],
     }));
-    const { data, error } = await supabase.rpc("submit_petty_cash_liquidation", {
+    // Once PostgreSQL is called, a transport failure cannot prove the command
+    // rolled back. Keep the stable files so an idempotent retry can reconcile.
+    rpcStarted = true;
+    const { data, error } = await supabase.rpc("submit_contextual_cash_liquidation", {
       p_request_id: input.requestId, p_declared_spent: input.spent, p_note: input.note, p_receipts: payload,
+      p_idempotency_key: idempotencyKey,
     });
     if (error) throw error;
     return String(data);
   } catch (error) {
-    if (uploaded.length) await supabase.storage.from("budget-receipts").remove(uploaded.map((item) => item.filePath));
+    if (!rpcStarted && uploaded.length) await supabase.storage.from("budget-receipts").remove(uploaded.map((item) => item.filePath));
     throw new Error(error instanceof Error ? error.message : "Could not submit the liquidation.");
   }
 }

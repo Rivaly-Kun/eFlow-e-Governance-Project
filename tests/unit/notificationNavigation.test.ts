@@ -120,7 +120,7 @@ describe("notification navigation", () => {
     });
   });
 
-  it("routes financial approvals into Reviews and employee decisions into petty cash", () => {
+  it("routes financial reviews and decisions into their contextual workspaces", () => {
     expect(resolveNotificationDestination(notification({
       type: "petty_cash_request",
       title: "Petty-cash request awaiting approval",
@@ -129,7 +129,7 @@ describe("notification navigation", () => {
     }), "depthead")).toMatchObject({
       section: "reviews",
       page: "For Review",
-      label: "Open budget approval",
+      label: "Open funding review",
       intent: { kind: "budget", taskId: "task-5" },
     });
 
@@ -138,9 +138,25 @@ describe("notification navigation", () => {
       title: "Petty cash approved",
       taskId: "task-5",
     }), "employee")).toMatchObject({
-      section: "budget",
-      page: "Petty Cash & Expenses",
-      label: "Open petty cash",
+      section: "tasks",
+      page: "My Tasks",
+      label: "Open task funding",
+      intent: { kind: "budget", taskId: "task-5" },
+    });
+  });
+
+  it("routes a corrected request back to the Team Leader review queue", () => {
+    expect(resolveNotificationDestination(notification({
+      type: "petty_cash_leader_review",
+      title: "Corrected cash request needs your endorsement",
+      taskId: "task-6",
+      financialRecordId: "request-2",
+      financialRecordType: "petty_cash_request",
+    }), "employee")).toMatchObject({
+      section: "reviews",
+      page: "Leader Reviews",
+      label: "Open funding review",
+      intent: { kind: "budget", taskId: "task-6", financialRecordId: "request-2" },
     });
   });
 });

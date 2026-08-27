@@ -19,7 +19,7 @@ import { SubmitForReviewForm } from "./SubmitForReviewForm";
 import { useTasks } from "../../hooks/useFirebaseData";
 import { useProfiles, useProjectsData } from "../../hooks/useSupabaseData";
 import { isTaskLead } from "../../services/taskSelectors";
-import { resolveTaskDetailCapabilities } from "../../features/tasks/components/taskDetailAccess";
+import { resolveSubtaskManagementCapability, resolveTaskDetailCapabilities } from "../../features/tasks/components/taskDetailAccess";
 import { TaskTeamEditorDialog } from "../../features/tasks/components/team/TaskTeamEditorDialog";
 import { TaskTeamMemberList } from "../../features/tasks/components/team/TaskTeamMemberList";
 import { getTaskTeamMemberIds } from "../../features/tasks/selectors/teamMembership";
@@ -73,14 +73,7 @@ export function TaskDetailDrawer({
   const rejected = task.status === "changes_requested";
   const currentUserIsLead = Boolean(user?.id && isTaskLead(task, user.id));
   const isOwnerOrLead = task.assigneeId === user?.id || currentUserIsLead;
-  const canManageSubtasks = !readOnly && Boolean(
-    isOwnerOrLead ||
-    task.createdBy === user?.id ||
-    userProfile?.role === "super_admin" ||
-    userProfile?.role === "dept_head" ||
-    userProfile?.role === "assistant_head" ||
-    userProfile?.role === "department_head",
-  );
+  const canManageSubtasks = resolveSubtaskManagementCapability(readOnly, currentUserIsLead);
   const canManageTaskTeam = canManageSubtasks && !["for_review", "completed", "cancelled"].includes(task.status);
 
   // The assignee resumes rework by transitioning changes_requested → in_progress.

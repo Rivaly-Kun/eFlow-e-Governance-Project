@@ -40,7 +40,7 @@ export function BudgetReviewInbox({
       <PageHeader
         eyebrow={scope === "leading" ? "Leader Workspace · Financial Reviews" : "Department · Reviews"}
         title="Financial Approvals"
-        subtitle={scope === "leading" ? "Review only the petty-cash requests and receipt liquidations routed from contributors on work you lead." : "Review work allocations, employee petty-cash requests, releases, and receipt settlements from the same approval inbox."}
+        subtitle={scope === "leading" ? "Operationally endorse cash requests and receipt packages from contributors on work you lead." : "Fiscally authorize task-linked cash requests, releases, and receipt settlements from one review inbox."}
         actions={(
           <div className="flex flex-wrap items-center gap-2">
             {actions}
@@ -57,12 +57,12 @@ export function BudgetReviewInbox({
       ) : budget.error ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-[11px] text-rose-700">{budget.error}</div>
       ) : !budget.summary ? (
-        <BudgetEmpty title={`No ${fiscalYear} department budget`} description="Create and lock the annual department budget before employees can request petty cash." />
+        <BudgetEmpty title={`No ${fiscalYear} department budget`} description="Create and lock the annual department budget before contributors can request task funding." />
       ) : (
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <BudgetCard label="Allocation proposals" value={String(counts.allocations)} note="Task Leader requests" icon={<ReceiptText size={15} />} tone={counts.allocations ? "warn" : "good"} />
-            <BudgetCard label="Petty-cash requests" value={String(counts.requests)} note="Employee requests" icon={<Inbox size={15} />} tone={counts.requests ? "warn" : "good"} />
+            <BudgetCard label="Cash requests" value={String(counts.requests)} note="Task-linked requests" icon={<Inbox size={15} />} tone={counts.requests ? "warn" : "good"} />
             <BudgetCard label="Receipt packages" value={String(counts.liquidations)} note="Liquidations to verify" icon={<CheckCircle2 size={15} />} tone={counts.liquidations ? "warn" : "good"} />
             <BudgetCard label="Cash releases" value={String(counts.releases)} note="Scheduled tranches due" icon={<ReceiptText size={15} />} tone={counts.releases ? "warn" : "good"} />
           </div>

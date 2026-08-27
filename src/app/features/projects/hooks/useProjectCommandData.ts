@@ -7,10 +7,12 @@ import { subscribeToMilestones } from "../services/milestoneService";
 import { buildProjectActivity, buildProjectCommandMetrics } from "../selectors/projectCommandSelectors";
 import type { ProjectActivityItem, ProjectCommandData } from "../components/project-command/types";
 import { fetchProjectAuditActivity } from "../services/projectActivityService";
+import { getCurrentFiscalYear, getTaskScopedBudgetBundle, useDepartmentBudget } from "../../budget";
 
 const EMPTY_FACTS: TeamWorkflowFacts = { subtasks: [], progress: [], submissions: [], statusHistory: [], evidence: [] };
 
 export function useProjectCommandData(project: Project, tasks: Task[]): ProjectCommandData {
+  const budget = useDepartmentBudget(project.orgId || tasks.find((task) => task.orgId)?.orgId || "", getCurrentFiscalYear());
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [facts, setFacts] = useState<TeamWorkflowFacts>(EMPTY_FACTS);
@@ -47,6 +49,11 @@ export function useProjectCommandData(project: Project, tasks: Task[]): ProjectC
   const attention = useMemo(() => buildTeamAttentionItems(tasks, facts), [facts, tasks]);
   const metrics = useMemo(() => buildProjectCommandMetrics(project, tasks, milestones, facts, attention), [attention, facts, milestones, project, tasks]);
   const activity = useMemo(() => buildProjectActivity(facts, projectEvents), [facts, projectEvents]);
+  const financial = useMemo(() => getTaskScopedBudgetBundle(budget, tasks.map((task) => task.id)), [budget, taskKey]);
 
-  return { project, tasks, milestones, members, facts, attention, metrics, activity, loading, error, refreshMembers };
+  return {
+    project, tasks, milestones, members, facts, attention, metrics, activity,
+    financial, financialLoading: budget.loading, financialError: budget.error,
+    loading, error, refreshMembers,
+  };
 }

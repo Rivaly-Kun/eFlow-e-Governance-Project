@@ -7,6 +7,7 @@ import {
   groupProposalBudgetLines,
   getBudgetUtilizationSignal,
   getEligiblePettyCashAllocations,
+  getTaskScopedBudgetBundle,
   type DepartmentBudgetSummary,
   type PettyCashRequest,
   type WorkBudgetAllocation,
@@ -88,6 +89,19 @@ describe("budget selectors", () => {
     });
   });
 
+  it("holds funds at approval boundaries but releases the hold while corrections are requested", () => {
+    expect(getAllocationCashPosition(5_000, [
+      request("pending_leader_review", 1_200),
+      request("pending_department_approval", 800),
+      request("department_changes_requested", 500),
+      request("expired", 900),
+    ])).toEqual({
+      reserved: 2_000,
+      spent: 0,
+      remaining: 3_000,
+    });
+  });
+
   it("does not expose parent-task cash twice after it is delegated or reserved", () => {
     const taskCash = request("approved", 1_000);
     const distribution = getTaskBudgetDistribution(
@@ -164,5 +178,59 @@ describe("budget selectors", () => {
       receiptCount: 1,
       monthKey: "2026-08",
     }]);
+  });
+
+  it("scopes every financial child record to project task ids", () => {
+    const keep = request("approved", 500);
+    keep.id = "request-keep";
+    keep.taskId = "task-keep";
+    keep.allocationId = "allocation-keep";
+    keep.commitmentId = "commitment-keep";
+    const drop = request("approved", 700);
+    drop.id = "request-drop";
+    drop.taskId = "task-drop";
+    drop.allocationId = "allocation-drop";
+    drop.commitmentId = "commitment-drop";
+    const scoped = getTaskScopedBudgetBundle({
+      summary: null,
+      lines: [],
+      adjustments: [],
+      commitments: [
+        { id: "commitment-keep", fiscalBudgetId: "budget-1", proposalDraftId: "proposal-1", title: "Keep", amount: 1_000, status: "active", createdAt: 1 },
+        { id: "commitment-drop", fiscalBudgetId: "budget-1", proposalDraftId: "proposal-2", title: "Drop", amount: 1_000, status: "active", createdAt: 1 },
+      ],
+      allocations: [
+        { id: "allocation-keep", commitmentId: "commitment-keep", taskId: "task-keep", amount: 1_000, status: "approved", reason: "", requestedBy: "head", requestedAt: 1 },
+        { id: "allocation-drop", commitmentId: "commitment-drop", taskId: "task-drop", amount: 1_000, status: "approved", reason: "", requestedBy: "head", requestedAt: 1 },
+      ],
+      allocationLines: [
+        { id: "line-keep", allocationId: "allocation-keep", expenseClass: "Supplies", category: "Office", particular: "Pens", amount: 1_000, fundSource: "General Fund", position: 0 },
+        { id: "line-drop", allocationId: "allocation-drop", expenseClass: "Travel", category: "Local", particular: "Fare", amount: 1_000, fundSource: "General Fund", position: 0 },
+      ],
+      requests: [keep, drop],
+      requestAttachments: [
+        { id: "quote-keep", requestId: keep.id, fileName: "quote.pdf", filePath: "quote.pdf", mimeType: "application/pdf", fileSize: 1, createdAt: 1 },
+        { id: "quote-drop", requestId: drop.id, fileName: "quote.pdf", filePath: "quote.pdf", mimeType: "application/pdf", fileSize: 1, createdAt: 1 },
+      ],
+      releases: [
+        { id: "release-keep", requestId: keep.id, orgId: "org-1", scheduledDate: "2026-08-26", amount: 500, status: "scheduled", createdAt: 1 },
+        { id: "release-drop", requestId: drop.id, orgId: "org-1", scheduledDate: "2026-08-26", amount: 700, status: "scheduled", createdAt: 1 },
+      ],
+      liquidations: [
+        { id: "liquidation-keep", requestId: keep.id, version: 1, declaredSpent: 0, returnedAmount: 0, note: "", status: "pending", submittedBy: "user-1", submittedAt: 1, receipts: [] },
+        { id: "liquidation-drop", requestId: drop.id, version: 1, declaredSpent: 0, returnedAmount: 0, note: "", status: "pending", submittedBy: "user-1", submittedAt: 1, receipts: [] },
+      ],
+      ledger: [
+        { id: "ledger-keep", entryType: "request_created", amount: 500, description: "", taskId: "task-keep", createdAt: 1 },
+        { id: "ledger-drop", entryType: "request_created", amount: 700, description: "", taskId: "task-drop", createdAt: 1 },
+      ],
+    }, ["task-keep"]);
+
+    expect(scoped.allocations.map((item) => item.id)).toEqual(["allocation-keep"]);
+    expect(scoped.requests.map((item) => item.id)).toEqual(["request-keep"]);
+    expect(scoped.requestAttachments.map((item) => item.id)).toEqual(["quote-keep"]);
+    expect(scoped.releases.map((item) => item.id)).toEqual(["release-keep"]);
+    expect(scoped.liquidations.map((item) => item.id)).toEqual(["liquidation-keep"]);
+    expect(scoped.ledger.map((item) => item.id)).toEqual(["ledger-keep"]);
   });
 });

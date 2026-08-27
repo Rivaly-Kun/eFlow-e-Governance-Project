@@ -128,13 +128,6 @@ const CORE_WORKFLOW_NAVIGATION: Record<string, CoreRoleNavigation> = {
         group: "My Work",
       },
       {
-        id: "budget",
-        icon: <Wallet size={16} />,
-        label: "Petty Cash",
-        page: "Petty Cash & Expenses",
-        group: "My Work",
-      },
-      {
         id: "projects",
         icon: <FolderOpen size={16} />,
         label: "Projects",

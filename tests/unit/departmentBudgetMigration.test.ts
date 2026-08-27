@@ -51,6 +51,30 @@ const subtaskDistributionSql = readFileSync(
   "utf8",
 );
 
+const subtaskFiscalReferenceFixSql = readFileSync(
+  new URL(
+    "../../supabase/migrations/20260826000001_fix_subtask_budget_allocation_fiscal_reference.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
+const dynamicTaskFundingSql = readFileSync(
+  new URL(
+    "../../supabase/migrations/20260826000003_dynamic_task_funding.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
+const correctionHoldSql = readFileSync(
+  new URL(
+    "../../supabase/migrations/20260826000004_release_correction_holds_and_notify_reviewers.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
 const collaborationWorkspace = readFileSync(
   new URL(
     "../../src/app/features/interdepartment-collaboration/components/CollaborationDraftWorkspace.tsx",
@@ -145,5 +169,65 @@ describe("department budget migration", () => {
     expect(subtaskDistributionSql).toContain("child_allocated := child_allocated + allocation.amount");
     expect(subtaskDistributionSql).toContain("Distributed by the Task Leader from the approved task budget");
     expect(subtaskDistributionSql).toContain("'subtask_budget_assigned'");
+  });
+
+  it("qualifies the fiscal budget used by subtask allocation ledger entries", () => {
+    expect(subtaskFiscalReferenceFixSql).toContain(
+      "select commitment.fiscal_budget_id into target_fiscal_budget_id",
+    );
+    expect(subtaskFiscalReferenceFixSql).toContain(
+      "where commitment.id = parent_allocation.commitment_id",
+    );
+    expect(subtaskFiscalReferenceFixSql).not.toContain(
+      "select fiscal_budget_id into fiscal_budget_id",
+    );
+  });
+
+  it("reserves contextual cash atomically against a mandatory proposal source line", () => {
+    expect(dynamicTaskFundingSql).toContain("create_contextual_cash_request");
+    expect(dynamicTaskFundingSql).toContain("task_budget_line_available");
+    expect(dynamicTaskFundingSql).toContain("for update");
+    expect(dynamicTaskFundingSql).toContain("p_allocation_line_id uuid");
+    expect(dynamicTaskFundingSql).toContain("Select a proposal budget line and fund source");
+    expect(dynamicTaskFundingSql).toContain("reservation_expires_at");
+    expect(dynamicTaskFundingSql).toContain("idempotency_key");
+    expect(dynamicTaskFundingSql).toContain("where idempotency_key is not null");
+  });
+
+  it("keeps subtask caps optional and protects caps used by active requests", () => {
+    expect(dynamicTaskFundingSql).toContain("set_subtask_budget_cap");
+    expect(dynamicTaskFundingSql).toContain("remove_subtask_budget_cap");
+    expect(dynamicTaskFundingSql).toContain("subtask_cap_available");
+    expect(dynamicTaskFundingSql).toContain("This cap has an active cash request and cannot be edited");
+    expect(dynamicTaskFundingSql).toContain("'approved'");
+  });
+
+  it("routes a Task Leader's own request directly to fiscal authorization", () => {
+    expect(dynamicTaskFundingSql).toContain("caller = task_leader then 'pending_department_approval'");
+    expect(dynamicTaskFundingSql).toContain("request.requester_id = request.task_leader_id then 'pending_department_approval'");
+    expect(dynamicTaskFundingSql).toContain("pending_leader_review");
+  });
+
+  it("keeps funding events append-only and broadens only proven collaboration membership", () => {
+    expect(dynamicTaskFundingSql).toContain("budget_ledger_append_only");
+    expect(dynamicTaskFundingSql).toContain("Financial audit ledger entries are append-only");
+    expect(dynamicTaskFundingSql).toContain("audit_cash_request_change");
+    expect(dynamicTaskFundingSql).toContain("audit_liquidation_change");
+    expect(dynamicTaskFundingSql).toContain("petty_cash_request_attachments");
+    expect(dynamicTaskFundingSql).toContain("profile.org_id = target_organization");
+    expect(dynamicTaskFundingSql).toContain("join public.project_members");
+    expect(dynamicTaskFundingSql).toContain("task.assigned_to = caller_id");
+    expect(dynamicTaskFundingSql).toContain("coalesce(subtask.assigned_to_ids");
+  });
+
+  it("releases correction-stage holds and notifies the reviewer on resubmission", () => {
+    expect(correctionHoldSql).toContain("'leader_changes_requested', 'department_changes_requested'");
+    expect(correctionHoldSql).toContain("then 0::numeric");
+    expect(correctionHoldSql).toContain("normalize_cash_request_reservation_window");
+    expect(correctionHoldSql).toContain("set reservation_expires_at = null");
+    expect(correctionHoldSql).toContain("notify_corrected_cash_request_reviewer");
+    expect(correctionHoldSql).toContain("Corrected cash request needs your endorsement");
+    expect(correctionHoldSql).toContain("Corrected cash request needs fiscal authorization");
+    expect(correctionHoldSql).toContain("petty_cash_request_correction_notification");
   });
 });

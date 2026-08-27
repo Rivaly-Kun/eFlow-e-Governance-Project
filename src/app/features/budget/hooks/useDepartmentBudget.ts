@@ -3,7 +3,7 @@ import { supabase } from "../../../../lib/supabase";
 import type { DepartmentBudgetBundle } from "../types";
 import { fetchDepartmentBudgetBundle } from "../services/budgetService";
 
-const EMPTY: DepartmentBudgetBundle = { summary: null, lines: [], commitments: [], allocations: [], allocationLines: [], requests: [], releases: [], liquidations: [], ledger: [], adjustments: [] };
+const EMPTY: DepartmentBudgetBundle = { summary: null, lines: [], commitments: [], allocations: [], allocationLines: [], requests: [], requestAttachments: [], releases: [], liquidations: [], ledger: [], adjustments: [] };
 
 export function useDepartmentBudget(orgId?: string, fiscalYear = new Date().getFullYear()) {
   const [data, setData] = useState<DepartmentBudgetBundle>(EMPTY);
@@ -20,7 +20,12 @@ export function useDepartmentBudget(orgId?: string, fiscalYear = new Date().getF
   useEffect(() => {
     if (!orgId) return;
     const budgetId = data.summary?.id;
-    let channel = supabase.channel(`department-budget:${orgId}:${fiscalYear}:${budgetId || "setup"}`)
+    // Realtime reuses an existing channel when its topic matches. React Strict
+    // Mode can remount this effect before removeChannel() finishes, so every
+    // subscription needs its own topic to avoid adding bindings to the channel
+    // that is still unsubscribing.
+    const channelTopic = `department-budget:${orgId}:${fiscalYear}:${budgetId || "setup"}:${crypto.randomUUID()}`;
+    let channel = supabase.channel(channelTopic)
       .on("postgres_changes", { event: "*", schema: "public", table: "department_fiscal_budgets", filter: `org_id=eq.${orgId}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "petty_cash_requests", filter: `org_id=eq.${orgId}` }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "budget_ledger_entries", filter: `org_id=eq.${orgId}` }, refresh);
@@ -33,6 +38,7 @@ export function useDepartmentBudget(orgId?: string, fiscalYear = new Date().getF
         .on("postgres_changes", { event: "*", schema: "public", table: "work_budget_allocation_lines" }, refresh)
         .on("postgres_changes", { event: "*", schema: "public", table: "petty_cash_releases" }, refresh)
         .on("postgres_changes", { event: "*", schema: "public", table: "petty_cash_liquidations" }, refresh)
+        .on("postgres_changes", { event: "*", schema: "public", table: "petty_cash_request_attachments" }, refresh)
         .on("postgres_changes", { event: "*", schema: "public", table: "petty_cash_receipts" }, refresh);
     }
     channel.subscribe();

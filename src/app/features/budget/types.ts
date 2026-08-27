@@ -14,6 +14,7 @@ export type PettyCashStatus =
   | "released"
   | "rejected"
   | "cancelled"
+  | "expired"
   | "liquidation_draft"
   | "liquidation_submitted"
   | "pending_leader_liquidation_review"
@@ -138,6 +139,7 @@ export interface PettyCashRequest {
   fiscalBudgetId: string;
   commitmentId: string;
   allocationId: string;
+  allocationLineId?: string;
   orgId: string;
   taskId: string;
   subtaskId?: string;
@@ -152,6 +154,7 @@ export interface PettyCashRequest {
   purpose: string;
   requestedAmount: number;
   neededBy?: string;
+  reservationExpiresAt?: number;
   status: PettyCashStatus;
   approvedAmount?: number;
   approvalReason?: string;
@@ -196,6 +199,16 @@ export interface PettyCashReceipt {
   overrideReason?: string;
 }
 
+export interface CashRequestAttachment {
+  id: string;
+  requestId: string;
+  fileName: string;
+  filePath: string;
+  mimeType: string;
+  fileSize: number;
+  createdAt: number;
+}
+
 export interface DepartmentBudgetAdjustment {
   id: string;
   fiscalBudgetId: string;
@@ -227,7 +240,46 @@ export interface BudgetLedgerEntry {
   amount: number;
   description: string;
   actorId?: string;
+  actorRole?: string;
+  taskId?: string;
+  subtaskId?: string;
+  allocationLineId?: string;
+  previousState?: string;
+  newState?: string;
+  reason?: string;
+  correlationKey?: string;
+  metadata?: Record<string, unknown>;
   createdAt: number;
+}
+
+export interface TaskFundingLine {
+  id: string;
+  expenseClass: string;
+  category: string;
+  particular: string;
+  fundSource: string;
+  amount: number;
+  available: number;
+}
+
+export interface SubtaskFundingCap {
+  id: string;
+  amount: number;
+  available: number;
+  allocationLineId: string;
+  reason: string;
+}
+
+export interface TaskFundingContext {
+  funded: boolean;
+  taskId: string;
+  subtaskId?: string;
+  taskAllocationId?: string;
+  taskBudget: number;
+  available: number;
+  taskLeaderId?: string;
+  cap?: SubtaskFundingCap;
+  lines: TaskFundingLine[];
 }
 
 export interface DepartmentBudgetBundle {
@@ -237,6 +289,7 @@ export interface DepartmentBudgetBundle {
   allocations: WorkBudgetAllocation[];
   allocationLines: WorkBudgetAllocationLine[];
   requests: PettyCashRequest[];
+  requestAttachments: CashRequestAttachment[];
   releases: PettyCashRelease[];
   liquidations: PettyCashLiquidation[];
   ledger: BudgetLedgerEntry[];

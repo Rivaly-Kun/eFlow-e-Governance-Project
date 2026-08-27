@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { resolveTaskDetailCapabilities } from "../../src/app/features/tasks/components/taskDetailAccess";
+import { resolveSubtaskManagementCapability, resolveTaskDetailCapabilities } from "../../src/app/features/tasks/components/taskDetailAccess";
 
 const sql = readFileSync(
   new URL("../../supabase/migrations/20260819000007_super_admin_task_read_only.sql", import.meta.url),
@@ -22,6 +22,12 @@ describe("Super Admin task oversight", () => {
       canPostProgress: false,
       canDiscuss: true,
     })).toEqual({ canReview: true, canPostProgress: false, canDiscuss: true });
+  });
+
+  it("reserves subtask structure management for the Task Leader", () => {
+    expect(resolveSubtaskManagementCapability(false, true)).toBe(true);
+    expect(resolveSubtaskManagementCapability(false, false)).toBe(false);
+    expect(resolveSubtaskManagementCapability(true, true)).toBe(false);
   });
 
   it("enforces read-only task oversight in the database", () => {
