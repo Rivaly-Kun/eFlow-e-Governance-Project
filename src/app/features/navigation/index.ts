@@ -9,3 +9,4 @@ export {
 export { RoleContent } from "./RoleContent";
 export * from "./navigationPermissions";
 export { useRoleNavigationState } from "./useRoleNavigationState";
+export { getSidebarContent } from "./sidebarContent";

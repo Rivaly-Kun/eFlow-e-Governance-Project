@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useUserPreferences } from "../../contexts/UserPreferencesContext";
 import { LoginPage } from "../../components/Auth/LoginPage";
-import { Frame760 } from "../../components/Layout/SidebarDemo";
+import { EflowAppShell } from "./EflowAppShell";
 import { LoadingScreen } from "./LoadingScreen";
 import { mapRoleToPanel } from "./role";
 import { runTaskMaintenance } from "../tasks";
@@ -28,7 +28,7 @@ export function AuthenticatedApp() {
 
   return (
     <SessionSecurityProvider>
-      <Frame760 role={mapRoleToPanel(userProfile.role)} />
+      <EflowAppShell role={mapRoleToPanel(userProfile.role)} />
     </SessionSecurityProvider>
   );
 }

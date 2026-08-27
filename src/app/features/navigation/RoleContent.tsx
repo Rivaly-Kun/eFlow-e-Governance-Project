@@ -1,6 +1,6 @@
 import { lazy, Suspense, type ReactNode } from "react";
-import { Settings } from "@carbon/icons-react";
-import { PageWalkthroughButton } from "../guided-tours";
+import { Loader } from "@vibe/core";
+import { Settings } from "@vibe/icons";
 import { useAuth } from "../../contexts/AuthContext";
 import { getNavigationPermission, isAdministrativeNavigationSection } from "./navigationPermissions";
 import { AccessDenied } from "./AccessDenied";
@@ -25,17 +25,14 @@ interface RoleContentProps {
 
 function PageFrame({ children, padded = true, dark = false }: { children: ReactNode; padded?: boolean; dark?: boolean }) {
   return (
-    <div className={`h-full min-h-0 flex-1 overflow-hidden rounded-r-2xl ${dark ? "bg-neutral-50 dark:bg-slate-950" : "bg-neutral-50"}`}>
-      <div className="flex h-11 shrink-0 items-center justify-end border-b border-neutral-200/80 bg-white/90 px-4 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/90">
-        <PageWalkthroughButton />
-      </div>
-      <div data-tour-page-content className={`h-[calc(100%-2.75rem)] overflow-y-auto ${padded ? "p-6" : ""}`}>{children}</div>
+    <div className={`h-full min-h-0 flex-1 overflow-hidden ${dark ? "bg-neutral-50 dark:bg-slate-950" : "bg-neutral-50"}`}>
+      <div data-tour-page-content className={`h-full overflow-y-auto ${padded ? "p-6" : ""}`}>{children}</div>
     </div>
   );
 }
 
 function RoleLoading() {
-  return <div className="flex h-full items-center justify-center text-[12px] text-neutral-400">Loading workspace...</div>;
+  return <div className="flex h-full items-center justify-center gap-2 text-[12px] text-neutral-400"><Loader size="small" />Loading workspace...</div>;
 }
 
 export function RoleContent({ role, activeSection, activePage, hasLeadingWork = false }: RoleContentProps) {

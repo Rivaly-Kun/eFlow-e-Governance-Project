@@ -1,0 +1,61 @@
+import {
+  Announcement,
+  Board,
+  Calendar,
+  Chart,
+  Check,
+  Dashboard,
+  Folder,
+  Home,
+  Idea,
+  Inbox,
+  Security,
+  Settings,
+  Team,
+  Work,
+  Workspace,
+} from "@vibe/icons";
+
+type VibeIcon = typeof Workspace;
+
+const navigationIcons: Record<string, VibeIcon> = {
+  administration: Settings,
+  announcements: Announcement,
+  audit: Security,
+  budget: Chart,
+  committee: Team,
+  councilor: Dashboard,
+  crypto: Security,
+  dashboard: Dashboard,
+  deadlines: Calendar,
+  deptportfolio: Workspace,
+  financial: Chart,
+  history: Calendar,
+  intelligence: Idea,
+  legdash: Dashboard,
+  leader: Team,
+  leading: Work,
+  liquidation: Folder,
+  migration: Work,
+  mywork: Home,
+  org_tree: Workspace,
+  performance: Chart,
+  portfolio: Dashboard,
+  projects: Folder,
+  projfin: Chart,
+  reports: Chart,
+  reviews: Inbox,
+  session: Calendar,
+  subtasks: Check,
+  tasks: Board,
+  team: Team,
+  transform: Work,
+  users: Team,
+  wellness: Work,
+  workforce: Team,
+  workspace: Workspace,
+};
+
+export function getEflowNavigationIcon(section: string): VibeIcon {
+  return navigationIcons[section] ?? Workspace;
+}

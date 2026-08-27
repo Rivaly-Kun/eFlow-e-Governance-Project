@@ -1,116 +1,31 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useAuth } from "../../contexts/AuthContext";
-import type { UserRole } from "../../types";
+import { Avatar, Button, Dialog, DialogContentContainer, IconButton, Menu, MenuItem, TextField } from "@vibe/core";
+import { Close, Dropdown, Info, Person, Workspace } from "@vibe/icons";
+import React, { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
+import { useAuth } from "../../contexts/AuthContext";
 import { SESSION_NOTICE_KEY } from "../../features/session-security/constants";
 import { clearAllSessionActivity } from "../../features/session-security/services/sessionActivityStorage";
 import { QUICK_LOGIN_ACCOUNTS, type QuickLoginAccount } from "../../shared/quickLoginAccounts";
+import type { UserRole } from "../../types";
+import "./loginPage.css";
 
-// ─── Ormoc City seal SVG (simplified shield) ─────────────────────
-function OrmocSeal() {
-  return (
-    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#0085FF] to-[#0066CC] flex items-center justify-center shadow-lg shadow-blue-500/20">
-      <svg viewBox="0 0 40 40" className="w-9 h-9" fill="none">
-        <path
-          d="M20 4L6 12v10c0 8.5 6 14.5 14 18 8-3.5 14-9.5 14-18V12L20 4z"
-          fill="white"
-          fillOpacity="0.2"
-          stroke="white"
-          strokeWidth="1.5"
-        />
-        <path
-          d="M20 10l-8 4.5v6c0 5 3.5 8.5 8 10.5 4.5-2 8-5.5 8-10.5v-6L20 10z"
-          fill="white"
-          fillOpacity="0.15"
-        />
-        <text
-          x="20"
-          y="24"
-          textAnchor="middle"
-          fill="white"
-          fontSize="11"
-          fontWeight="700"
-          fontFamily="Lexend, sans-serif"
-        >
-          eF
-        </text>
-      </svg>
-    </div>
-  );
-}
-
-// ─── Loading dots animation ──────────────────────────────────────
-function LoadingDots() {
-  return (
-    <span className="inline-flex gap-1 items-center">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="w-1.5 h-1.5 rounded-full bg-white"
-          style={{
-            animation: "eflow-dot 1.2s ease-in-out infinite",
-            animationDelay: `${i * 0.15}s`,
-          }}
-        />
-      ))}
-      <style>{`
-        @keyframes eflow-dot {
-          0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
-          40% { opacity: 1; transform: scale(1); }
-        }
-      `}</style>
-    </span>
-  );
-}
-
-// ─── Toast ───────────────────────────────────────────────────────
 function Toast({ message, type, onClose }: { message: string; type: "error" | "success"; onClose: () => void }) {
   useEffect(() => {
-    const t = setTimeout(onClose, 5000);
-    return () => clearTimeout(t);
+    const timer = window.setTimeout(onClose, 5000);
+    return () => window.clearTimeout(timer);
   }, [onClose]);
 
   return (
-    <div
-      className={`fixed top-6 right-6 z-50 max-w-md px-4 py-3 rounded-xl shadow-2xl border flex items-start gap-3 animate-[eflow-slide-in_0.3s_ease-out] ${
-        type === "error"
-          ? "bg-red-50 border-red-200 text-red-900"
-          : "bg-emerald-50 border-emerald-200 text-emerald-900"
-      }`}
-    >
-      <div
-        className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
-          type === "error" ? "bg-red-500" : "bg-emerald-500"
-        }`}
-      >
-        <svg viewBox="0 0 16 16" className="w-3 h-3" fill="white">
-          {type === "error" ? (
-            <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
-          ) : (
-            <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z" />
-          )}
-        </svg>
-      </div>
-      <div className="flex-1 text-[13px] font-['Lexend:Regular',_sans-serif]">{message}</div>
-      <button onClick={onClose} className="text-neutral-400 hover:text-neutral-700 shrink-0">
-        <svg viewBox="0 0 16 16" className="w-4 h-4" fill="currentColor">
-          <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
-        </svg>
-      </button>
-      <style>{`
-        @keyframes eflow-slide-in {
-          from { transform: translateX(100%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-      `}</style>
+    <div aria-live="polite" className={`eflow-auth-toast eflow-auth-toast--${type}`} role="status">
+      <Info aria-hidden="true" size={18} />
+      <span className="eflow-auth-toast__message">{message}</span>
+      <IconButton aria-label="Dismiss message" icon={Close} kind="tertiary" onClick={onClose} size="small" />
     </div>
   );
 }
 
-// ─── Main Login Page ─────────────────────────────────────────────
 export function LoginPage() {
   const { login, register, error, clearError } = useAuth();
-
   const [mode, setMode] = useState<"login" | "setup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -118,8 +33,7 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "error" | "success" } | null>(null);
   const [canSetupAdmin, setCanSetupAdmin] = useState<boolean | null>(null);
-  const [isQuickLoginOpen, setIsQuickLoginOpen] = useState(false);
-  const quickLoginRef = useRef<HTMLDivElement>(null);
+  const [isQuickLoginOpen, setQuickLoginOpen] = useState(false);
   const [sessionNotice] = useState(() => {
     const notice = localStorage.getItem(SESSION_NOTICE_KEY) || "";
     if (notice) {
@@ -129,22 +43,16 @@ export function LoginPage() {
     return notice;
   });
 
-  // Check if any super_admin exists — if not, show "First-Time Setup" option
   useEffect(() => {
-    (async () => {
+    void (async () => {
       try {
-        const { count, error } = await supabase
-          .from('profiles')
-          .select('*', { count: 'exact', head: true })
-          .eq('role', 'super_admin')
-          .eq('is_active', true);
+        const { count, error: profileError } = await supabase
+          .from("profiles")
+          .select("*", { count: "exact", head: true })
+          .eq("role", "super_admin")
+          .eq("is_active", true);
 
-        if (error) {
-          setCanSetupAdmin(true);
-          return;
-        }
-
-        setCanSetupAdmin(count === 0);
+        setCanSetupAdmin(profileError ? true : count === 0);
       } catch {
         setCanSetupAdmin(false);
       }
@@ -152,30 +60,13 @@ export function LoginPage() {
   }, []);
 
   useEffect(() => {
-    const closeQuickLogin = (event: MouseEvent) => {
-      if (!quickLoginRef.current?.contains(event.target as Node)) setIsQuickLoginOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsQuickLoginOpen(false);
-    };
-    document.addEventListener("mousedown", closeQuickLogin);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("mousedown", closeQuickLogin);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, []);
-
-  // Show auth error as toast
-  useEffect(() => {
-    if (error) {
-      setToast({ msg: error, type: "error" });
-      clearError();
-    }
+    if (!error) return;
+    setToast({ msg: error, type: "error" });
+    clearError();
   }, [error, clearError]);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!email.trim() || !password.trim()) {
       setToast({ msg: "Please enter both email and password.", type: "error" });
       return;
@@ -186,14 +77,14 @@ export function LoginPage() {
       localStorage.removeItem(SESSION_NOTICE_KEY);
       await login(email.trim(), password);
     } catch {
-      // error is handled via toast
+      // AuthContext supplies the user-facing error toast.
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleQuickLogin = async (account: QuickLoginAccount) => {
-    setIsQuickLoginOpen(false);
+    setQuickLoginOpen(false);
     setEmail(account.email);
     setPassword(account.password);
     setSubmitting(true);
@@ -209,8 +100,8 @@ export function LoginPage() {
     }
   };
 
-  const handleSetup = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSetup = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!email.trim() || !password.trim() || !name.trim()) {
       setToast({ msg: "All fields are required.", type: "error" });
       return;
@@ -224,261 +115,159 @@ export function LoginPage() {
       await register(email.trim(), password, name.trim(), "super_admin" as UserRole);
       setToast({ msg: "Super Admin account created successfully!", type: "success" });
     } catch {
-      // error handled via context
+      // AuthContext supplies the user-facing error toast.
     } finally {
       setSubmitting(false);
     }
   };
 
+  const toggleMode = () => {
+    clearError();
+    setMode((current) => (current === "login" ? "setup" : "login"));
+  };
+
   return (
-    <div className="min-h-screen w-full flex items-center justify-center relative overflow-hidden bg-[#F5F6F8]">
-      {/* Background pattern */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {/* Gradient orbs */}
-        <div className="absolute -top-[300px] -left-[200px] w-[700px] h-[700px] rounded-full bg-gradient-to-br from-[#0085FF]/8 to-transparent blur-3xl" />
-        <div className="absolute -bottom-[200px] -right-[300px] w-[600px] h-[600px] rounded-full bg-gradient-to-tl from-[#00CA72]/6 to-transparent blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full bg-gradient-to-br from-[#0085FF]/3 to-[#00CA72]/3 blur-[100px]" />
+    <main className="eflow-auth-page" aria-labelledby="eflow-auth-title">
+      {toast && <Toast message={toast.msg} onClose={() => setToast(null)} type={toast.type} />}
+      <section className="eflow-auth-card" aria-label="eFlow sign in">
+        <header className="eflow-auth-card__header">
+          <Avatar aria-hidden icon={Workspace} size="large" square type="icon" />
+          <div>
+            <h1 id="eflow-auth-title">eFlow</h1>
+            <p>Government work, connected.</p>
+          </div>
+        </header>
 
-        {/* Grid lines */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `
-              linear-gradient(rgba(0,0,0,0.3) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(0,0,0,0.3) 1px, transparent 1px)
-            `,
-            backgroundSize: "60px 60px",
-          }}
-        />
-      </div>
+        {mode === "login" ? (
+          <section aria-labelledby="sign-in-heading">
+            <h2 id="sign-in-heading">Sign in</h2>
+            <p className="eflow-auth-card__intro">Use your eFlow account to continue to your workspace.</p>
+            {sessionNotice && <p className="eflow-auth-notice" role="status">{sessionNotice}</p>}
 
-      {/* Toast */}
-      {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+            <form className="eflow-auth-form" onSubmit={handleLogin}>
+              <TextField
+                autoComplete="email"
+                controlled
+                id="login-email"
+                inputAriaLabel="Email address"
+                onChange={setEmail}
+                placeholder="you@eflow.gov.ph"
+                required
+                title="Email address"
+                value={email}
+              />
+              <TextField
+                autoComplete="current-password"
+                controlled
+                id="login-password"
+                inputAriaLabel="Password"
+                onChange={setPassword}
+                placeholder="Enter your password"
+                required
+                title="Password"
+                type="password"
+                value={password}
+              />
+              <Button className="eflow-auth-submit" id="login-submit" loading={submitting} type="submit">
+                Sign in
+              </Button>
+            </form>
 
-      {/* Card */}
-      <div className="relative z-10 w-full max-w-[420px] mx-4">
-        {/* Logo + Title */}
-        <div className="flex flex-col items-center mb-8">
-          <OrmocSeal />
-          <h1 className="mt-4 text-[24px] font-['Lexend:SemiBold',_sans-serif] font-semibold text-[#323338]">
-            eFlow
-          </h1>
-          <p className="text-[13px] font-['Lexend:Regular',_sans-serif] text-[#676879] mt-1">
-            Ormoc City LGU · e-Governance Platform
-          </p>
-        </div>
-
-        {/* Form Card */}
-        <div className="bg-white rounded-2xl border border-neutral-200 shadow-xl shadow-black/5 p-8">
-          {mode === "login" ? (
-            <>
-              <h2 className="text-[17px] font-['Lexend:SemiBold',_sans-serif] font-semibold text-[#323338] mb-1">
-                Sign in to your account
-              </h2>
-              <p className="text-[12px] font-['Lexend:Regular',_sans-serif] text-[#676879] mb-6">
-                Enter your credentials to access the dashboard
-              </p>
-
-              {sessionNotice && <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] leading-5 text-amber-800">{sessionNotice}</div>}
-
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div>
-                  <label className="block text-[11px] font-['Lexend:Medium',_sans-serif] font-medium text-[#676879] uppercase tracking-wider mb-1.5">
-                    Email Address
-                  </label>
-                  <div ref={quickLoginRef} className="relative">
-                    <input
-                      id="login-email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@eflow.gov.ph"
-                      autoComplete="email"
-                      className="w-full h-11 px-3.5 pr-28 rounded-lg border border-neutral-200 bg-[#F5F6F8] text-[13px] font-['Lexend:Regular',_sans-serif] text-[#323338] placeholder:text-neutral-400 focus:outline-none focus:border-[#0085FF] focus:ring-2 focus:ring-[#0085FF]/10 transition-all"
-                    />
-                    <button
-                      id="quick-login-picker"
-                      type="button"
-                      disabled={submitting}
-                      onClick={() => setIsQuickLoginOpen((current) => !current)}
-                      aria-haspopup="menu"
-                      aria-expanded={isQuickLoginOpen}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-8 items-center gap-1 rounded-md border border-blue-100 bg-white px-2 text-[10px] font-semibold text-[#006FD6] shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Quick login
-                      <svg viewBox="0 0 16 16" aria-hidden="true" className={`h-3 w-3 transition-transform ${isQuickLoginOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="1.8">
-                        <path d="m4 6 4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </button>
-
-                    {isQuickLoginOpen && (
-                      <div
-                        role="menu"
-                        aria-label="Quick login accounts"
-                        className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl shadow-slate-900/15"
-                      >
-                        <p className="px-2.5 pb-1.5 pt-1 text-[9px] font-semibold uppercase tracking-[0.13em] text-neutral-400">
-                          Development accounts
-                        </p>
-                        {QUICK_LOGIN_ACCOUNTS.map((account) => (
-                          <button
-                            key={account.email}
-                            type="button"
-                            role="menuitem"
-                            onClick={() => void handleQuickLogin(account)}
-                            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-blue-50 focus:bg-blue-50 focus:outline-none"
-                          >
-                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#0085FF] to-[#0066CC] text-[10px] font-bold text-white">
-                              {account.label.slice(0, 1)}
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-[11px] font-semibold text-[#323338]">{account.label}</span>
-                              <span className="block truncate text-[9.5px] text-[#676879]">{account.email}</span>
-                            </span>
-                            <span className="rounded border border-neutral-200 bg-neutral-50 px-1.5 py-0.5 text-[9px] font-medium text-neutral-500">
-                              Ctrl+{account.shortcut}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-['Lexend:Medium',_sans-serif] font-medium text-[#676879] uppercase tracking-wider mb-1.5">
-                    Password
-                  </label>
-                  <input
-                    id="login-password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    autoComplete="current-password"
-                    className="w-full h-11 px-3.5 rounded-lg border border-neutral-200 bg-[#F5F6F8] text-[13px] font-['Lexend:Regular',_sans-serif] text-[#323338] placeholder:text-neutral-400 focus:outline-none focus:border-[#0085FF] focus:ring-2 focus:ring-[#0085FF]/10 transition-all"
-                  />
-                </div>
-
-                <button
-                  id="login-submit"
-                  type="submit"
+            <div className="eflow-auth-card__development">
+              <span>Development access</span>
+              <Dialog
+                content={(
+                  <DialogContentContainer>
+                    <Menu id="quick-login-accounts">
+                      {QUICK_LOGIN_ACCOUNTS.map((account) => (
+                        <MenuItem
+                          icon={Person}
+                          key={account.email}
+                          onClick={() => void handleQuickLogin(account)}
+                          title={`${account.label} — ${account.email}`}
+                        />
+                      ))}
+                    </Menu>
+                  </DialogContentContainer>
+                )}
+                hideTrigger={[]}
+                onDialogDidHide={() => setQuickLoginOpen(false)}
+                open={isQuickLoginOpen}
+                position="bottom-end"
+                showTrigger={[]}
+              >
+                <Button
+                  aria-expanded={isQuickLoginOpen}
+                  aria-haspopup="menu"
+                  aria-label="Choose a development account"
+                  id="quick-login-picker"
+                  kind="tertiary"
+                  leftIcon={Dropdown}
+                  onClick={() => setQuickLoginOpen(true)}
+                  size="small"
                   disabled={submitting}
-                  className="w-full h-11 rounded-lg bg-[#0085FF] hover:bg-[#006FD6] active:bg-[#005CB8] text-white text-[13px] font-['Lexend:SemiBold',_sans-serif] font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  {submitting ? (
-                    <>
-                      Signing in <LoadingDots />
-                    </>
-                  ) : (
-                    "Sign In"
-                  )}
-                </button>
-              </form>
-            </>
-          ) : (
-            <>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-[#00CA72] animate-pulse" />
-                <h2 className="text-[17px] font-['Lexend:SemiBold',_sans-serif] font-semibold text-[#323338]">
-                  First-Time Setup
-                </h2>
-              </div>
-              <p className="text-[12px] font-['Lexend:Regular',_sans-serif] text-[#676879] mb-6">
-                Create the Super Admin account for eFlow
+                  Quick login
+                </Button>
+              </Dialog>
+            </div>
+          </section>
+        ) : (
+          <section aria-labelledby="setup-heading">
+            <h2 id="setup-heading">Set up eFlow</h2>
+            <p className="eflow-auth-card__intro">Create the first Super Admin account for this workspace.</p>
+            <form className="eflow-auth-form" onSubmit={handleSetup}>
+              <TextField
+                controlled
+                id="setup-name"
+                inputAriaLabel="Full name"
+                onChange={setName}
+                placeholder="Juan Dela Cruz"
+                required
+                title="Full name"
+                value={name}
+              />
+              <TextField
+                autoComplete="email"
+                controlled
+                id="setup-email"
+                inputAriaLabel="Email address"
+                onChange={setEmail}
+                placeholder="admin@eflow.gov.ph"
+                required
+                title="Email address"
+                type="email"
+                value={email}
+              />
+              <TextField
+                autoComplete="new-password"
+                controlled
+                id="setup-password"
+                inputAriaLabel="Password"
+                onChange={setPassword}
+                placeholder="At least 6 characters"
+                required
+                title="Password"
+                type="password"
+                value={password}
+              />
+              <p className="eflow-auth-notice eflow-auth-notice--warning">
+                <Info aria-hidden="true" size={16} /> This creates the first Super Admin. The option disappears once an active Super Admin account exists.
               </p>
+              <Button className="eflow-auth-submit" id="setup-submit" loading={submitting} type="submit">
+                Create Super Admin account
+              </Button>
+            </form>
+          </section>
+        )}
 
-              <form onSubmit={handleSetup} className="space-y-4">
-                <div>
-                  <label className="block text-[11px] font-['Lexend:Medium',_sans-serif] font-medium text-[#676879] uppercase tracking-wider mb-1.5">
-                    Full Name
-                  </label>
-                  <input
-                    id="setup-name"
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Juan Dela Cruz"
-                    className="w-full h-11 px-3.5 rounded-lg border border-neutral-200 bg-[#F5F6F8] text-[13px] font-['Lexend:Regular',_sans-serif] text-[#323338] placeholder:text-neutral-400 focus:outline-none focus:border-[#0085FF] focus:ring-2 focus:ring-[#0085FF]/10 transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-['Lexend:Medium',_sans-serif] font-medium text-[#676879] uppercase tracking-wider mb-1.5">
-                    Email Address
-                  </label>
-                  <input
-                    id="setup-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="admin@eflow.gov.ph"
-                    autoComplete="email"
-                    className="w-full h-11 px-3.5 rounded-lg border border-neutral-200 bg-[#F5F6F8] text-[13px] font-['Lexend:Regular',_sans-serif] text-[#323338] placeholder:text-neutral-400 focus:outline-none focus:border-[#0085FF] focus:ring-2 focus:ring-[#0085FF]/10 transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-['Lexend:Medium',_sans-serif] font-medium text-[#676879] uppercase tracking-wider mb-1.5">
-                    Password
-                  </label>
-                  <input
-                    id="setup-password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Min. 6 characters"
-                    autoComplete="new-password"
-                    className="w-full h-11 px-3.5 rounded-lg border border-neutral-200 bg-[#F5F6F8] text-[13px] font-['Lexend:Regular',_sans-serif] text-[#323338] placeholder:text-neutral-400 focus:outline-none focus:border-[#0085FF] focus:ring-2 focus:ring-[#0085FF]/10 transition-all"
-                  />
-                </div>
-
-                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 flex items-start gap-2">
-                  <svg viewBox="0 0 16 16" className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" fill="currentColor">
-                    <path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 2a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM6.5 7h3l-.5 5h-2L6.5 7z" />
-                  </svg>
-                  <p className="text-[11px] font-['Lexend:Regular',_sans-serif] text-amber-800">
-                    This creates the <strong>first Super Admin</strong>. This option disappears once a super_admin account exists.
-                  </p>
-                </div>
-
-                <button
-                  id="setup-submit"
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full h-11 rounded-lg bg-[#00CA72] hover:bg-[#00B563] active:bg-[#009E56] text-white text-[13px] font-['Lexend:SemiBold',_sans-serif] font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  {submitting ? (
-                    <>
-                      Creating Account <LoadingDots />
-                    </>
-                  ) : (
-                    "Create Super Admin Account"
-                  )}
-                </button>
-              </form>
-            </>
-          )}
-
-          {canSetupAdmin && (
-            <button
-              type="button"
-              onClick={() => {
-                clearError();
-                setMode((current) => current === "login" ? "setup" : "login");
-              }}
-              className="mt-5 w-full text-[12px] font-['Lexend:Medium',_sans-serif] text-[#0085FF] hover:text-[#006FD6]"
-            >
-              {mode === "login" ? "Set up the first Super Admin" : "Back to sign in"}
-            </button>
-          )}
-        </div>
-
-        {/* Footer */}
-        <p className="text-center text-[11px] font-['Lexend:Regular',_sans-serif] text-[#676879] mt-6">
-          © 2026 Ormoc City Local Government Unit · eFlow Platform
-        </p>
-      </div>
-    </div>
+        {canSetupAdmin && (
+          <Button className="eflow-auth-submit" kind="tertiary" onClick={toggleMode}>
+            {mode === "login" ? "Set up the first Super Admin" : "Back to sign in"}
+          </Button>
+        )}
+      </section>
+      <p className="eflow-auth-page__footer">© 2026 Ormoc City Local Government Unit</p>
+    </main>
   );
 }

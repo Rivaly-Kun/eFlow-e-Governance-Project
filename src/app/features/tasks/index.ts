@@ -15,6 +15,9 @@ export { TaskTeamMemberList } from "./components/team/TaskTeamMemberList";
 export { AdminTaskOversight } from "./components/AdminTaskOversight";
 export { resolveTaskDetailCapabilities } from "./components/taskDetailAccess";
 export { cancelTask } from "./services/taskLifecycleService";
+export { TaskStatusLabel } from "./presentation/TaskStatusLabel";
+export { getTaskStatusPresentation } from "./presentation/taskStatusPresentation";
+export type { TaskStatusPresentation, TaskStatusPresentationState } from "./presentation/taskStatusPresentation";
 export { runTaskMaintenance } from "./services/taskMaintenanceService";
 export {
   createTaskTemplate,

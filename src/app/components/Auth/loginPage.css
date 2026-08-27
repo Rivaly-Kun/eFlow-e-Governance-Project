@@ -1,0 +1,141 @@
+.eflow-auth-page {
+  align-items: center;
+  background: var(--allgrey-background-color);
+  color: var(--primary-text-color);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-family);
+  justify-content: center;
+  min-height: 100dvh;
+  padding: var(--space-24);
+  position: relative;
+}
+
+.eflow-auth-card {
+  background: var(--primary-background-color);
+  border: 1px solid var(--layout-border-color);
+  border-radius: var(--border-radius-12);
+  box-shadow: var(--box-shadow-medium);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-24);
+  max-width: 420px;
+  padding: var(--space-32);
+  width: 100%;
+}
+
+.eflow-auth-card__header {
+  align-items: center;
+  display: flex;
+  gap: var(--space-12);
+}
+
+.eflow-auth-card h1,
+.eflow-auth-card h2,
+.eflow-auth-card p {
+  margin: 0;
+}
+
+.eflow-auth-card h1 {
+  font: var(--font-h3-bold);
+}
+
+.eflow-auth-card h2 {
+  font: var(--font-h4);
+}
+
+.eflow-auth-card__header p,
+.eflow-auth-card__intro,
+.eflow-auth-page__footer {
+  color: var(--secondary-text-color);
+  font: var(--font-text2-normal);
+}
+
+.eflow-auth-card__intro {
+  margin-top: var(--space-8) !important;
+}
+
+.eflow-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+  margin-top: var(--space-24);
+}
+
+.eflow-auth-submit {
+  justify-content: center !important;
+  width: 100%;
+}
+
+.eflow-auth-notice {
+  align-items: flex-start;
+  background: var(--primary-highlighted-color);
+  border: 1px solid var(--primary-selected-color);
+  border-radius: var(--border-radius-8);
+  color: var(--primary-text-color);
+  display: flex;
+  font: var(--font-text3-normal);
+  gap: var(--space-8);
+  margin-top: var(--space-16) !important;
+  padding: var(--space-12);
+}
+
+.eflow-auth-notice--warning {
+  background: var(--warning-color-selected);
+  border-color: var(--warning-color-hover);
+}
+
+.eflow-auth-card__development {
+  align-items: center;
+  border-top: 1px solid var(--layout-border-color);
+  color: var(--secondary-text-color);
+  display: flex;
+  font: var(--font-text3-normal);
+  justify-content: space-between;
+  margin-top: var(--space-24);
+  padding-top: var(--space-16);
+}
+
+.eflow-auth-page__footer {
+  margin: var(--space-20) 0 0;
+  text-align: center;
+}
+
+.eflow-auth-toast {
+  align-items: center;
+  background: var(--primary-background-color);
+  border: 1px solid var(--layout-border-color);
+  border-radius: var(--border-radius-8);
+  box-shadow: var(--box-shadow-medium);
+  display: flex;
+  gap: var(--space-8);
+  max-width: min(420px, calc(100vw - 32px));
+  padding: var(--space-12);
+  position: fixed;
+  right: var(--space-16);
+  top: var(--space-16);
+  z-index: 1000;
+}
+
+.eflow-auth-toast--error {
+  border-color: var(--negative-color);
+}
+
+.eflow-auth-toast--success {
+  border-color: var(--positive-color);
+}
+
+.eflow-auth-toast__message {
+  flex: 1 1 auto;
+  font: var(--font-text2-normal);
+}
+
+@media (max-width: 480px) {
+  .eflow-auth-page {
+    padding: var(--space-16);
+  }
+
+  .eflow-auth-card {
+    padding: var(--space-24);
+  }
+}

@@ -3,3 +3,9 @@
 @import 'tw-animate-css';
 @import './default_theme.css';
 @import './globals.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}

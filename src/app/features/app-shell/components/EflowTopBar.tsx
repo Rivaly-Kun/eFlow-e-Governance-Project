@@ -1,0 +1,185 @@
+import { Avatar, Button, Dialog, DialogContentContainer, IconButton, Menu, MenuDivider, MenuItem, Tooltip } from "@vibe/core";
+import { LogOut, Menu as MenuIcon, Person, Settings } from "@vibe/icons";
+import { useEffect, useState } from "react";
+import { useAuth } from "../../../contexts/AuthContext";
+import { ChatListDrawer } from "../../chat-calls";
+import { PageWalkthroughButton, SystemWalkthroughButton } from "../../guided-tours";
+import { getProfileAvatarUrl } from "../../../services/userSettingsService";
+import { getRoleLabel } from "../../../shared/roles";
+import { IncomingCallListener } from "../../../components/ui/IncomingCallListener";
+import { NotificationBell } from "../../../components/ui/NotificationBell";
+
+interface EflowTopBarProps {
+  activePage?: string;
+  activeSection: string;
+  onOpenMobileNavigation: () => void;
+  onPageSelect: (section: string, page: string) => void;
+  role: string;
+}
+
+function getInitials(name?: string) {
+  return (name || "User")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function getAccountRoleLabel(role: string): string {
+  if (role === "dept_head" || role === "department_head" || role === "depthead") {
+    return "Department Head";
+  }
+
+  if (role === "assistant_head") {
+    return "Assistant Department Head";
+  }
+
+  return getRoleLabel(role);
+}
+
+function AccountMenu({ onPageSelect, role }: Pick<EflowTopBarProps, "onPageSelect" | "role">) {
+  const { logout, userProfile } = useAuth();
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>();
+  const [isMenuOpen, setMenuOpen] = useState(false);
+  const fullName = userProfile?.fullName || "eFlow user";
+
+  useEffect(() => {
+    let active = true;
+    void getProfileAvatarUrl(userProfile?.avatar_path)
+      .then((url) => {
+        if (active) setAvatarUrl(url || undefined);
+      })
+      .catch(() => {
+        if (active) setAvatarUrl(undefined);
+      });
+    return () => {
+      active = false;
+    };
+  }, [userProfile?.avatar_path]);
+
+  return (
+    <div className="eflow-topbar__account" data-tour-id="profile">
+      <Avatar
+        aria-label={fullName}
+        size="small"
+        src={avatarUrl}
+        text={getInitials(fullName)}
+        type={avatarUrl ? "img" : "text"}
+      />
+      <Dialog
+        aria-label="Open account menu"
+        content={(
+          <DialogContentContainer>
+            <Menu id="eflow-account-menu">
+              <MenuItem
+                icon={Person}
+                onClick={() => {
+                  onPageSelect("settings", "Profile");
+                  setMenuOpen(false);
+                }}
+                title="Profile"
+              />
+              <MenuItem
+                data-tour-id="settings"
+                icon={Settings}
+                onClick={() => {
+                  onPageSelect("settings", "Appearance");
+                  setMenuOpen(false);
+                }}
+                title="Settings"
+              />
+              <MenuDivider />
+              <MenuItem
+                icon={LogOut}
+                onClick={() => {
+                  setMenuOpen(false);
+                  logout();
+                }}
+                title="Log out"
+              />
+            </Menu>
+          </DialogContentContainer>
+        )}
+        hideTrigger={[]}
+        onDialogDidHide={() => setMenuOpen(false)}
+        open={isMenuOpen}
+        position="bottom-end"
+        showTrigger={[]}
+      >
+        <span data-tour-id="settings">
+          <Button
+            aria-expanded={isMenuOpen}
+            aria-haspopup="menu"
+            aria-label="Open account menu"
+            className="eflow-topbar__account-trigger"
+            kind="tertiary"
+            leftIcon={Person}
+            onClick={() => setMenuOpen(true)}
+          >
+            Account
+          </Button>
+        </span>
+      </Dialog>
+      <div className="eflow-topbar__account-context">
+        <span className="eflow-topbar__account-name">{fullName}</span>
+        <span className="eflow-topbar__account-role">{getAccountRoleLabel(userProfile?.role || role)}</span>
+      </div>
+    </div>
+  );
+}
+
+export function EflowTopBar({
+  activePage,
+  activeSection,
+  onOpenMobileNavigation,
+  onPageSelect,
+  role,
+}: EflowTopBarProps) {
+  const { user, userProfile } = useAuth();
+  const currentTitle = activePage || activeSection;
+
+  return (
+    <header className="eflow-topbar" aria-label="Workspace utilities">
+      <div className="eflow-topbar__workspace">
+        <Tooltip content="Open navigation">
+          <IconButton
+            aria-label="Open navigation"
+            className="eflow-topbar__mobile-menu"
+            icon={MenuIcon}
+            kind="tertiary"
+            onClick={onOpenMobileNavigation}
+            size="small"
+          />
+        </Tooltip>
+        <div className="min-w-0">
+          <p className="eflow-topbar__eyebrow">Workspace</p>
+          <h1 className="eflow-topbar__title">{currentTitle}</h1>
+        </div>
+      </div>
+
+      <div className="eflow-topbar__utilities">
+        <PageWalkthroughButton />
+        <SystemWalkthroughButton collapsed={false} />
+        {user?.id && (
+          <div className="eflow-topbar__communications" data-tour-id="communications">
+            <NotificationBell
+              compact
+              onNavigate={onPageSelect}
+              role={role}
+              userId={user.id}
+            />
+            <ChatListDrawer
+              userId={user.id}
+              userName={userProfile?.fullName}
+              userOrgId={userProfile?.departmentId}
+            />
+            <IncomingCallListener userId={user.id} />
+          </div>
+        )}
+        <AccountMenu onPageSelect={onPageSelect} role={role} />
+      </div>
+    </header>
+  );
+}
