@@ -3,20 +3,39 @@ import type { Task } from "../../../tasks";
 import type { TeamAttentionItem, TeamWorkflowFacts } from "../../../team-management";
 import type { DepartmentBudgetBundle } from "../../../budget";
 
+export type PermanentProjectView = "overview" | "tasks" | "timeline" | "calendar";
+
+export type OptionalProjectView =
+  | "reports"
+  | "proposal_context"
+  | "activity"
+  | "reviews"
+  | "dashboard"
+  | "workload"
+  | "budget"
+  | "signoff"
+  | "evidence"
+  | "decisions";
+
 export type ProjectCommandTab =
-  | "overview"
-  | "tasks"
-  | "timeline"
-  | "calendar"
+  | PermanentProjectView
+  | OptionalProjectView
   | "delivery"
   | "team"
-  | "reviews"
-  | "activity"
-  | "reports"
   | "plan"
   | "work"
   | "people";
+
 export type ProjectScheduleHealth = "on_track" | "due_soon" | "overdue" | "at_risk" | "completed";
+
+export interface ProjectViewMeta {
+  id: OptionalProjectView;
+  label: string;
+  category: "Project" | "Insights" | "Governance";
+  description: string;
+  requiresProposal?: boolean;
+  requiresBudget?: boolean;
+}
 
 export interface ProjectCommandMetrics {
   progress: number;

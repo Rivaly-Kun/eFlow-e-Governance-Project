@@ -1,6 +1,3 @@
-import * as React from "react";
-import { Button, Dialog, DialogContentContainer, Menu, MenuItem } from "@vibe/core";
-import { Activity, Chart, File, MoreActions } from "@vibe/icons";
 import type { Organization, UserProfile } from "../../../../types";
 import type { Project } from "../../services/types";
 import { ProjectLifecycleLabel, ProjectScheduleLabel } from "../../presentation/projectPresentation";
@@ -11,14 +8,6 @@ export function ProjectHeader({
   organizations,
   profiles,
   metrics,
-  canArchive: _canArchive,
-  canDelete: _canDelete,
-  onBack: _onBack,
-  onArchive: _onArchive,
-  onRestore: _onRestore,
-  onDelete: _onDelete,
-  onOpenProposalContext,
-  onOpenTool,
 }: {
   project: Project;
   organizations: Organization[];
@@ -37,15 +26,9 @@ export function ProjectHeader({
   const organization = organizations.find((item) => item.id === project.orgId);
   const owner = profiles?.find((p) => p.id === project.ownerId);
   const archived = project.status === "archived";
-  const [toolsOpen, setToolsOpen] = React.useState(false);
-
-  const chooseTool = (tool: "reviews" | "activity" | "reports") => {
-    setToolsOpen(false);
-    onOpenTool?.(tool);
-  };
 
   return (
-    <header className="space-y-2.5 pb-2">
+    <header className="space-y-2.5 pb-2 font-['Montserrat',sans-serif]">
       {/* Project identity and utilities stay below the persistent workspace tabs. */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
@@ -73,7 +56,7 @@ export function ProjectHeader({
             {project.title}
           </h1>
 
-          {/* Compact summary line in header — replaces persistent large strip */}
+          {/* Compact summary line in header */}
           {metrics && (
             <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-neutral-600">
               <strong className="font-semibold text-neutral-800">{metrics.progress}% complete</strong>
@@ -99,50 +82,6 @@ export function ProjectHeader({
               )}
             </p>
           )}
-        </div>
-
-        {/* Header Actions */}
-        <div className="flex flex-wrap items-center gap-2">
-          {onOpenProposalContext && (
-            <Button
-              kind="secondary"
-              size="small"
-              leftIcon={File}
-              onClick={onOpenProposalContext}
-            >
-              Proposal context
-            </Button>
-          )}
-          <Dialog
-            aria-label="Project tools"
-            content={(
-              <DialogContentContainer>
-                <Menu id={`project-tools-menu-${project.id}`}>
-                  <MenuItem title="Reviews" icon={Chart} onClick={() => chooseTool("reviews")} />
-                  <MenuItem title="Activity" icon={Activity} onClick={() => chooseTool("activity")} />
-                  <MenuItem title="Reports" icon={File} onClick={() => chooseTool("reports")} />
-                </Menu>
-              </DialogContentContainer>
-            )}
-            hideTrigger={[]}
-            onDialogDidHide={() => setToolsOpen(false)}
-            open={toolsOpen}
-            position="bottom-end"
-            showTrigger={[]}
-          >
-            <span>
-              <Button
-                aria-expanded={toolsOpen}
-                aria-haspopup="menu"
-                kind="tertiary"
-                leftIcon={MoreActions}
-                onClick={() => setToolsOpen(true)}
-                size="small"
-              >
-                Project tools
-              </Button>
-            </span>
-          </Dialog>
         </div>
       </div>
 
