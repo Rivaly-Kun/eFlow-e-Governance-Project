@@ -156,13 +156,20 @@
   background: #02028f !important;
 }
 
+.eflow-auth-usage-container {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin: 0 auto 11px;
+}
+
 .eflow-auth-usage-trigger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
   height: 30px;
-  margin: 0 auto 11px;
   padding: 5px 11px 5px 7px;
   border: 1px solid transparent;
   border-radius: 11px;
@@ -170,46 +177,13 @@
   color: #01006b;
   font: 600 14px/18px 'Montserrat', sans-serif;
   cursor: pointer;
-}
-
-.eflow-auth-usage-trigger-wrap {
-  display: flex;
-  width: 100%;
-  justify-content: center;
+  transition: all 0.15s ease;
 }
 
 .eflow-auth-usage-trigger img {
   display: block;
   width: 18px;
   height: 18px;
-}
-
-.eflow-auth-usage-menu {
-  display: flex;
-  min-width: 260px;
-  flex-direction: column;
-  gap: 2px;
-  padding: 4px;
-}
-
-.eflow-auth-usage-menu__item {
-  display: flex !important;
-  width: 100%;
-  align-items: center;
-  justify-content: flex-start !important;
-  gap: 9px;
-  padding: 9px 10px !important;
-  border-radius: 8px !important;
-  color: #01006b !important;
-  font: 500 12px/18px 'Montserrat', sans-serif !important;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.eflow-auth-usage-menu__item:hover:not(:disabled),
-.eflow-auth-usage-menu__item:focus-visible {
-  background: rgba(1, 0, 107, .07) !important;
-  outline: none;
 }
 
 .eflow-auth-usage-trigger:hover:not(:disabled),
@@ -222,6 +196,99 @@
 .eflow-auth-usage-trigger:disabled {
   cursor: not-allowed;
   opacity: .55;
+}
+
+.eflow-auth-usage-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 320px;
+  max-width: 92vw;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08);
+  z-index: 9999;
+  padding: 6px;
+  animation: eflowPopoverIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes eflowPopoverIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.eflow-auth-usage-popover__header {
+  padding: 6px 10px 8px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.eflow-auth-usage-popover__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.eflow-auth-usage-popover__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.eflow-auth-usage-popover__item:hover {
+  background: #f0f7ff;
+}
+
+.eflow-auth-usage-popover__avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #eff6ff;
+  color: #2563eb;
+  flex-shrink: 0;
+}
+
+.eflow-auth-usage-popover__info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.eflow-auth-usage-popover__label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.eflow-auth-usage-popover__email {
+  font-size: 11px;
+  color: #64748b;
 }
 
 .eflow-auth-notice {

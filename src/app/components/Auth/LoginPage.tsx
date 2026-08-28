@@ -1,4 +1,4 @@
-import { Button, Dialog, DialogContentContainer, IconButton, TextField } from "@vibe/core";
+import { Button, IconButton, TextField } from "@vibe/core";
 import { Close, Info, Person } from "@vibe/icons";
 import React, { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
@@ -37,6 +37,26 @@ export function LoginPage() {
   const [toast, setToast] = useState<{ msg: string; type: "error" | "success" } | null>(null);
   const [canSetupAdmin, setCanSetupAdmin] = useState<boolean | null>(null);
   const [isQuickLoginOpen, setQuickLoginOpen] = useState(false);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isQuickLoginOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setQuickLoginOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setQuickLoginOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isQuickLoginOpen]);
+
   const [sessionNotice] = useState(() => {
     const notice = localStorage.getItem(SESSION_NOTICE_KEY) || "";
     if (notice) {
@@ -152,52 +172,53 @@ export function LoginPage() {
                 <h2 className="sr-only" id="sign-in-heading">Sign in</h2>
                 <p className="sr-only eflow-auth-card__intro">Use your eFlow account to continue to your workspace.</p>
 
-                <Dialog
-                  content={(
-                    <DialogContentContainer>
-                      <div aria-label="Development accounts" className="eflow-auth-usage-menu" id="quick-login-accounts" role="menu">
+                <div className="eflow-auth-usage-container" ref={menuRef}>
+                  <button
+                    aria-expanded={isQuickLoginOpen}
+                    aria-haspopup="menu"
+                    aria-label="Choose a development account"
+                    className="eflow-auth-usage-trigger"
+                    disabled={submitting}
+                    id="quick-login-picker"
+                    onClick={() => setQuickLoginOpen((prev) => !prev)}
+                    type="button"
+                  >
+                    <img alt="" aria-hidden="true" src={usageScenariosIcon} />
+                    <span>Usage scenarios</span>
+                  </button>
+
+                  {isQuickLoginOpen && (
+                    <div
+                      aria-label="Development accounts"
+                      className="eflow-auth-usage-popover"
+                      id="quick-login-accounts"
+                      role="menu"
+                    >
+                      <div className="eflow-auth-usage-popover__header">
+                        <span>Development accounts</span>
+                      </div>
+                      <div className="eflow-auth-usage-popover__list">
                         {QUICK_LOGIN_ACCOUNTS.map((account) => (
-                          <div className="eflow-auth-usage-menu__entry" key={account.email} role="menuitem">
-                            <Button
-                              className="eflow-auth-usage-menu__item"
-                              kind="tertiary"
-                              onClick={() => void handleQuickLogin(account)}
-                              type="button"
-                            >
-                              <Person aria-hidden="true" size={16} />
-                              <span>{account.label} — {account.email}</span>
-                            </Button>
-                          </div>
+                          <button
+                            className="eflow-auth-usage-popover__item"
+                            key={account.email}
+                            onClick={() => void handleQuickLogin(account)}
+                            role="menuitem"
+                            type="button"
+                          >
+                            <span className="eflow-auth-usage-popover__avatar" aria-hidden="true">
+                              <Person size={14} />
+                            </span>
+                            <div className="eflow-auth-usage-popover__info">
+                              <strong className="eflow-auth-usage-popover__label">{account.label}</strong>
+                              <small className="eflow-auth-usage-popover__email">{account.email}</small>
+                            </div>
+                          </button>
                         ))}
                       </div>
-                    </DialogContentContainer>
+                    </div>
                   )}
-                  addKeyboardHideShowTriggersByDefault={false}
-                  hideTrigger={["esckey"]}
-                  onDialogDidShow={() => setQuickLoginOpen(true)}
-                  onDialogDidHide={() => setQuickLoginOpen(false)}
-                  onClickOutside={() => setQuickLoginOpen(false)}
-                  open={isQuickLoginOpen}
-                  position="bottom-end"
-                  showTrigger={["click", "enter"]}
-                >
-                  <span className="eflow-auth-usage-trigger-wrap">
-                    <Button
-                      aria-expanded={isQuickLoginOpen}
-                      aria-haspopup="menu"
-                      aria-label="Choose a development account"
-                      className="eflow-auth-usage-trigger"
-                      disabled={submitting}
-                      id="quick-login-picker"
-                      kind="tertiary"
-                      onClick={() => setQuickLoginOpen(true)}
-                      size="small"
-                    >
-                      <img alt="" aria-hidden="true" src={usageScenariosIcon} />
-                      <span>Usage scenarios</span>
-                    </Button>
-                  </span>
-                </Dialog>
+                </div>
 
                 {sessionNotice && <p className="eflow-auth-notice" role="status">{sessionNotice}</p>}
 
