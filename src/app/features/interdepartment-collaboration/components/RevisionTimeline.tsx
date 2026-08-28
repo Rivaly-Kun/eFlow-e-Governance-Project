@@ -1,14 +1,135 @@
+import { Avatar, Label } from "@vibe/core";
 import { GitCompareArrows, History } from "lucide-react";
 import type { UserProfile } from "../../../types";
 import { summarizeRevisionDiff } from "../selectors/revisionDiff";
 import type { CollaborationRevision } from "../types";
 
-export function RevisionTimeline({ revisions, profiles }: { revisions: CollaborationRevision[]; profiles: UserProfile[] }) {
-  const sorted = [...revisions].sort((a, b) => b.revisionNumber - a.revisionNumber);
-  return <div className="space-y-3">{sorted.map((revision, index) => {
-    const previous = sorted[index + 1];
-    const diff = previous ? summarizeRevisionDiff(previous.snapshot, revision.snapshot) : ["Initial proposal snapshot"];
-    const author = profiles.find((profile) => profile.id === revision.createdBy);
-    return <article key={revision.id} className="rounded-2xl border border-neutral-200 bg-white p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-700">{index === 0 ? <GitCompareArrows size={15} /> : <History size={15} />}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><div className="text-[12px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">Revision {revision.revisionNumber}</div>{index === 0 && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[8px] uppercase text-violet-700">Current</span>}</div><div className="mt-1 text-[10px] text-neutral-500">{revision.changeSummary}</div><div className="mt-2 space-y-1">{diff.map((item) => <div key={item} className="text-[9px] text-neutral-500">• {item}</div>)}</div><div className="mt-3 text-[9px] text-neutral-400">{author?.full_name || "User"} · {new Date(revision.createdAt).toLocaleString()}</div></div></div></article>;
-  })}</div>;
+export function RevisionTimeline({
+  revisions,
+  profiles,
+}: {
+  revisions: CollaborationRevision[];
+  profiles: UserProfile[];
+}) {
+  const sorted = [...revisions].sort(
+    (a, b) => b.revisionNumber - a.revisionNumber,
+  );
+
+  return (
+    <div className="space-y-4">
+      <section className="eflow-section-card">
+        <header>
+          <h2>Proposal revision history ({revisions.length})</h2>
+          <p className="m-0 mt-1 text-xs text-secondary">
+            Immutable audit record of all proposal modifications, plan adjustments, and diff summaries.
+          </p>
+        </header>
+
+        <div className="divide-y divide-neutral-100">
+          {sorted.map((revision, index) => {
+            const previous = sorted[index + 1];
+            const diff = previous
+              ? summarizeRevisionDiff(previous.snapshot, revision.snapshot)
+              : ["Initial proposal snapshot established."];
+            const author = profiles.find(
+              (profile) => profile.id === revision.createdBy,
+            );
+            const isCurrent = index === 0;
+
+            return (
+              <div
+                key={revision.id}
+                className={`p-5 transition-colors ${
+                  isCurrent ? "bg-blue-50/20" : "bg-white"
+                }`}
+              >
+                <div className="flex items-start gap-4">
+                  <div
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                      isCurrent
+                        ? "bg-blue-100 text-blue-800 border border-blue-200"
+                        : "bg-neutral-100 text-neutral-600 border border-neutral-200"
+                    }`}
+                  >
+                    {isCurrent ? (
+                      <GitCompareArrows size={18} />
+                    ) : (
+                      <History size={18} />
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-sm font-bold text-neutral-900">
+                        Revision {revision.revisionNumber}
+                      </span>
+                      {isCurrent ? (
+                        <Label text="Active current" color="primary" />
+                      ) : (
+                        <Label text="Historical" color="dark" />
+                      )}
+                    </div>
+
+                    <div className="mt-1 text-xs font-medium text-neutral-800">
+                      {revision.changeSummary}
+                    </div>
+
+                    {/* Diff highlights */}
+                    <div className="mt-2.5 rounded-lg border border-neutral-200/80 bg-neutral-50/70 p-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-secondary mb-1.5">
+                        Changes recorded:
+                      </div>
+                      <div className="space-y-1">
+                        {diff.map((item, i) => (
+                          <div
+                            key={i}
+                            className="flex items-start gap-2 text-xs text-neutral-700"
+                          >
+                            <span className="text-neutral-400 select-none">•</span>
+                            <span>{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Author & Timestamp */}
+                    <div className="mt-3 flex items-center gap-2 text-xs text-secondary">
+                      <Avatar
+                        text={
+                          author?.full_name
+                            ? author.full_name
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")
+                                .slice(0, 2)
+                            : "US"
+                        }
+                        size="small"
+                      />
+                      <span>
+                        Published by{" "}
+                        <span className="font-semibold text-neutral-800">
+                          {author?.full_name || "Authorized User"}
+                        </span>
+                      </span>
+                      <span>·</span>
+                      <time>
+                        {new Date(revision.createdAt).toLocaleString([], {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </time>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
 }

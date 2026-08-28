@@ -20,7 +20,7 @@ import { useDepartmentTeamAnalytics } from "../../features/team-management";
 // System-wide scope: super admin sees every org (empty scopedOrgIds = all).
 const ADMIN_SCOPE = { isSuperAdmin: true, scopedOrgIds: [] as string[] };
 function AdminProjects() {
-  return <ProjectsWorkspace scope={ADMIN_SCOPE} eyebrow="Administration · Planning Portfolio" readOnly />;
+  return <ProjectsWorkspace scope={ADMIN_SCOPE} eyebrow="Administration · Planning Portfolio" />;
 }
 function AdminReports() {
   const [view, setView] = useState<"reports" | "contribution">("reports");

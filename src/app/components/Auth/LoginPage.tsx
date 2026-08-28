@@ -1,5 +1,5 @@
-import { Avatar, Button, Dialog, DialogContentContainer, IconButton, Menu, MenuItem, TextField } from "@vibe/core";
-import { Close, Dropdown, Info, Person, Workspace } from "@vibe/icons";
+import { Button, Dialog, DialogContentContainer, IconButton, TextField } from "@vibe/core";
+import { Close, Info, Person } from "@vibe/icons";
 import React, { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
@@ -7,6 +7,9 @@ import { SESSION_NOTICE_KEY } from "../../features/session-security/constants";
 import { clearAllSessionActivity } from "../../features/session-security/services/sessionActivityStorage";
 import { QUICK_LOGIN_ACCOUNTS, type QuickLoginAccount } from "../../shared/quickLoginAccounts";
 import type { UserRole } from "../../types";
+import eflowLogo from "./assets/figma-login/eflow-logo.svg";
+import usageScenariosIcon from "./assets/figma-login/usage-scenarios.svg";
+import loginIllustration from "./assets/figma-login/eflow-bg.svg";
 import "./loginPage.css";
 
 function Toast({ message, type, onClose }: { message: string; type: "error" | "success"; onClose: () => void }) {
@@ -42,6 +45,12 @@ export function LoginPage() {
     }
     return notice;
   });
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.title = mode === "setup" ? "Set up eFlow" : "eFlow";
+    }
+  }, [mode]);
 
   useEffect(() => {
     void (async () => {
@@ -129,145 +138,163 @@ export function LoginPage() {
   return (
     <main className="eflow-auth-page" aria-labelledby="eflow-auth-title">
       {toast && <Toast message={toast.msg} onClose={() => setToast(null)} type={toast.type} />}
-      <section className="eflow-auth-card" aria-label="eFlow sign in">
-        <header className="eflow-auth-card__header">
-          <Avatar aria-hidden icon={Workspace} size="large" square type="icon" />
-          <div>
-            <h1 id="eflow-auth-title">eFlow</h1>
-            <p>Government work, connected.</p>
-          </div>
-        </header>
+      <div className="eflow-login-shell" data-node-id="39:875">
+        <section className="eflow-login-brand-panel" aria-label="eFlow access">
+          <section className="eflow-auth-card" aria-label="eFlow sign in" data-node-id="39:916">
+            <header className="eflow-auth-card__header">
+              <img alt="eFlow" className="eflow-auth-card__logo" src={eflowLogo} />
+              <h1 className="sr-only" id="eflow-auth-title">eFlow</h1>
+              <p className="sr-only">Government work, connected.</p>
+            </header>
 
-        {mode === "login" ? (
-          <section aria-labelledby="sign-in-heading">
-            <h2 id="sign-in-heading">Sign in</h2>
-            <p className="eflow-auth-card__intro">Use your eFlow account to continue to your workspace.</p>
-            {sessionNotice && <p className="eflow-auth-notice" role="status">{sessionNotice}</p>}
+            {mode === "login" ? (
+              <section aria-labelledby="sign-in-heading">
+                <h2 className="sr-only" id="sign-in-heading">Sign in</h2>
+                <p className="sr-only eflow-auth-card__intro">Use your eFlow account to continue to your workspace.</p>
 
-            <form className="eflow-auth-form" onSubmit={handleLogin}>
-              <TextField
-                autoComplete="email"
-                controlled
-                id="login-email"
-                inputAriaLabel="Email address"
-                onChange={setEmail}
-                placeholder="you@eflow.gov.ph"
-                required
-                title="Email address"
-                value={email}
-              />
-              <TextField
-                autoComplete="current-password"
-                controlled
-                id="login-password"
-                inputAriaLabel="Password"
-                onChange={setPassword}
-                placeholder="Enter your password"
-                required
-                title="Password"
-                type="password"
-                value={password}
-              />
-              <Button className="eflow-auth-submit" id="login-submit" loading={submitting} type="submit">
-                Sign in
-              </Button>
-            </form>
-
-            <div className="eflow-auth-card__development">
-              <span>Development access</span>
-              <Dialog
-                content={(
-                  <DialogContentContainer>
-                    <Menu id="quick-login-accounts">
-                      {QUICK_LOGIN_ACCOUNTS.map((account) => (
-                        <MenuItem
-                          icon={Person}
-                          key={account.email}
-                          onClick={() => void handleQuickLogin(account)}
-                          title={`${account.label} — ${account.email}`}
-                        />
-                      ))}
-                    </Menu>
-                  </DialogContentContainer>
-                )}
-                hideTrigger={[]}
-                onDialogDidHide={() => setQuickLoginOpen(false)}
-                open={isQuickLoginOpen}
-                position="bottom-end"
-                showTrigger={[]}
-              >
-                <Button
-                  aria-expanded={isQuickLoginOpen}
-                  aria-haspopup="menu"
-                  aria-label="Choose a development account"
-                  id="quick-login-picker"
-                  kind="tertiary"
-                  leftIcon={Dropdown}
-                  onClick={() => setQuickLoginOpen(true)}
-                  size="small"
-                  disabled={submitting}
+                <Dialog
+                  content={(
+                    <DialogContentContainer>
+                      <div aria-label="Development accounts" className="eflow-auth-usage-menu" id="quick-login-accounts" role="menu">
+                        {QUICK_LOGIN_ACCOUNTS.map((account) => (
+                          <div className="eflow-auth-usage-menu__entry" key={account.email} role="menuitem">
+                            <Button
+                              className="eflow-auth-usage-menu__item"
+                              kind="tertiary"
+                              onClick={() => void handleQuickLogin(account)}
+                              type="button"
+                            >
+                              <Person aria-hidden="true" size={16} />
+                              <span>{account.label} — {account.email}</span>
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </DialogContentContainer>
+                  )}
+                  addKeyboardHideShowTriggersByDefault={false}
+                  hideTrigger={["esckey"]}
+                  onDialogDidShow={() => setQuickLoginOpen(true)}
+                  onDialogDidHide={() => setQuickLoginOpen(false)}
+                  onClickOutside={() => setQuickLoginOpen(false)}
+                  open={isQuickLoginOpen}
+                  position="bottom-end"
+                  showTrigger={["click", "enter"]}
                 >
-                  Quick login
-                </Button>
-              </Dialog>
-            </div>
-          </section>
-        ) : (
-          <section aria-labelledby="setup-heading">
-            <h2 id="setup-heading">Set up eFlow</h2>
-            <p className="eflow-auth-card__intro">Create the first Super Admin account for this workspace.</p>
-            <form className="eflow-auth-form" onSubmit={handleSetup}>
-              <TextField
-                controlled
-                id="setup-name"
-                inputAriaLabel="Full name"
-                onChange={setName}
-                placeholder="Juan Dela Cruz"
-                required
-                title="Full name"
-                value={name}
-              />
-              <TextField
-                autoComplete="email"
-                controlled
-                id="setup-email"
-                inputAriaLabel="Email address"
-                onChange={setEmail}
-                placeholder="admin@eflow.gov.ph"
-                required
-                title="Email address"
-                type="email"
-                value={email}
-              />
-              <TextField
-                autoComplete="new-password"
-                controlled
-                id="setup-password"
-                inputAriaLabel="Password"
-                onChange={setPassword}
-                placeholder="At least 6 characters"
-                required
-                title="Password"
-                type="password"
-                value={password}
-              />
-              <p className="eflow-auth-notice eflow-auth-notice--warning">
-                <Info aria-hidden="true" size={16} /> This creates the first Super Admin. The option disappears once an active Super Admin account exists.
-              </p>
-              <Button className="eflow-auth-submit" id="setup-submit" loading={submitting} type="submit">
-                Create Super Admin account
-              </Button>
-            </form>
-          </section>
-        )}
+                  <span className="eflow-auth-usage-trigger-wrap">
+                    <Button
+                      aria-expanded={isQuickLoginOpen}
+                      aria-haspopup="menu"
+                      aria-label="Choose a development account"
+                      className="eflow-auth-usage-trigger"
+                      disabled={submitting}
+                      id="quick-login-picker"
+                      kind="tertiary"
+                      onClick={() => setQuickLoginOpen(true)}
+                      size="small"
+                    >
+                      <img alt="" aria-hidden="true" src={usageScenariosIcon} />
+                      <span>Usage scenarios</span>
+                    </Button>
+                  </span>
+                </Dialog>
 
-        {canSetupAdmin && (
-          <Button className="eflow-auth-submit" kind="tertiary" onClick={toggleMode}>
-            {mode === "login" ? "Set up the first Super Admin" : "Back to sign in"}
-          </Button>
-        )}
-      </section>
-      <p className="eflow-auth-page__footer">© 2026 Ormoc City Local Government Unit</p>
+                {sessionNotice && <p className="eflow-auth-notice" role="status">{sessionNotice}</p>}
+
+                <form className="eflow-auth-form" onSubmit={handleLogin}>
+                  <TextField
+                    autoComplete="email"
+                    controlled
+                    id="login-email"
+                    inputAriaLabel="Email address"
+                    onChange={setEmail}
+                    placeholder=""
+                    required
+                    title="Username"
+                    wrapperClassName="eflow-auth-field"
+                    value={email}
+                  />
+                  <TextField
+                    autoComplete="current-password"
+                    controlled
+                    id="login-password"
+                    inputAriaLabel="Password"
+                    onChange={setPassword}
+                    placeholder=""
+                    required
+                    title="Password"
+                    type="password"
+                    wrapperClassName="eflow-auth-field"
+                    value={password}
+                  />
+                  <Button aria-label="Sign in" className="eflow-auth-submit" id="login-submit" loading={submitting} type="submit">
+                    Log in
+                  </Button>
+                </form>
+              </section>
+            ) : (
+              <section aria-labelledby="setup-heading">
+                <h2 id="setup-heading">Set up eFlow</h2>
+                <p className="eflow-auth-card__intro">Create the first Super Admin account for this workspace.</p>
+                <form className="eflow-auth-form" onSubmit={handleSetup}>
+                  <TextField
+                    controlled
+                    id="setup-name"
+                    inputAriaLabel="Full name"
+                    onChange={setName}
+                    placeholder="Juan Dela Cruz"
+                    required
+                    title="Full name"
+                    wrapperClassName="eflow-auth-field"
+                    value={name}
+                  />
+                  <TextField
+                    autoComplete="email"
+                    controlled
+                    id="setup-email"
+                    inputAriaLabel="Email address"
+                    onChange={setEmail}
+                    placeholder="admin@eflow.gov.ph"
+                    required
+                    title="Email address"
+                    type="email"
+                    wrapperClassName="eflow-auth-field"
+                    value={email}
+                  />
+                  <TextField
+                    autoComplete="new-password"
+                    controlled
+                    id="setup-password"
+                    inputAriaLabel="Password"
+                    onChange={setPassword}
+                    placeholder="At least 6 characters"
+                    required
+                    title="Password"
+                    type="password"
+                    wrapperClassName="eflow-auth-field"
+                    value={password}
+                  />
+                  <p className="eflow-auth-notice eflow-auth-notice--warning">
+                    <Info aria-hidden="true" size={16} /> This creates the first Super Admin. The option disappears once an active Super Admin account exists.
+                  </p>
+                  <Button className="eflow-auth-submit" id="setup-submit" loading={submitting} type="submit">
+                    Create Super Admin account
+                  </Button>
+                </form>
+              </section>
+            )}
+
+            {canSetupAdmin && (
+              <Button className="eflow-auth-mode-toggle" kind="tertiary" onClick={toggleMode}>
+                {mode === "login" ? "Set up the first Super Admin" : "Back to sign in"}
+              </Button>
+            )}
+          </section>
+        </section>
+        <section className="eflow-login-illustration" aria-label="Connected government work">
+          <img alt="People collaborating around a shared project plan" src={loginIllustration} />
+        </section>
+      </div>
     </main>
   );
 }

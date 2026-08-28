@@ -1,7 +1,16 @@
 import * as React from "react";
-import { AlertTriangle, Archive, ArrowRight, CheckCircle2, Clock3, FolderKanban, Loader2, PackageCheck, ShieldCheck } from "lucide-react";
-import { ProgressBar, formatDate } from "../../../components/workflow/primitives";
-import type { CommittedProposalDeliverySummary, ProposalDeliveryStage } from "../selectors/deliveryProgress";
+import { Button, Label } from "@vibe/core";
+import { Open } from "@vibe/icons";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+} from "lucide-react";
+import { formatDate } from "../../../components/workflow/primitives";
+import type {
+  CommittedProposalDeliverySummary,
+  ProposalDeliveryStage,
+} from "../selectors/deliveryProgress";
 
 export const DELIVERY_STAGE_LABELS: Record<ProposalDeliveryStage, string> = {
   publishing: "Preparing delivery",
@@ -29,72 +38,248 @@ export function CommittedProposalDeliveryPanel({
   onArchive: () => Promise<void>;
 }) {
   const [confirmArchive, setConfirmArchive] = React.useState(false);
-  const stageTone = summary.stage === "attention"
-    ? "border-red-200 bg-red-50 text-red-800"
-    : summary.stage === "awaiting_review"
-      ? "border-amber-200 bg-amber-50 text-amber-800"
-      : ["ready_to_complete", "ready_to_archive", "archived"].includes(summary.stage)
-        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-        : "border-blue-200 bg-blue-50 text-blue-800";
+
+  const stageColor =
+    summary.stage === "attention"
+      ? "negative"
+      : summary.stage === "awaiting_review"
+        ? "working_orange"
+        : ["ready_to_complete", "ready_to_archive", "archived"].includes(
+              summary.stage,
+            )
+          ? "positive"
+          : "primary";
+
+  const totalAttention =
+    summary.overdueCount + summary.changesRequestedCount;
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
-      <div className="bg-gradient-to-br from-neutral-950 to-neutral-800 p-5 text-white">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="space-y-4">
+      {/* Stage Alert when attention or action is required */}
+      {summary.stage === "attention" && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-3.5 text-xs text-red-800">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
           <div>
-            <div className="text-[9px] uppercase tracking-[0.18em] text-neutral-400">Operational delivery</div>
-            <h2 className="mt-1 text-[16px] font-['Lexend:SemiBold',_sans-serif]">{DELIVERY_STAGE_LABELS[summary.stage]}</h2>
-            <p className="mt-1 text-[10.5px] text-neutral-300">
-              {summary.completedTaskCount}/{summary.taskCount} tasks approved · {summary.completedProjectCount}/{summary.projectCount} projects completed
-            </p>
+            <span className="font-semibold">Delivery requires attention:</span>{" "}
+            {summary.overdueCount} overdue and{" "}
+            {summary.changesRequestedCount} revision item(s) need review or updates.
           </div>
-          <div className="text-right"><div className="text-[30px] font-['Lexend:SemiBold',_sans-serif] leading-none">{summary.progress}%</div><div className="mt-1 text-[9px] uppercase tracking-wide text-neutral-400">Weighted progress</div></div>
         </div>
-        <div className="mt-4"><ProgressBar value={summary.progress} tone={summary.progress === 100 ? "good" : "neutral"} /></div>
+      )}
+
+      {summary.stage === "awaiting_review" && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-800">
+          <Clock3 size={16} className="mt-0.5 shrink-0" />
+          <div>
+            <span className="font-semibold">Review decisions waiting:</span>{" "}
+            {summary.awaitingReviewCount} task submission(s) are waiting for reviewer action.
+          </div>
+        </div>
+      )}
+
+      {summary.stage === "ready_to_complete" && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3.5 text-xs text-emerald-800">
+          <div className="flex items-start gap-2.5">
+            <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+            <div>
+              <span className="font-semibold">All delivery tasks are approved.</span>{" "}
+              Mark the operational projects completed to close proposal delivery.
+            </div>
+          </div>
+          {canManage && (
+            <Button
+              size="small"
+              disabled={busy}
+              onClick={() => void onMarkCompleted()}
+            >
+              {busy ? "Updating…" : "Mark projects completed"}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {summary.stage === "ready_to_archive" && !confirmArchive && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3.5 text-xs text-neutral-800">
+          <div>
+            <span className="font-semibold">Delivery is complete.</span> Archive
+            the operational projects when the records no longer need to remain active.
+          </div>
+          {canManage && (
+            <Button
+              kind="secondary"
+              size="small"
+              disabled={busy}
+              onClick={() => setConfirmArchive(true)}
+            >
+              Archive completed proposal
+            </Button>
+          )}
+        </div>
+      )}
+
+      {confirmArchive && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-900">
+          <span>
+            Archive all completed operational projects? Governance history and audit logs remain intact.
+          </span>
+          <div className="flex gap-2">
+            <Button
+              kind="tertiary"
+              size="small"
+              onClick={() => setConfirmArchive(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="small"
+              disabled={busy}
+              onClick={() => void onArchive().then(() => setConfirmArchive(false))}
+            >
+              Confirm archive
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Operational Pulse Strip */}
+      <div className="eflow-health-strip">
+        <div className="eflow-health-item">
+          <span className="eflow-health-item-label">Delivery progress</span>
+          <div className="flex items-center gap-2">
+            <span className="eflow-health-item-value">{summary.progress}%</span>
+            <span className="text-xs text-secondary">
+              ({summary.completedTaskCount}/{summary.taskCount} tasks approved)
+            </span>
+          </div>
+        </div>
+
+        <div className="eflow-health-item">
+          <span className="eflow-health-item-label">Delivery status</span>
+          <div>
+            <Label text={DELIVERY_STAGE_LABELS[summary.stage]} color={stageColor} />
+          </div>
+        </div>
+
+        <div className="eflow-health-item">
+          <span className="eflow-health-item-label">Projects complete</span>
+          <div className="flex items-center gap-1.5">
+            <span className="eflow-health-item-value">
+              {summary.completedProjectCount}/{summary.projectCount}
+            </span>
+          </div>
+        </div>
+
+        <div className="eflow-health-item">
+          <span className="eflow-health-item-label">Remaining tasks</span>
+          <span className="eflow-health-item-value">
+            {summary.remainingTaskCount}
+          </span>
+        </div>
+
+        <div className="eflow-health-item">
+          <span className="eflow-health-item-label">Needs attention</span>
+          <div className="flex items-center gap-1.5">
+            <span
+              className={`eflow-health-item-value ${totalAttention > 0 ? "text-amber-600" : "text-neutral-900"}`}
+            >
+              {totalAttention}
+            </span>
+            {totalAttention > 0 && (
+              <span className="text-xs text-secondary">
+                ({summary.overdueCount} overdue)
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
-      <div className="p-4 sm:p-5">
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
-          <Metric icon={<FolderKanban size={13} />} value={`${summary.completedProjectCount}/${summary.projectCount}`} label="Projects complete" />
-          <Metric icon={<CheckCircle2 size={13} />} value={`${summary.completedTaskCount}/${summary.taskCount}`} label="Tasks approved" />
-          <Metric icon={<Clock3 size={13} />} value={summary.remainingTaskCount} label="Tasks remaining" />
-          <Metric icon={<ShieldCheck size={13} />} value={summary.awaitingReviewCount} label="Awaiting review" />
-          <Metric icon={<AlertTriangle size={13} />} value={summary.overdueCount} label="Overdue" bad={summary.overdueCount > 0} />
-        </div>
+      {/* Operational Projects List */}
+      <section className="eflow-section-card">
+        <header>
+          <h2>Operational projects ({summary.projects.length})</h2>
+          <p className="m-0 mt-1 text-xs text-secondary">
+            Click on any project below to enter its workspace, manage milestone activities, assign tasks, and track execution.
+          </p>
+        </header>
 
-        <div className={`mt-4 rounded-xl border px-4 py-3 ${stageTone}`}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="text-[11px] font-['Lexend:SemiBold',_sans-serif]">{DELIVERY_STAGE_LABELS[summary.stage]}</div>
-              <p className="mt-0.5 text-[9.5px] opacity-80">
-                {summary.stage === "ready_to_complete" ? "Every operational task is approved. Mark the proposal projects completed to close delivery." :
-                  summary.stage === "ready_to_archive" ? "Delivery is complete. Archive the operational projects when the records no longer need to remain active." :
-                  summary.stage === "archived" ? "The operational projects are archived while governance history remains available here." :
-                  summary.stage === "awaiting_review" ? `${summary.awaitingReviewCount} task submission(s) are waiting for their assigned reviewer.` :
-                  summary.stage === "attention" ? `${summary.overdueCount} overdue and ${summary.changesRequestedCount} revision item(s) need attention.` :
-                  summary.stage === "publishing" ? "Operational projects are still being discovered. Refresh if publishing has just completed." :
-                  `${summary.remainingTaskCount} task(s) remain before delivery can be completed.`}
-              </p>
-            </div>
-            {canManage && summary.readyToComplete && <button type="button" disabled={busy} onClick={() => void onMarkCompleted()} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-[10px] font-medium text-white disabled:opacity-50">{busy ? <Loader2 size={12} className="animate-spin" /> : <PackageCheck size={12} />} Mark projects completed</button>}
-            {canManage && summary.readyToArchive && !confirmArchive && <button type="button" disabled={busy} onClick={() => setConfirmArchive(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-neutral-900 px-3 py-2 text-[10px] font-medium text-white disabled:opacity-50"><Archive size={12} /> Archive completed proposal</button>}
-          </div>
-          {confirmArchive && <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-emerald-200 pt-3"><span className="text-[9.5px]">Archive all completed operational projects? Governance history and task audit records remain retained.</span><div className="flex gap-2"><button type="button" onClick={() => setConfirmArchive(false)} className="rounded-lg border border-emerald-300 bg-white px-2.5 py-1.5 text-[9.5px]">Cancel</button><button type="button" disabled={busy} onClick={() => void onArchive().then(() => setConfirmArchive(false))} className="rounded-lg bg-neutral-900 px-2.5 py-1.5 text-[9.5px] text-white disabled:opacity-50">Confirm archive</button></div></div>}
-        </div>
-
-        <div className="mt-4 space-y-2">
+        <div className="divide-y divide-neutral-100">
           {summary.projects.map((project) => {
-            const projectTasks = summary.tasks.filter((task) => task.linkedProjectId === project.id);
-            const completed = projectTasks.filter((task) => task.status === "completed").length;
-            const progress = projectTasks.length ? Math.round(projectTasks.reduce((total, task) => total + (task.status === "completed" ? 100 : task.percentComplete || 0), 0) / projectTasks.length) : project.status === "completed" || project.status === "archived" ? 100 : 0;
-            return <button key={project.id} type="button" onClick={() => onOpenProject(project.id)} className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 px-3 py-3 text-left transition hover:border-neutral-300 hover:bg-neutral-50"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-600"><FolderKanban size={14} /></span><span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-900">{project.title}</span><span className="mt-0.5 block text-[9px] text-neutral-400">{completed}/{projectTasks.length} tasks approved · Target {formatDate(project.targetDate)}</span><span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-neutral-100"><span className="block h-full rounded-full bg-emerald-500" style={{ width: `${progress}%` }} /></span></span><span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[8.5px] capitalize text-neutral-600">{project.status.replace("_", " ")}</span><ArrowRight size={13} className="text-neutral-400" /></button>;
+            const projectTasks = summary.tasks.filter(
+              (task) => task.linkedProjectId === project.id,
+            );
+            const completed = projectTasks.filter(
+              (task) => task.status === "completed",
+            ).length;
+            const progress = projectTasks.length
+              ? Math.round(
+                  projectTasks.reduce(
+                    (total, task) =>
+                      total +
+                      (task.status === "completed"
+                        ? 100
+                        : task.percentComplete || 0),
+                    0,
+                  ) / projectTasks.length,
+                )
+              : project.status === "completed" || project.status === "archived"
+                ? 100
+                : 0;
+
+            return (
+              <div
+                key={project.id}
+                className="flex flex-wrap items-center justify-between gap-4 p-4 hover:bg-neutral-50/70 transition-colors"
+              >
+                <div className="min-w-[240px] flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-neutral-900 text-sm">
+                      {project.title}
+                    </span>
+                    <Label
+                      text={project.status.replace("_", " ")}
+                      color={
+                        project.status === "completed"
+                          ? "positive"
+                          : project.status === "active"
+                            ? "primary"
+                            : "dark"
+                      }
+                    />
+                  </div>
+                  <div className="mt-1 text-xs text-secondary">
+                    {completed}/{projectTasks.length} tasks approved · Target:{" "}
+                    {formatDate(project.targetDate) || "Unscheduled"}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-6 min-w-[200px]">
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-secondary font-medium">Progress</span>
+                      <span className="font-semibold text-neutral-900">{progress}%</span>
+                    </div>
+                    <div className="h-1.5 w-32 overflow-hidden rounded-full bg-neutral-200">
+                      <div
+                        className="h-full rounded-full bg-blue-600 transition-all duration-300"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <Button
+                    kind="secondary"
+                    size="small"
+                    rightIcon={Open}
+                    onClick={() => onOpenProject(project.id)}
+                  >
+                    Open project
+                  </Button>
+                </div>
+              </div>
+            );
           })}
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
   );
-}
-
-function Metric({ icon, value, label, bad = false }: { icon: React.ReactNode; value: string | number; label: string; bad?: boolean }) {
-  return <div className={`rounded-xl border p-3 ${bad ? "border-red-100 bg-red-50" : "border-neutral-100 bg-neutral-50"}`}><div className={`flex items-center gap-1.5 text-[15px] font-semibold ${bad ? "text-red-700" : "text-neutral-900"}`}>{icon}{value}</div><div className="mt-1 text-[8px] uppercase tracking-wide text-neutral-400">{label}</div></div>;
 }

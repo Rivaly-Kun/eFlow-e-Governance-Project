@@ -5,7 +5,9 @@
 // same component serves every role.
 
 import React, { useState } from "react";
-import { X, Info, Activity, MessageSquare, ClipboardCheck, Calendar, User, Building2, Layers, Pencil, UsersRound } from "lucide-react";
+import { Button, IconButton, Tab, TabList, TabsContext } from "@vibe/core";
+import { Close } from "@vibe/icons";
+import { Info, Activity, MessageSquare, ClipboardCheck, Calendar, User, Building2, Layers, Pencil, UsersRound } from "lucide-react";
 import { updateTaskStatus, type Task } from "../../services/taskService";
 import { useAuth } from "../../contexts/AuthContext";
 import { TaskStatusBadge, PriorityPill, InitialsAvatar, ProjectStatusBadge } from "./StatusBadges";
@@ -131,8 +133,8 @@ export function TaskDetailDrawer({
 
   return (
     <>
-      <div className="fixed inset-0 bg-neutral-900/20 z-40 animate-[fade_0.2s_ease-out]" onClick={onClose} />
-      <div className="fixed right-0 top-0 bottom-0 w-full sm:w-[440px] bg-white border-l border-neutral-200 shadow-2xl z-50 flex flex-col animate-[slidein_0.25s_cubic-bezier(0.25,1.1,0.4,1)]">
+      <div className="fixed inset-0 bg-neutral-900/20 z-40 animate-[fade_0.2s_ease-out]" onClick={onClose} aria-hidden="true" />
+      <div role="dialog" aria-modal="true" aria-label={`Task details: ${task.title}`} className="fixed right-0 top-0 bottom-0 w-full sm:w-[520px] bg-white border-l border-neutral-200 shadow-2xl z-50 flex flex-col animate-[slidein_0.25s_cubic-bezier(0.25,1.1,0.4,1)] font-sans">
         {/* Header */}
         <div className="p-4 border-b border-neutral-100">
           <div className="flex items-start justify-between gap-2">
@@ -145,25 +147,22 @@ export function TaskDetailDrawer({
                 {task.title}
               </h2>
             </div>
-            <button onClick={onClose} className="text-neutral-400 hover:text-neutral-800 p-1 shrink-0">
-              <X size={18} />
-            </button>
+            <IconButton aria-label="Close task detail" icon={Close} kind="tertiary" size="small" onClick={onClose} />
           </div>
 
           {/* Tabs */}
-          <div className="flex items-center gap-1 mt-3 -mb-1">
+          <TabsContext id={`task-detail-tabs-${task.id}`}><TabList id={`task-detail-tab-list-${task.id}`}>
             {tabs.filter((t) => t.show).map((t) => (
-              <button
+              <Tab
                 key={t.id}
+                id={`task-${task.id}-${t.id}`}
+                active={tab === t.id}
                 onClick={() => setTab(t.id)}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11.5px] font-['Lexend:Medium',_sans-serif] ${
-                  tab === t.id ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100"
-                }`}
               >
-                {t.icon} {t.label}
-              </button>
+                <span>{t.label}</span>
+              </Tab>
             ))}
-          </div>
+          </TabList></TabsContext>
         </div>
 
         {/* Body */}
@@ -239,13 +238,14 @@ export function TaskDetailDrawer({
                   <p className="mt-0.5 text-[11px] text-blue-700">
                     Starting it updates every board view to In Progress.
                   </p>
-                  <button
+                  <Button
                     onClick={handleStart}
                     disabled={starting}
-                    className="mt-2 rounded-lg bg-blue-700 px-3 py-1.5 text-[11.5px] font-['Lexend:Medium',_sans-serif] text-white hover:bg-blue-800 disabled:opacity-50"
+                    className="mt-2"
+                    size="small"
                   >
                     {starting ? "Starting…" : "Start work"}
-                  </button>
+                  </Button>
                 </div>
               )}
 
@@ -296,13 +296,14 @@ export function TaskDetailDrawer({
                     <div className="text-[12.5px] font-['Lexend:Regular',_sans-serif] text-rose-900">{task.rejectionNote}</div>
                   )}
                   {canResume && (
-                    <button
+                    <Button
                       onClick={handleResume}
                       disabled={resuming}
-                      className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 text-white text-[11.5px] font-['Lexend:Medium',_sans-serif] hover:bg-rose-700 disabled:opacity-60"
+                      className="mt-2"
+                      size="small"
                     >
                       {resuming ? "Resuming…" : "Resume work"}
-                    </button>
+                    </Button>
                   )}
                 </div>
               )}

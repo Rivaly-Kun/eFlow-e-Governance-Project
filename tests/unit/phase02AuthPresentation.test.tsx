@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EflowVibeThemeProvider } from "../../src/app/shared/vibe";
 
 const storage = new Map<string, string>();
@@ -42,6 +42,8 @@ vi.mock("../../src/lib/supabase", () => ({
 import { LoginPage } from "../../src/app/components/Auth/LoginPage";
 
 describe("Phase 02 auth presentation", () => {
+  afterEach(() => cleanup());
+
   it("uses Vibe inputs while retaining the existing login automation identifiers and submit behavior", async () => {
     render(
       <EflowVibeThemeProvider preference="light">
@@ -59,5 +61,21 @@ describe("Phase 02 auth presentation", () => {
 
     expect(auth.login).toHaveBeenCalledWith("employee@eflow.gov.ph", "safe-password");
     expect(screen.getByText("Government work, connected.")).toBeTruthy();
+  });
+
+  it("opens the Usage scenarios menu from the Vibe menu button", async () => {
+    render(
+      <EflowVibeThemeProvider preference="light">
+        <LoginPage />
+      </EflowVibeThemeProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose a development account" }));
+
+    const superAdmin = await screen.findByRole("menuitem", { name: "Super Admin — admin@gmail.com" });
+    expect(superAdmin).toBeTruthy();
+    auth.login.mockClear();
+    fireEvent.click(within(superAdmin).getByRole("button"));
+    await waitFor(() => expect(auth.login).toHaveBeenCalledWith("admin@gmail.com", "admin123"));
   });
 });

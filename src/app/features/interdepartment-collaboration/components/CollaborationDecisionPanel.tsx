@@ -1,4 +1,6 @@
 import * as React from "react";
+import { Button } from "@vibe/core";
+import { CheckCircle2, Clock3, XCircle } from "lucide-react";
 import type { Organization } from "../../../types";
 import { PARTICIPATION_ROLE_LABELS } from "../constants";
 import type { CollaborationDecision, CollaborationParticipant } from "../types";
@@ -18,22 +20,130 @@ export function CollaborationDecisionPanel({
   onSelectOrg: (orgId: string) => void;
   onDecide: (decision: CollaborationDecision, reason: string) => Promise<void>;
 }) {
-  const [decision, setDecision] = React.useState<CollaborationDecision | null>(null);
+  const [decision, setDecision] = React.useState<CollaborationDecision | null>(
+    null,
+  );
   const [reason, setReason] = React.useState("");
-  const selected = eligibleOrganizations.find((item) => item.orgId === selectedOrgId) || eligibleOrganizations[0];
+  const selected =
+    eligibleOrganizations.find((item) => item.orgId === selectedOrgId) ||
+    eligibleOrganizations[0];
+
+  const actingOrgName =
+    organizations.find((org) => org.id === selected?.orgId)?.name ||
+    "Authorized Department";
+
   return (
-    <section className="rounded-2xl border border-neutral-200 bg-white p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-[12px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">Organization decision</div>
-        {eligibleOrganizations.length > 1 && <select value={selected?.orgId} onChange={(event) => onSelectOrg(event.target.value)} className="h-8 rounded-lg border border-neutral-200 bg-white px-2 text-[10px] text-neutral-700">{eligibleOrganizations.map((participant) => <option key={participant.orgId} value={participant.orgId}>{organizations.find((org) => org.id === participant.orgId)?.name} · {PARTICIPATION_ROLE_LABELS[participant.participationRole]}</option>)}</select>}
+    <section className="eflow-section-card">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2>Department signoff decision</h2>
+          <p className="m-0 mt-1 text-xs text-secondary">
+            Formal department approval or revision request on the active proposal snapshot.
+          </p>
+        </div>
+
+        {eligibleOrganizations.length > 1 && (
+          <select
+            value={selected?.orgId}
+            onChange={(event) => onSelectOrg(event.target.value)}
+            className="eflow-control"
+            aria-label="Acting department selector"
+          >
+            {eligibleOrganizations.map((participant) => (
+              <option key={participant.orgId} value={participant.orgId}>
+                {organizations.find((org) => org.id === participant.orgId)?.name}{" "}
+                · {PARTICIPATION_ROLE_LABELS[participant.participationRole]}
+              </option>
+            ))}
+          </select>
+        )}
+      </header>
+
+      <div className="p-5">
+        <div className="flex items-center gap-2 text-xs text-secondary mb-4">
+          <span>Acting on behalf of:</span>
+          <span className="font-semibold text-neutral-900">{actingOrgName}</span>
+        </div>
+
+        <div className="flex flex-wrap gap-2.5">
+          <Button
+            data-testid="approve-collaboration-revision"
+            size="small"
+            onClick={() => setDecision("approved")}
+          >
+            <CheckCircle2 size={14} className="mr-1.5" />
+            Approve current revision
+          </Button>
+
+          <Button
+            kind="secondary"
+            size="small"
+            onClick={() => setDecision("changes_requested")}
+          >
+            <Clock3 size={14} className="mr-1.5 text-amber-600" />
+            Request changes
+          </Button>
+
+          <Button
+            kind="tertiary"
+            size="small"
+            onClick={() => setDecision("declined")}
+          >
+            <XCircle size={14} className="mr-1.5 text-red-600" />
+            Decline
+          </Button>
+        </div>
+
+        {decision && (
+          <div className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50/70 p-4">
+            <div className="text-xs font-semibold text-neutral-900 mb-2">
+              {decision === "approved"
+                ? "Approval endorsement note (optional)"
+                : "Required reason for revision request / decline"}
+            </div>
+            <textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              rows={3}
+              placeholder={
+                decision === "approved"
+                  ? "Add optional comments or endorsement details…"
+                  : "Provide specific details on what changes are needed before approval…"
+              }
+              className="eflow-control w-full h-auto py-2 leading-relaxed"
+            />
+
+            <div className="mt-3 flex justify-end gap-2">
+              <Button
+                kind="tertiary"
+                size="small"
+                onClick={() => {
+                  setDecision(null);
+                  setReason("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                data-testid="confirm-collaboration-decision"
+                size="small"
+                disabled={
+                  busy ||
+                  !selected ||
+                  (decision !== "approved" && !reason.trim())
+                }
+                onClick={async () => {
+                  await onDecide(decision, reason);
+                  setDecision(null);
+                  setReason("");
+                }}
+              >
+                {busy ? "Recording…" : "Confirm decision"}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
-      <div className="mt-2 text-[10px] text-neutral-500">Acting for {organizations.find((org) => org.id === selected?.orgId)?.name}</div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button data-testid="approve-collaboration-revision" onClick={() => setDecision("approved")} className="rounded-lg bg-emerald-600 px-3 py-2 text-[10px] font-['Lexend:Medium',_sans-serif] text-white">Approve current revision</button>
-        <button onClick={() => setDecision("changes_requested")} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] text-amber-800">Request changes</button>
-        <button onClick={() => setDecision("declined")} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[10px] text-red-700">Decline</button>
-      </div>
-      {decision && <div className="mt-3 rounded-xl bg-neutral-50 p-3"><textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} placeholder={decision === "approved" ? "Optional endorsement note" : "Reason required"} className="w-full resize-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[10px] outline-none" /><div className="mt-2 flex justify-end gap-2"><button onClick={() => { setDecision(null); setReason(""); }} className="px-3 py-2 text-[10px] text-neutral-500">Cancel</button><button data-testid="confirm-collaboration-decision" disabled={busy || !selected || (decision !== "approved" && !reason.trim())} onClick={async () => { await onDecide(decision, reason); setDecision(null); setReason(""); }} className="rounded-lg bg-neutral-900 px-3 py-2 text-[10px] text-white disabled:opacity-40">Confirm decision</button></div></div>}
     </section>
   );
 }

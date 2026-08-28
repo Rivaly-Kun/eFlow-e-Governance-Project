@@ -40,9 +40,9 @@ describe("committed proposal delivery board", () => {
       onTabChange,
     };
     const { rerender } = render(<CollaborationWorkspaceHeader {...commonProps} showDeliveryBoard={false} />);
-    expect(screen.queryByRole("button", { name: "Board" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Board" })).toBeNull();
     rerender(<CollaborationWorkspaceHeader {...commonProps} showDeliveryBoard />);
-    fireEvent.click(screen.getByRole("button", { name: "Board" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Board" }));
     expect(onTabChange).toHaveBeenCalledWith("board");
   });
 
@@ -92,9 +92,9 @@ describe("committed proposal delivery board", () => {
       />,
     );
 
-    expect(within(view.container).queryByRole("button", { name: "Approvals" })).toBeNull();
-    expect(within(view.container).queryByRole("button", { name: "Governance" })).toBeNull();
-    expect(within(view.container).getByRole("button", { name: "Plan" })).toBeTruthy();
+    expect(within(view.container).queryByRole("tab", { name: "Sign-off" })).toBeNull();
+    expect(within(view.container).queryByRole("tab", { name: "Governance" })).toBeNull();
+    expect(within(view.container).getByRole("tab", { name: "Work breakdown" })).toBeTruthy();
     expect(within(view.container).getByText("1 organization")).toBeTruthy();
   });
 });

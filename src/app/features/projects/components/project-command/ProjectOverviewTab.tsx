@@ -1,11 +1,222 @@
-import { AlertTriangle, ArrowRight, CalendarDays, Clock3, UserRound } from "lucide-react";
+import { Avatar, EmptyState, Label } from "@vibe/core";
+import { AlertTriangle, Layers } from "lucide-react";
 import type { UserProfile } from "../../../../types";
-import { ProgressBar } from "../../../../components/workflow/primitives";
-import { formatDate } from "../../../../components/workflow/primitives";
+import { ProjectScheduleLabel } from "../../presentation/projectPresentation";
 import type { ProjectCommandData } from "./types";
 
-export function ProjectOverviewTab({ data, profiles, onOpenTask }: { data: ProjectCommandData; profiles: UserProfile[]; onOpenTask: (taskId: string) => void }) {
+function activityHeadline(item: ProjectCommandData["activity"][number]) {
+  const title = item.title.trim();
+  if (!item.actorName || item.actorName === "System") return title;
+  return `${item.actorName} ${title.charAt(0).toLowerCase()}${title.slice(1)}`;
+}
+
+export function ProjectOverviewTab({
+  data,
+  profiles,
+  onOpenTask,
+}: {
+  data: ProjectCommandData;
+  profiles: UserProfile[];
+  onOpenTask: (taskId: string) => void;
+}) {
   const owner = profiles.find((profile) => profile.id === data.project.ownerId);
-  const nextActions = data.attention.slice(0, 5);
-  return <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,.65fr)]"><div className="space-y-4"><section className="rounded-2xl border border-neutral-200 bg-white p-5"><div className="flex items-center justify-between"><h3 className="text-[13px] font-semibold text-neutral-900">Project progress</h3><span className="text-[16px] font-semibold text-neutral-900">{data.metrics.progress}%</span></div><div className="mt-2"><ProgressBar value={data.metrics.progress} tone={data.metrics.progress === 100 ? "good" : "neutral"} /></div><div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{[["To do", data.tasks.filter((task) => ["pending_assignment", "todo"].includes(task.status)).length], ["Active", data.tasks.filter((task) => task.status === "in_progress").length], ["For review", data.tasks.filter((task) => task.status === "for_review").length], ["Approved", data.metrics.taskCompleted]].map(([label, value]) => <div key={String(label)} className="rounded-xl bg-neutral-50 p-3 text-center"><div className="text-[17px] font-semibold text-neutral-900">{value}</div><div className="text-[9px] uppercase tracking-wide text-neutral-400">{label}</div></div>)}</div></section><section className="rounded-2xl border border-neutral-200 bg-white p-5"><h3 className="text-[13px] font-semibold text-neutral-900">Activity timeline</h3><div className="mt-4 space-y-0">{data.milestones.length ? data.milestones.map((milestone, index) => <div key={milestone.id} className="relative flex gap-3 pb-4 last:pb-0"><div className="relative z-10 mt-0.5 h-3 w-3 rounded-full border-2 border-white bg-neutral-900 ring-1 ring-neutral-300" />{index < data.milestones.length - 1 ? <div className="absolute left-[5px] top-3 h-full w-px bg-neutral-200" /> : null}<div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><span className="text-[11.5px] font-medium text-neutral-800">{milestone.title}</span><span className="text-[9.5px] text-neutral-400">{formatDate(milestone.dueDate)}</span></div><p className="mt-0.5 text-[9.5px] capitalize text-neutral-400">{(milestone.manualStatus || milestone.status || "not_started").replace(/_/g, " ")}</p></div></div>) : <p className="rounded-xl border border-dashed border-neutral-200 py-6 text-center text-[10.5px] text-neutral-400">No activities have been added.</p>}</div></section></div><aside className="space-y-4"><section className="rounded-2xl border border-neutral-200 bg-white p-4"><h3 className="text-[12px] font-semibold text-neutral-900">Project details</h3><div className="mt-3 space-y-3 text-[10.5px]"><div className="flex items-center justify-between"><span className="inline-flex items-center gap-1 text-neutral-400"><UserRound size={11} /> Owner</span><span className="font-medium text-neutral-800">{owner?.full_name || "Unassigned"}</span></div><div className="flex items-center justify-between"><span className="inline-flex items-center gap-1 text-neutral-400"><CalendarDays size={11} /> Start</span><span>{formatDate(data.project.startDate)}</span></div><div className="flex items-center justify-between"><span className="inline-flex items-center gap-1 text-neutral-400"><CalendarDays size={11} /> Target</span><span>{formatDate(data.project.targetDate)}</span></div><div className="flex items-center justify-between"><span className="inline-flex items-center gap-1 text-neutral-400"><Clock3 size={11} /> Last activity</span><span>{data.metrics.lastActivityAt ? new Date(data.metrics.lastActivityAt).toLocaleString() : "—"}</span></div></div></section><section className="rounded-2xl border border-neutral-200 bg-white p-4"><div className="flex items-center justify-between"><h3 className="text-[12px] font-semibold text-neutral-900">Needs attention</h3><span className="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-semibold text-amber-700">{data.attention.length}</span></div><div className="mt-3 space-y-2">{nextActions.length ? nextActions.map((item) => <button key={item.id} type="button" onClick={() => onOpenTask(item.taskId)} className="flex w-full items-start gap-2 rounded-xl border border-neutral-100 p-2.5 text-left hover:bg-neutral-50"><AlertTriangle size={13} className={item.severity === "critical" ? "mt-0.5 text-red-600" : "mt-0.5 text-amber-600"} /><span className="min-w-0 flex-1"><span className="block text-[10.5px] font-medium text-neutral-800">{item.title}</span><span className="mt-0.5 block line-clamp-2 text-[9px] text-neutral-400">{item.detail}</span></span><ArrowRight size={11} className="mt-1 text-neutral-300" /></button>) : <p className="rounded-xl bg-emerald-50 py-5 text-center text-[10.5px] text-emerald-700">No immediate project risks.</p>}</div></section></aside></div>;
+  const counts = [
+    [
+      "To do",
+      data.tasks.filter((task) =>
+        ["pending_assignment", "todo"].includes(task.status),
+      ).length,
+    ],
+    [
+      "In progress",
+      data.tasks.filter((task) => task.status === "in_progress").length,
+    ],
+    [
+      "Awaiting review",
+      data.tasks.filter((task) => task.status === "for_review").length,
+    ],
+    ["Completed", data.metrics.taskCompleted],
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_340px]">
+        {/* Left Column: Briefing & Activities */}
+        <div className="space-y-4">
+          {/* 1. Delivery Progress Position */}
+          <section className="eflow-overview-section">
+            <header className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 p-4">
+              <div>
+                <h2 className="text-base font-bold text-neutral-900">Project Briefing &amp; Progress</h2>
+                <p className="m-0 mt-0.5 text-xs text-neutral-500">
+                  Current project delivery position and execution health.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <ProjectScheduleLabel health={data.metrics.scheduleHealth} />
+                <strong className="text-xl font-bold text-neutral-900">{data.metrics.progress}%</strong>
+              </div>
+            </header>
+
+            <div className="p-4">
+              <div className="eflow-progress-track h-2">
+                <span style={{ width: `${data.metrics.progress}%` }} />
+              </div>
+              <div className="eflow-overview-stats">
+                {counts.map(([label, value]) => (
+                  <div key={String(label)}>
+                    <strong className="text-lg font-bold text-neutral-900">{value}</strong>
+                    <span className="block text-xs text-neutral-500">{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* 2. Milestones / Activities */}
+          <section className="eflow-overview-section">
+            <header className="flex items-center justify-between border-b border-neutral-100 p-4">
+              <div>
+                <h3 className="text-sm font-bold text-neutral-900 flex items-center gap-2">
+                  <Layers size={15} className="text-neutral-500" />
+                  Delivery Activities ({data.milestones.length})
+                </h3>
+                <p className="m-0 mt-0.5 text-xs text-neutral-500">Project plan summary</p>
+              </div>
+              <span className="text-xs text-neutral-500">
+                {data.metrics.milestoneCompleted} of {data.milestones.length} complete
+              </span>
+            </header>
+            <div className="eflow-overview-plan-head" aria-hidden="true">
+              <span>Activity</span><span>Owner</span><span>Target</span><span>Progress</span><span>State</span>
+            </div>
+            <div>
+              {data.milestones.length ? (
+                data.milestones.map((milestone, index) => {
+                  const linkedTasks = data.tasks.filter((task) => task.milestoneId === milestone.id && !task.archivedAt && task.status !== "cancelled");
+                  const progress = linkedTasks.length
+                    ? Math.round(linkedTasks.reduce((sum, task) => sum + (task.status === "completed" ? 100 : task.percentComplete || 0), 0) / linkedTasks.length)
+                    : (milestone.status === "completed" || milestone.manualStatus === "completed" ? 100 : 0);
+                  const ownerId = linkedTasks.map((task) => task.recommendationLeadId || task.assigneeId).find(Boolean) || data.project.ownerId;
+                  const activityOwner = profiles.find((profile) => profile.id === ownerId);
+                  const state = (milestone.manualStatus || milestone.status || "not_started").replace(/_/g, " ");
+                  return (
+                    <div key={milestone.id} className="eflow-overview-plan-row">
+                      <div className="eflow-overview-plan-row__activity">
+                        <span className="eflow-overview-plan-row__index">{index + 1}</span>
+                        <strong>{milestone.title}</strong>
+                      </div>
+                      <div className="eflow-overview-plan-row__owner">
+                        {activityOwner ? <Avatar text={activityOwner.full_name.split(" ").map((part) => part[0]).join("").slice(0, 2)} size="small" /> : null}
+                        <span>{activityOwner?.full_name || "Unassigned"}</span>
+                      </div>
+                      <span className="text-xs text-neutral-600">{milestone.dueDate || "No target"}</span>
+                      <div className="eflow-overview-plan-row__progress">
+                        <div className="eflow-progress-track"><span style={{ width: `${progress}%` }} /></div>
+                        <span>{progress}%</span>
+                      </div>
+                      <Label text={state.replace(/^./, (letter) => letter.toUpperCase())} color={state === "completed" ? "positive" : state === "at risk" ? "negative" : "primary"} />
+                    </div>
+                  );
+                })
+              ) : (
+                <EmptyState
+                  title="No activities defined"
+                  description="No project plan activities have been recorded yet."
+                />
+              )}
+            </div>
+          </section>
+        </div>
+
+        {/* Right Column: Attention items & Project details */}
+        <aside className="space-y-4">
+          {/* 1. Needs Attention */}
+          <section className="eflow-overview-section">
+            <header className="flex items-center justify-between border-b border-neutral-100 p-4">
+              <h3 className="text-sm font-bold text-neutral-900 flex items-center gap-1.5">
+                <AlertTriangle size={15} className="text-amber-600" />
+                Needs Attention
+              </h3>
+              <Label
+                text={`${data.attention.length}`}
+                color={data.attention.length ? "working_orange" : "positive"}
+              />
+            </header>
+            <div className="divide-y divide-neutral-100">
+              {data.attention.length ? (
+                data.attention.slice(0, 5).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="w-full p-3 text-left hover:bg-neutral-50 transition"
+                    onClick={() => item.taskId && onOpenTask(item.taskId)}
+                  >
+                    <strong className="block text-xs font-semibold text-neutral-900">{item.title}</strong>
+                    <span className="mt-0.5 block text-[11px] text-neutral-500 leading-normal">
+                      {item.detail}
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <EmptyState
+                  title="All clear"
+                  description="There are no overdue items or blockers requiring immediate intervention."
+                />
+              )}
+            </div>
+          </section>
+
+          <section className="eflow-overview-section">
+            <header className="border-b border-neutral-100 p-4">
+              <h3 className="text-sm font-bold text-neutral-900">Recent activity</h3>
+            </header>
+            <div className="divide-y divide-neutral-100">
+              {data.activity.length ? data.activity.slice(0, 4).map((item) => (
+                <button key={item.id} type="button" className="w-full p-3 text-left hover:bg-neutral-50 transition" onClick={() => item.taskId && onOpenTask(item.taskId)}>
+                  <strong className="block truncate text-xs font-semibold text-neutral-900">{activityHeadline(item)}</strong>
+                  <span className="mt-0.5 block truncate text-[11px] text-neutral-500">
+                    {item.detail} · {new Date(item.occurredAt).toLocaleString()}
+                  </span>
+                </button>
+              )) : <p className="m-0 p-4 text-xs text-neutral-500">No recent activity recorded.</p>}
+            </div>
+          </section>
+
+          {/* 2. Project Details Card */}
+          <section className="eflow-section-card">
+            <header className="border-b border-neutral-100 p-4">
+              <h3 className="text-sm font-bold text-neutral-900">Project Details</h3>
+            </header>
+            <dl className="grid grid-cols-2 gap-3 p-4 text-xs">
+              <dt className="text-neutral-500">Project Lead</dt>
+              <dd className="m-0 flex items-center gap-1.5 font-medium text-neutral-900 truncate">
+                {owner && (
+                  <Avatar
+                    text={owner.full_name
+                      .split(" ")
+                      .map((name) => name[0])
+                      .join("")
+                      .slice(0, 2)}
+                    size="small"
+                  />
+                )}
+                <span className="truncate">{owner?.full_name || "Unassigned"}</span>
+              </dd>
+              <dt className="text-neutral-500">Start Date</dt>
+              <dd className="m-0 font-medium text-neutral-900">{data.project.startDate || "Not scheduled"}</dd>
+              <dt className="text-neutral-500">Target Date</dt>
+              <dd className="m-0 font-medium text-neutral-900">{data.project.targetDate || "Not scheduled"}</dd>
+              <dt className="text-neutral-500">Last Activity</dt>
+              <dd className="m-0 font-medium text-neutral-900">
+                {data.metrics.lastActivityAt
+                  ? new Date(data.metrics.lastActivityAt).toLocaleDateString()
+                  : "No activity recorded"}
+              </dd>
+            </dl>
+          </section>
+        </aside>
+      </div>
+    </div>
+  );
 }

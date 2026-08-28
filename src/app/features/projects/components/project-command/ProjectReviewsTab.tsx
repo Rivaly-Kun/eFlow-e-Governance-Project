@@ -1,10 +1,132 @@
-import { CheckCircle2, ChevronRight, Clock3, RotateCcw } from "lucide-react";
+import { Button, EmptyState, Label } from "@vibe/core";
+import { Open } from "@vibe/icons";
 import type { ProjectCommandData } from "./types";
 
-export function ProjectReviewsTab({ data, onOpenTask }: { data: ProjectCommandData; onOpenTask: (taskId: string) => void }) {
-  const rows = data.facts.submissions.filter((submission) => submission.status === "pending" || submission.status === "changes_requested");
-  const pendingTasks = rows.filter((row) => row.kind === "task" && row.status === "pending").length;
-  const pendingSubtasks = rows.filter((row) => row.kind === "subtask" && row.status === "pending").length;
-  const changes = rows.filter((row) => row.status === "changes_requested").length;
-  return <div className="space-y-4"><div className="grid grid-cols-3 gap-3">{[["Head task reviews", pendingTasks, Clock3, "amber"], ["Leader subtask reviews", pendingSubtasks, Clock3, "blue"], ["Changes requested", changes, RotateCcw, "rose"]].map(([label, value, Icon, tone]) => { const ToneIcon = Icon as typeof Clock3; return <div key={String(label)} className="rounded-2xl border border-neutral-200 bg-white p-4"><div className={`inline-flex rounded-lg p-1.5 ${tone === "amber" ? "bg-amber-50 text-amber-700" : tone === "rose" ? "bg-rose-50 text-rose-700" : "bg-blue-50 text-blue-700"}`}><ToneIcon size={14} /></div><div className="mt-2 text-[19px] font-semibold text-neutral-900">{value as number}</div><div className="text-[9.5px] text-neutral-400">{label as string}</div></div>; })}</div><section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white"><header className="border-b border-neutral-100 bg-neutral-50/70 px-4 py-3"><h3 className="text-[12px] font-semibold text-neutral-900">Project review pipeline</h3><p className="mt-0.5 text-[9.5px] text-neutral-400">Open the existing task workflow to inspect evidence and make an authorized decision.</p></header><div className="divide-y divide-neutral-100">{rows.map((submission) => { const task = data.tasks.find((item) => item.id === submission.taskId); const ageHours = Math.max(0, Math.floor((Date.now() - submission.submittedAt) / 3_600_000)); return <button key={`${submission.kind}:${submission.id}`} type="button" onClick={() => onOpenTask(submission.taskId)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-neutral-50"><span className={`flex h-8 w-8 items-center justify-center rounded-xl ${submission.status === "changes_requested" ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700"}`}>{submission.status === "changes_requested" ? <RotateCcw size={14} /> : <Clock3 size={14} />}</span><span className="min-w-0 flex-1"><span className="block truncate text-[11.5px] font-semibold text-neutral-800">{task?.title || "Project task"}</span><span className="mt-0.5 block text-[9.5px] text-neutral-400">{submission.kind === "subtask" ? "Leader subtask decision" : "Head task decision"} · Attempt {submission.version} · {submission.submitterName}</span></span><span className="text-[9.5px] text-neutral-400">{ageHours}h old</span><ChevronRight size={13} className="text-neutral-300" /></button>; })}{rows.length === 0 ? <div className="py-14 text-center"><CheckCircle2 size={26} className="mx-auto text-emerald-500" /><p className="mt-2 text-[11px] font-medium text-emerald-700">No project reviews are waiting</p></div> : null}</div></section></div>;
+export function ProjectReviewsTab({
+  data,
+  onOpenTask,
+}: {
+  data: ProjectCommandData;
+  onOpenTask: (taskId: string) => void;
+}) {
+  const rows = data.facts.submissions.filter(
+    (submission) =>
+      submission.status === "pending" ||
+      submission.status === "changes_requested",
+  );
+  const pendingTasks = rows.filter(
+    (row) => row.kind === "task" && row.status === "pending",
+  ).length;
+  const pendingSubtasks = rows.filter(
+    (row) => row.kind === "subtask" && row.status === "pending",
+  ).length;
+  const changes = rows.filter(
+    (row) => row.status === "changes_requested",
+  ).length;
+
+  return (
+    <div className="space-y-4">
+      {/* Top Review Metrics */}
+      <div className="eflow-health-strip">
+        <div className="eflow-health-item">
+          <span className="eflow-health-item-label">Task decisions</span>
+          <div className="flex items-center gap-1.5">
+            <span className="eflow-health-item-value text-amber-600">
+              {pendingTasks}
+            </span>
+            <span className="text-xs text-secondary">waiting</span>
+          </div>
+        </div>
+        <div className="eflow-health-item">
+          <span className="eflow-health-item-label">Subtask decisions</span>
+          <div className="flex items-center gap-1.5">
+            <span className="eflow-health-item-value text-blue-600">
+              {pendingSubtasks}
+            </span>
+            <span className="text-xs text-secondary">waiting</span>
+          </div>
+        </div>
+        <div className="eflow-health-item">
+          <span className="eflow-health-item-label">Changes requested</span>
+          <div className="flex items-center gap-1.5">
+            <span className="eflow-health-item-value text-red-600">
+              {changes}
+            </span>
+            <span className="text-xs text-secondary">reworking</span>
+          </div>
+        </div>
+      </div>
+
+      <section className="eflow-section-card">
+        <header>
+          <h2>Project review queue</h2>
+          <p className="m-0 mt-1 text-xs text-secondary">
+            Open the task review workflow to inspect evidence and record an authorized decision.
+          </p>
+        </header>
+        <div>
+          {rows.length ? (
+            <div className="divide-y divide-neutral-100">
+              {rows.map((submission) => {
+                const task = data.tasks.find(
+                  (item) => item.id === submission.taskId,
+                );
+                const ageHours = Math.max(
+                  0,
+                  Math.floor((Date.now() - submission.submittedAt) / 3_600_000),
+                );
+                return (
+                  <div
+                    key={`${submission.kind}:${submission.id}`}
+                    className="flex flex-wrap items-center justify-between gap-3 p-4 hover:bg-neutral-50/70 transition-colors"
+                  >
+                    <div>
+                      <div className="text-sm font-semibold text-neutral-900">
+                        {task?.title || "Project task"}
+                      </div>
+                      <div className="mt-1 text-xs text-secondary">
+                        {submission.kind === "subtask"
+                          ? "Leader subtask decision"
+                          : "Head task decision"}{" "}
+                        · Submission {submission.version} ·{" "}
+                        {submission.submitterName}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Label
+                        text={
+                          submission.status === "changes_requested"
+                            ? "Changes requested"
+                            : "Waiting for review"
+                        }
+                        color={
+                          submission.status === "changes_requested"
+                            ? "negative"
+                            : "working_orange"
+                        }
+                      />
+                      <span className="text-xs text-secondary">{ageHours}h ago</span>
+                      <Button
+                        kind="secondary"
+                        size="small"
+                        rightIcon={Open}
+                        onClick={() => onOpenTask(submission.taskId)}
+                      >
+                        Review
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState
+              title="No project reviews are waiting"
+              description="Approved and completed work remains in the activity history."
+            />
+          )}
+        </div>
+      </section>
+    </div>
+  );
 }

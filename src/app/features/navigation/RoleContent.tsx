@@ -37,6 +37,7 @@ function RoleLoading() {
 
 export function RoleContent({ role, activeSection, activePage, hasLeadingWork = false }: RoleContentProps) {
   const { can } = useAuth();
+  const isProjectsWorkspace = activeSection === "projects";
   if (activeSection === "settings") {
     return <Suspense fallback={<RoleLoading />}><PageFrame padded={false} dark><SettingsContent activePage={activePage} /></PageFrame></Suspense>;
   }
@@ -63,29 +64,29 @@ export function RoleContent({ role, activeSection, activePage, hasLeadingWork = 
   let content: ReactNode;
   switch (role) {
     case "superadmin":
-      content = <PageFrame><SuperAdminContent activeSection={activeSection} activePage={activePage} /></PageFrame>;
+      content = <PageFrame padded={!isProjectsWorkspace}><SuperAdminContent activeSection={activeSection} activePage={activePage} /></PageFrame>;
       break;
     case "executive":
-      content = <PageFrame><ExecutiveContent activeSection={activeSection} activePage={activePage} /></PageFrame>;
+      content = <PageFrame padded={!isProjectsWorkspace}><ExecutiveContent activeSection={activeSection} activePage={activePage} /></PageFrame>;
       break;
     case "legislative":
     case "councilor_pad":
-      content = <PageFrame><LegislativeContent activeSection={activeSection} activePage={activePage} /></PageFrame>;
+      content = <PageFrame padded={!isProjectsWorkspace}><LegislativeContent activeSection={activeSection} activePage={activePage} /></PageFrame>;
       break;
     case "hrmo":
-      content = <PageFrame><HRMOContent activeSection={activeSection} activePage={activePage} /></PageFrame>;
+      content = <PageFrame padded={!isProjectsWorkspace}><HRMOContent activeSection={activeSection} activePage={activePage} /></PageFrame>;
       break;
     case "finance":
-      content = <PageFrame><FinanceContent activeSection={activeSection} activePage={activePage} /></PageFrame>;
+      content = <PageFrame padded={!isProjectsWorkspace}><FinanceContent activeSection={activeSection} activePage={activePage} /></PageFrame>;
       break;
     case "depthead":
-      content = <PageFrame><DeptHeadContent activeSection={activeSection} activePage={activePage} /></PageFrame>;
+      content = <PageFrame padded={!isProjectsWorkspace}><DeptHeadContent activeSection={activeSection} activePage={activePage} /></PageFrame>;
       break;
     case "teamleader":
-      content = <PageFrame><TeamLeaderContent activeSection={activeSection} activePage={activePage} /></PageFrame>;
+      content = <PageFrame padded={!isProjectsWorkspace}><TeamLeaderContent activeSection={activeSection} activePage={activePage} /></PageFrame>;
       break;
     case "employee":
-      content = <PageFrame><EmployeeContent activeSection={activeSection} activePage={activePage} /></PageFrame>;
+      content = <PageFrame padded={!isProjectsWorkspace}><EmployeeContent activeSection={activeSection} activePage={activePage} /></PageFrame>;
       break;
     default:
       content = (

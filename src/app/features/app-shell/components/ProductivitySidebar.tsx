@@ -2,6 +2,8 @@ import { Button, IconButton, Tooltip } from "@vibe/core";
 import { Collapse, Expand, NavigationChevronDown } from "@vibe/icons";
 import { useEffect, useMemo, useState } from "react";
 import type { RoleNavItem } from "../../navigation";
+import eflowLogo from "../../../shared/branding/eflow-logo.svg";
+import eflowIcon from "../../../shared/branding/icon.svg";
 import { getEflowNavigationIcon } from "../eflowNavigationIcons";
 
 export interface ShellPage {
@@ -72,27 +74,30 @@ export function ProductivitySidebar({
       data-tour-id="primary-navigation"
       className={`eflow-productivity-sidebar ${isCompact ? "eflow-productivity-sidebar--compact" : ""}`}
     >
+      {/* Top Brand Box */}
       <div className="eflow-productivity-sidebar__brand" data-tour-id="brand">
-        <div className="eflow-productivity-sidebar__mark" aria-hidden="true">e</div>
-        {!isCompact && (
-          <div className="min-w-0">
-            <p className="eflow-productivity-sidebar__wordmark">eFlow</p>
+        {isCompact ? (
+          <img alt="eFlow" className="eflow-productivity-sidebar__icon" src={eflowIcon} />
+        ) : (
+          <div className="eflow-productivity-sidebar__brand-lockup">
+            <img alt="eFlow" className="eflow-productivity-sidebar__logo" src={eflowLogo} />
             <p className="eflow-productivity-sidebar__workspace">Government workspace</p>
           </div>
         )}
-        {!mobile && (
-          <Tooltip content={isCompact ? "Expand navigation" : "Collapse navigation"}>
+        {!mobile && !isCompact && (
+          <Tooltip content="Collapse navigation">
             <IconButton
-              aria-label={isCompact ? "Expand navigation" : "Collapse navigation"}
-              icon={isCompact ? Expand : Collapse}
+              aria-label="Collapse navigation"
+              icon={Collapse}
               kind="tertiary"
-              onClick={() => onCollapsedChange(!collapsed)}
+              onClick={() => onCollapsedChange(true)}
               size="small"
             />
           </Tooltip>
         )}
       </div>
 
+      {/* Navigation Items */}
       <nav className="eflow-productivity-sidebar__nav" aria-label="Workspace destinations">
         {navigationGroups.map((group) => (
           <section className="eflow-productivity-sidebar__group" key={group.title} aria-label={group.title}>
@@ -103,36 +108,48 @@ export function ProductivitySidebar({
                 const isCurrentSection = activeSection === item.id;
                 const hasSubpages = item.pages.length > 1;
                 const isExpanded = expandedSections.has(item.id);
-                const navigationButton = (
-                  <Button
-                    aria-label={isCompact ? item.label : undefined}
-                    aria-pressed={isCurrentSection}
-                    className={`eflow-productivity-sidebar__item ${isCurrentSection ? "eflow-productivity-sidebar__item--active" : ""}`}
-                    key={item.id}
-                    kind="tertiary"
-                    leftIcon={Icon}
-                    onClick={() => selectSection(item)}
-                  >
-                    {!isCompact && (
-                      <>
-                        <span className="eflow-productivity-sidebar__item-label">{item.label}</span>
-                        {hasSubpages && (
-                          <span
-                            aria-hidden="true"
-                            className={`eflow-productivity-sidebar__chevron ${isExpanded ? "eflow-productivity-sidebar__chevron--expanded" : ""}`}
-                          >
-                            <NavigationChevronDown size={14} />
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </Button>
-                );
+
+                if (isCompact) {
+                  return (
+                    <div className="eflow-productivity-sidebar__item-wrap" data-tour-section={item.id} key={item.id}>
+                      <Tooltip content={item.label}>
+                        <button
+                          aria-label={item.label}
+                          aria-pressed={isCurrentSection}
+                          className={`eflow-productivity-sidebar__compact-item ${
+                            isCurrentSection ? "eflow-productivity-sidebar__compact-item--active" : ""
+                          }`}
+                          onClick={() => selectSection(item)}
+                          type="button"
+                        >
+                          <Icon size={20} />
+                        </button>
+                      </Tooltip>
+                    </div>
+                  );
+                }
 
                 return (
                   <div className="eflow-productivity-sidebar__item-wrap" data-tour-section={item.id} key={item.id}>
-                    {isCompact ? <Tooltip content={item.label}>{navigationButton}</Tooltip> : navigationButton}
-                    {!isCompact && hasSubpages && isCurrentSection && isExpanded && (
+                    <Button
+                      aria-pressed={isCurrentSection}
+                      className={`eflow-productivity-sidebar__item ${isCurrentSection ? "eflow-productivity-sidebar__item--active" : ""}`}
+                      key={item.id}
+                      kind="tertiary"
+                      leftIcon={Icon}
+                      onClick={() => selectSection(item)}
+                    >
+                      <span className="eflow-productivity-sidebar__item-label">{item.label}</span>
+                      {hasSubpages && (
+                        <span
+                          aria-hidden="true"
+                          className={`eflow-productivity-sidebar__chevron ${isExpanded ? "eflow-productivity-sidebar__chevron--expanded" : ""}`}
+                        >
+                          <NavigationChevronDown size={14} />
+                        </span>
+                      )}
+                    </Button>
+                    {hasSubpages && isCurrentSection && isExpanded && (
                       <div className="eflow-productivity-sidebar__subpages" aria-label={`${item.label} pages`}>
                         {item.pages.map((page) => (
                           <Button
@@ -154,6 +171,22 @@ export function ProductivitySidebar({
           </section>
         ))}
       </nav>
+
+      {/* Bottom Compact Collapse/Expand Toggle */}
+      {!mobile && isCompact && (
+        <div className="eflow-productivity-sidebar__footer">
+          <Tooltip content="Expand navigation">
+            <button
+              aria-label="Expand navigation"
+              className="eflow-productivity-sidebar__toggle-circle"
+              onClick={() => onCollapsedChange(false)}
+              type="button"
+            >
+              <Expand size={16} />
+            </button>
+          </Tooltip>
+        </div>
+      )}
     </aside>
   );
 }

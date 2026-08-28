@@ -3,7 +3,19 @@ import type { Task } from "../../../tasks";
 import type { TeamAttentionItem, TeamWorkflowFacts } from "../../../team-management";
 import type { DepartmentBudgetBundle } from "../../../budget";
 
-export type ProjectCommandTab = "overview" | "plan" | "work" | "people" | "reviews" | "activity" | "reports";
+export type ProjectCommandTab =
+  | "overview"
+  | "tasks"
+  | "timeline"
+  | "calendar"
+  | "delivery"
+  | "team"
+  | "reviews"
+  | "activity"
+  | "reports"
+  | "plan"
+  | "work"
+  | "people";
 export type ProjectScheduleHealth = "on_track" | "due_soon" | "overdue" | "at_risk" | "completed";
 
 export interface ProjectCommandMetrics {

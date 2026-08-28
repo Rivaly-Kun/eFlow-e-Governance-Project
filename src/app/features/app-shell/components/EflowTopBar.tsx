@@ -11,7 +11,7 @@ import { NotificationBell } from "../../../components/ui/NotificationBell";
 
 interface EflowTopBarProps {
   activePage?: string;
-  activeSection: string;
+  activeSection?: string;
   onOpenMobileNavigation: () => void;
   onPageSelect: (section: string, page: string) => void;
   role: string;
@@ -131,18 +131,15 @@ function AccountMenu({ onPageSelect, role }: Pick<EflowTopBarProps, "onPageSelec
 }
 
 export function EflowTopBar({
-  activePage,
-  activeSection,
   onOpenMobileNavigation,
   onPageSelect,
   role,
 }: EflowTopBarProps) {
   const { user, userProfile } = useAuth();
-  const currentTitle = activePage || activeSection;
 
   return (
     <header className="eflow-topbar" aria-label="Workspace utilities">
-      <div className="eflow-topbar__workspace">
+      <div className="eflow-topbar__leading">
         <Tooltip content="Open navigation">
           <IconButton
             aria-label="Open navigation"
@@ -153,10 +150,6 @@ export function EflowTopBar({
             size="small"
           />
         </Tooltip>
-        <div className="min-w-0">
-          <p className="eflow-topbar__eyebrow">Workspace</p>
-          <h1 className="eflow-topbar__title">{currentTitle}</h1>
-        </div>
       </div>
 
       <div className="eflow-topbar__utilities">

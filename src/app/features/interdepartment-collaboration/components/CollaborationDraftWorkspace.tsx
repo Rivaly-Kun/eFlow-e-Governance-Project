@@ -1,7 +1,5 @@
 import * as React from "react";
-import {
-  ArrowLeft, Loader2,
-} from "lucide-react";
+import { Button, EmptyState, Loader } from "@vibe/core";
 import { useAuth } from "../../../contexts/AuthContext";
 import type { Organization, UserProfile } from "../../../types";
 import { useToast } from "../../../components/ui/Toast";
@@ -35,13 +33,14 @@ import { useProposalGovernance } from "../hooks/useProposalGovernance";
 import { GovernanceWorkspace } from "./GovernanceWorkspace";
 import { CollaborationBudgetPanel } from "../../budget";
 
-export function CollaborationDraftWorkspace({ draftId, organizations, profiles, operationalProjects, operationalTasks, readOnly = false, onBack, onCommitted, onOpenProject, onMarkProjectsCompleted, onArchiveProjects }: {
+export function CollaborationDraftWorkspace({ draftId, organizations, profiles, operationalProjects, operationalTasks, readOnly = false, initialTab = "overview", onBack, onCommitted, onOpenProject, onMarkProjectsCompleted, onArchiveProjects }: {
   draftId: string;
   organizations: Organization[];
   profiles: UserProfile[];
   operationalProjects: Project[];
   operationalTasks: Task[];
   readOnly?: boolean;
+  initialTab?: "overview" | "approvals";
   onBack: () => void;
   onCommitted: () => void;
   onOpenProject: (projectId: string) => void;
@@ -52,7 +51,35 @@ export function CollaborationDraftWorkspace({ draftId, organizations, profiles, 
   const { toast } = useToast();
   const state = useCollaborationDraft(draftId);
   const governance = useProposalGovernance(draftId);
-  const [tab, setTab] = React.useState<CollaborationWorkspaceTab>("overview");
+  const [tab, setTab] = React.useState<CollaborationWorkspaceTab>(initialTab);
+  const [primaryTab, setPrimaryTab] = React.useState<"overview" | "plan" | "discussion" | "approvals">(initialTab);
+  const [secondaryTab, setSecondaryTab] = React.useState<CollaborationWorkspaceTab | null>(null);
+  React.useEffect(() => {
+    if (typeof document === "undefined" || !state.draft?.title) return;
+    const tabLabels: Record<CollaborationWorkspaceTab, string> = {
+      overview: "Overview",
+      board: "Delivery",
+      source: "Source PDF",
+      plan: "Delivery",
+      budget: "Budget",
+      people: "Team roster",
+      discussion: "Collaboration",
+      changes: "Requested changes",
+      approvals: "Review & Governance",
+      governance: "Governance",
+      revisions: "Revisions",
+    };
+    const currentTab = secondaryTab || tab;
+    document.title = `${tabLabels[currentTab]} · ${state.draft.title}`;
+  }, [secondaryTab, state.draft?.title, tab]);
+  React.useEffect(() => {
+    if (!secondaryTab) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSecondaryTab(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [secondaryTab]);
   const [busy, setBusy] = React.useState(false);
   const [memberships, setMemberships] = React.useState<Array<{ organizationId: string; membershipRole: string }>>([]);
   const [actingOrgId, setActingOrgId] = React.useState("");
@@ -78,8 +105,31 @@ export function CollaborationDraftWorkspace({ draftId, organizations, profiles, 
   const canDecide = Boolean(reviewOrganization && !currentOrganizationApproval?.decision.includes("approved") && state.draft && ["in_review", "changes_requested", "ready_to_commit"].includes(state.draft.status));
   const departmentOnly = state.participants.length === 1 && state.participants[0]?.participationRole === "owner";
   React.useEffect(() => {
-    if (departmentOnly && (tab === "approvals" || tab === "governance")) setTab("overview");
+    if (departmentOnly && (tab === "approvals" || tab === "governance")) {
+      setTab("overview");
+      setPrimaryTab("overview");
+    }
   }, [departmentOnly, tab]);
+
+  // When a committed proposal loads, jump to board so delivery status is visible immediately
+  const isCommittedDraft = Boolean(state.draft && (state.draft.status === "committed" || state.draft.status === "archived"));
+  const hasJumpedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (isCommittedDraft && !hasJumpedRef.current) {
+      hasJumpedRef.current = true;
+      setTab("board");
+      setPrimaryTab("plan");
+    }
+  }, [isCommittedDraft]);
+
+  const handleTabChange = (nextTab: CollaborationWorkspaceTab) => {
+    if (nextTab === "overview" || nextTab === "plan" || nextTab === "discussion" || nextTab === "approvals") {
+      setPrimaryTab(nextTab);
+    } else if (nextTab === "board") {
+      setPrimaryTab("plan");
+    }
+    setTab(nextTab);
+  };
 
   const act = async (operation: () => Promise<void>, success: string) => {
     setBusy(true);
@@ -94,16 +144,14 @@ export function CollaborationDraftWorkspace({ draftId, organizations, profiles, 
     return act(async () => { await saveCollaborationStaffingRevision(draftId, reviewOrganization.orgId, snapshot, summary); }, "Your staffing changes were published as a new proposal revision.");
   };
 
-  if (state.loading) return <div className="flex min-h-[420px] items-center justify-center"><Loader2 className="animate-spin text-violet-600" size={24} /></div>;
-  if (!state.draft || state.error) return <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-[12px] text-red-700">{state.error || "Collaboration draft not found."}<button onClick={onBack} className="ml-3 underline">Back</button></div>;
+  if (state.loading) return <div className="flex min-h-[420px] items-center justify-center gap-2" aria-live="polite"><Loader size="medium" /> Loading collaboration workspace…</div>;
+  if (!state.draft || state.error) return <div className="flex flex-col items-center gap-4 p-8"><EmptyState title="Collaboration draft unavailable" description={state.error || "This collaboration draft could not be found."} /><Button kind="secondary" onClick={onBack}>Back to Portfolio</Button></div>;
   const draft = state.draft;
   const currentRevision = state.revisions.find((revision) => revision.id === draft.currentRevisionId);
   const snapshot = draft.status === "draft" ? draft.snapshot : currentRevision?.snapshot || draft.snapshot;
   const ownerOrg = organizations.find((org) => org.id === draft.ownerOrgId);
   const delivery = buildCommittedProposalDeliverySummary(draft.id, operationalProjects, operationalTasks);
-  const committed = draft.status === "committed" || draft.status === "archived";
-  return <div className="min-h-full bg-neutral-50 p-6 sm:p-8">
-    <button type="button" onClick={onBack} className="mb-4 inline-flex items-center gap-1.5 text-[11px] text-neutral-500 hover:text-neutral-900"><ArrowLeft size={13} /> Back to Plans &amp; Projects</button>
+  return <div className="eflow-project-command">
     <CollaborationWorkspaceHeader
       draft={draft}
       snapshot={snapshot}
@@ -112,18 +160,22 @@ export function CollaborationDraftWorkspace({ draftId, organizations, profiles, 
       participantCount={state.participants.length}
       openChangeCount={state.changeRequests.filter((request) => request.status === "open").length}
       tab={tab}
-      onTabChange={setTab}
+      primaryTab={primaryTab}
+      secondaryTab={secondaryTab}
+      onTabChange={handleTabChange}
+      onSecondaryTabChange={setSecondaryTab}
+      onBack={onBack}
       readyToPublish={Boolean(state.readiness?.ready)}
-      deliveryLabel={committed ? DELIVERY_STAGE_LABELS[delivery.stage] : undefined}
-      showDeliveryBoard={committed}
+      deliveryLabel={isCommittedDraft ? DELIVERY_STAGE_LABELS[delivery.stage] : undefined}
+      showDeliveryBoard={isCommittedDraft}
       departmentOnly={departmentOnly}
     />
 
-    <div className={`mt-4 grid gap-4 ${committed ? "grid-cols-1" : "xl:grid-cols-[minmax(0,1fr)_300px]"}`}>
+    <div className={`mt-4 grid gap-4 ${isCommittedDraft ? "grid-cols-1" : "xl:grid-cols-[minmax(0,1fr)_300px]"}`}>
       <main>
         {tab === "overview" && (
           <CollaborationOverviewPanel
-            committed={committed}
+            committed={isCommittedDraft}
             delivery={delivery}
             canManageDelivery={isOwner && !state.participants.some((participant) => participant.participationRole === "governance")}
             busy={busy}
@@ -131,7 +183,7 @@ export function CollaborationDraftWorkspace({ draftId, organizations, profiles, 
             organizations={organizations}
             snapshot={snapshot}
             ownerOrgId={draft.ownerOrgId}
-            canEditOrganizations={isOwner && !committed}
+            canEditOrganizations={isOwner && !isCommittedDraft}
             onOpenProject={onOpenProject}
             onMarkProjectsCompleted={() => act(
               async () => {
@@ -154,20 +206,33 @@ export function CollaborationDraftWorkspace({ draftId, organizations, profiles, 
             onSaveRevision={saveRevision}
           />
         )}
-        {tab === "board" && committed && <CommittedProposalBoard delivery={delivery} profiles={profiles} readOnly={readOnly} />}
-        {tab === "source" && <CollaborationSourcePanel draft={draft} canUpload={isOwner && !["committed", "archived", "deleted"].includes(draft.status)} onUploaded={state.refresh} />}
+        {tab === "board" && isCommittedDraft && <CommittedProposalBoard delivery={delivery} profiles={profiles} readOnly={readOnly} />}
         {tab === "plan" && <CollaborationPlanPanel snapshot={snapshot} organizations={organizations} editable={isOwner && !["committed", "archived", "deleted"].includes(draft.status)} onSave={saveRevision} />}
-        {tab === "budget" && <CollaborationBudgetPanel snapshot={snapshot} fundingOwnerName={ownerOrg?.name} editable={isOwner && !["committed", "archived", "deleted"].includes(draft.status)} onSave={saveRevision} />}
-        {tab === "people" && <StaffingReviewPanel snapshot={snapshot} organizations={organizations} profiles={profiles} editableOrgId={reviewOrganization?.orgId} canEditAll={isOwner} onSave={saveStaffingRevision} onRecommend={isOwner && draft.status === "draft" ? async () => (await recommendCollaborationAssignments(draftId)).recommendations : undefined} />}
         {tab === "discussion" && <CollaborationDiscussion messages={state.messages} organizations={organizations} profiles={profiles} onSend={(message) => act(async () => { await sendCollaborationMessage({ draftId, message }); }, "Message sent.")} />}
-        {tab === "changes" && <ChangeRequestsPanel requests={state.changeRequests} organizations={organizations} profiles={profiles} canRequest={canDecide && !isOwner} canResolve={isOwner} onCreate={(input) => act(async () => { await createCollaborationChangeRequest({ draftId, organizationId: reviewOrganization?.orgId, ...input }); }, "Formal change request submitted.")} onResolve={(id, status) => act(async () => { await resolveCollaborationChangeRequest(id, status); }, `Change request ${status}.`)} />}
-        {tab === "approvals" && !departmentOnly && <div className="space-y-3"><CollaborationReadiness participants={state.participants} approvals={state.approvals} currentRevisionId={draft.currentRevisionId} readiness={state.readiness} organizations={organizations} profiles={profiles} committed={committed} />{canDecide && <CollaborationDecisionPanel organizations={organizations} eligibleOrganizations={eligibleReviewOrganizations} selectedOrgId={reviewOrganization?.orgId} busy={busy} onSelectOrg={setActingOrgId} onDecide={(decision, reason) => act(async () => { await decideCollaborationReview({ draftId, organizationId: reviewOrganization!.orgId, decision, reason }); }, "Your organization decision was recorded.")} />}</div>}
-        {tab === "revisions" && <RevisionTimeline revisions={state.revisions} profiles={profiles} />}
-        {tab === "governance" && !departmentOnly && <GovernanceWorkspace draft={draft} snapshot={snapshot} revision={currentRevision} revisions={state.revisions} participants={state.participants} approvals={state.approvals} changeRequests={state.changeRequests} governance={governance} organizations={organizations} profiles={profiles} operationalTasks={delivery.tasks} isOwner={isOwner} actingOrgId={reviewOrganization?.orgId} busy={busy} onAct={act} onRefresh={async () => { await Promise.all([state.refresh(), governance.refresh()]); }} onSaveRevision={saveRevision} />}
+        {tab === "approvals" && !departmentOnly && <div className="space-y-3"><CollaborationReadiness participants={state.participants} approvals={state.approvals} currentRevisionId={draft.currentRevisionId} readiness={state.readiness} organizations={organizations} profiles={profiles} committed={isCommittedDraft} />{canDecide && <CollaborationDecisionPanel organizations={organizations} eligibleOrganizations={eligibleReviewOrganizations} selectedOrgId={reviewOrganization?.orgId} busy={busy} onSelectOrg={setActingOrgId} onDecide={(decision, reason) => act(async () => { await decideCollaborationReview({ draftId, organizationId: reviewOrganization!.orgId, decision, reason }); }, "Your organization decision was recorded.")} />}</div>}
       </main>
-      {!committed && <aside className="space-y-3">{tab !== "approvals" && <CollaborationReadiness participants={state.participants} approvals={state.approvals} currentRevisionId={draft.currentRevisionId} readiness={state.readiness} organizations={organizations} departmentOnly={departmentOnly} />}
+      {!isCommittedDraft && <aside className="space-y-3">{tab !== "approvals" && <CollaborationReadiness participants={state.participants} approvals={state.approvals} currentRevisionId={draft.currentRevisionId} readiness={state.readiness} organizations={organizations} departmentOnly={departmentOnly} />}
         <CollaborationActionRail departmentOnly={departmentOnly} isOwner={isOwner} ownerName={ownerOrg?.name} status={draft.status} readiness={state.readiness} busy={busy} hasRevision={Boolean(draft.currentRevisionId)} onRequestReview={() => act(async () => { await requestCollaborationReview(draftId); }, "Collaboration review requested.")} onCommit={() => act(async () => { if (departmentOnly) await publishDepartmentProposal(draftId); else await commitCollaborationDraft(draftId, draft.currentRevisionId!); onCommitted(); }, departmentOnly ? "Department proposal published. Operational projects and tasks are now available." : "Proposal published. Operational projects and tasks are now available.")} onDelete={(reason) => act(async () => { await deleteCollaborationDraft(draftId, reason); onBack(); }, departmentOnly ? "Department proposal draft deleted." : "Collaboration draft deleted with its governance history retained.")} />
       </aside>}
     </div>
+    {secondaryTab && (
+      <aside className="eflow-collaboration-inspector" aria-label="Collaboration workspace tool" role="dialog" aria-modal="false">
+        <header className="eflow-collaboration-inspector__header">
+          <div>
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Workspace tool</span>
+            <h2 className="m-0 text-base font-bold text-neutral-900">{secondaryTab === "source" ? "Source PDF" : secondaryTab === "people" ? "Team roster" : secondaryTab === "budget" ? "Budget" : secondaryTab === "changes" ? "Requested changes" : secondaryTab === "governance" ? "Governance" : "Revisions"}</h2>
+          </div>
+          <button type="button" className="text-xs font-medium text-blue-600 hover:underline" onClick={() => setSecondaryTab(null)}>Close</button>
+        </header>
+        <div className="eflow-collaboration-inspector__body">
+          {secondaryTab === "source" && <CollaborationSourcePanel draft={draft} canUpload={isOwner && !["committed", "archived", "deleted"].includes(draft.status)} onUploaded={state.refresh} />}
+          {secondaryTab === "budget" && <CollaborationBudgetPanel snapshot={snapshot} fundingOwnerName={ownerOrg?.name} editable={isOwner && !["committed", "archived", "deleted"].includes(draft.status)} onSave={saveRevision} />}
+          {secondaryTab === "people" && <StaffingReviewPanel snapshot={snapshot} organizations={organizations} profiles={profiles} editableOrgId={reviewOrganization?.orgId} canEditAll={isOwner} onSave={saveStaffingRevision} onRecommend={isOwner && draft.status === "draft" ? async () => (await recommendCollaborationAssignments(draftId)).recommendations : undefined} />}
+          {secondaryTab === "changes" && <ChangeRequestsPanel requests={state.changeRequests} organizations={organizations} profiles={profiles} canRequest={canDecide && !isOwner} canResolve={isOwner} onCreate={(input) => act(async () => { await createCollaborationChangeRequest({ draftId, organizationId: reviewOrganization?.orgId, ...input }); }, "Formal revision request submitted.")} onResolve={(id, status) => act(async () => { await resolveCollaborationChangeRequest(id, status); }, `Change request ${status}.`)} />}
+          {secondaryTab === "revisions" && <RevisionTimeline revisions={state.revisions} profiles={profiles} />}
+          {secondaryTab === "governance" && !departmentOnly && <GovernanceWorkspace draft={draft} snapshot={snapshot} revision={currentRevision} revisions={state.revisions} participants={state.participants} approvals={state.approvals} changeRequests={state.changeRequests} governance={governance} organizations={organizations} profiles={profiles} operationalTasks={delivery.tasks} isOwner={isOwner} actingOrgId={reviewOrganization?.orgId} busy={busy} onAct={act} onRefresh={async () => { await Promise.all([state.refresh(), governance.refresh()]); }} onSaveRevision={saveRevision} />}
+        </div>
+      </aside>
+    )}
   </div>;
 }

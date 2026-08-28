@@ -31,7 +31,10 @@ export function EflowAppShell({ role }: EflowAppShellProps) {
   const { can, user, userProfile } = useAuth();
   const { tasks } = useTasksData();
   const userId = user?.id;
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  // Desktop navigation begins as the compact, Figma-matched global icon rail.
+  // It can still expand on demand, so every existing role destination remains
+  // available without adding a second navigation model.
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const [isMobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const getInitialPage = useCallback(
     (section: string) => {
@@ -41,6 +44,19 @@ export function EflowAppShell({ role }: EflowAppShellProps) {
     [role],
   );
   const { activePage, activeSection, selectPage } = useRoleNavigationState(role, getInitialPage);
+
+  // Keep the browser tab useful as users move between role-specific menus.
+  // The login route owns the base "eFlow" title; the authenticated shell sets
+  // the currently selected destination without changing navigation behavior.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const sectionLabel = getRoleNavigationCandidates(role).find(
+      (item) => item.id === activeSection,
+    )?.label;
+    const activity = activePage?.trim() || sectionLabel || "eFlow";
+    document.title = activity;
+  }, [activePage, activeSection, role]);
+
   const hasLeadingWork = Boolean(userId) && tasks.some((task) => isTaskLead(task, userId));
   const visibleNavigationItems = getRoleNavigationCandidates(role).filter(
     (item) =>

@@ -1,10 +1,90 @@
+import { EmptyState, Label, TextField } from "@vibe/core";
 import { useMemo, useState } from "react";
-import { Activity, FileCheck2, History, Search } from "lucide-react";
 import type { ProjectCommandData, ProjectActivityItem } from "./types";
 
 export function ProjectActivityTab({ data }: { data: ProjectCommandData }) {
-  const [kind, setKind] = useState("all"); const [query, setQuery] = useState("");
-  const rows = useMemo(() => data.activity.filter((item) => (kind === "all" || item.kind === kind) && `${item.title} ${item.detail} ${item.actorName || ""}`.toLowerCase().includes(query.toLowerCase())), [data.activity, kind, query]);
-  return <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white"><header className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 bg-neutral-50/70 p-3"><div><h3 className="text-[12px] font-semibold text-neutral-900">Immutable project activity</h3><p className="text-[9.5px] text-neutral-400">Task status, progress, evidence submissions, reviews, and revisions.</p></div><div className="flex gap-2"><div className="relative"><Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Actor or event…" className="h-8 rounded-lg border border-neutral-200 bg-white pl-8 pr-2 text-[10px] outline-none" /></div><select value={kind} onChange={(event) => setKind(event.target.value)} className="h-8 rounded-lg border border-neutral-200 bg-white px-2 text-[10px]"><option value="all">All events</option><option value="status">Status</option><option value="progress">Progress</option><option value="submission">Reviews</option></select></div></header><div className="divide-y divide-neutral-100">{rows.map((item) => <ActivityRow key={item.id} item={item} />)}{rows.length === 0 ? <p className="py-14 text-center text-[10.5px] text-neutral-400">No activity matches these filters.</p> : null}</div></section>;
+  const [kind, setKind] = useState("all");
+  const [query, setQuery] = useState("");
+  const rows = useMemo(
+    () =>
+      data.activity.filter(
+        (item) =>
+          (kind === "all" || item.kind === kind) &&
+          `${item.title} ${item.detail} ${item.actorName || ""}`
+            .toLowerCase()
+            .includes(query.toLowerCase()),
+      ),
+    [data.activity, kind, query],
+  );
+  return (
+    <section className="eflow-section-card">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2>Project activity</h2>
+          <p className="m-0 mt-1 text-sm">
+            Immutable history of task activity, evidence submissions, reviews,
+            and revisions.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <TextField
+            value={query}
+            onChange={setQuery}
+            inputAriaLabel="Search project activity"
+            placeholder="Search activity"
+          />
+          <select
+            aria-label="Filter activity type"
+            value={kind}
+            onChange={(event) => setKind(event.target.value)}
+            className="eflow-control"
+          >
+            <option value="all">All activity</option>
+            <option value="status">Status</option>
+            <option value="progress">Progress</option>
+            <option value="submission">Reviews</option>
+          </select>
+        </div>
+      </header>
+      <div>
+        {rows.length ? (
+          rows.map((item) => <ActivityRow key={item.id} item={item} />)
+        ) : (
+          <EmptyState
+            title="No activity matches these filters"
+            description="Try a different search or activity type."
+          />
+        )}
+      </div>
+    </section>
+  );
 }
-function ActivityRow({ item }: { item: ProjectActivityItem }) { const Icon = item.kind === "submission" ? FileCheck2 : item.kind === "status" ? History : Activity; return <div className="flex gap-3 px-4 py-3"><span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-500"><Icon size={13} /></span><div className="min-w-0 flex-1"><div className="text-[11px] font-semibold text-neutral-800">{item.title}</div><p className="mt-0.5 text-[9.5px] text-neutral-500">{item.detail}</p><p className="mt-1 text-[9px] text-neutral-400">{item.actorName || "System"} · {new Date(item.occurredAt).toLocaleString()}</p></div></div>; }
+function ActivityRow({ item }: { item: ProjectActivityItem }) {
+  const color =
+    item.kind === "submission"
+      ? "working_orange"
+      : item.kind === "status"
+        ? "primary"
+        : "dark";
+  return (
+    <article className="grid grid-cols-[auto_1fr] gap-3 border-b border-neutral-100 px-4 py-3 last:border-0">
+      <Label
+        text={
+          item.kind === "submission"
+            ? "Review"
+            : item.kind === "status"
+              ? "Status"
+              : "Activity"
+        }
+        color={color}
+      />
+      <div>
+        <strong className="block text-sm">{item.actorName || "System"} {item.title}</strong>
+        <p className="m-1 text-sm text-secondary">{item.detail}</p>
+        <span className="text-xs text-secondary">
+          {new Date(item.occurredAt).toLocaleString()} · {item.kind === "submission" ? "Review workflow" : "Project history"}
+        </span>
+      </div>
+    </article>
+  );
+}

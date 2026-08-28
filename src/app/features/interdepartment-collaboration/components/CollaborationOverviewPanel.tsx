@@ -1,8 +1,11 @@
-import { ShieldCheck } from "lucide-react";
+import { Building2, ShieldCheck } from "lucide-react";
 import type { Organization } from "../../../types";
 import { PARTICIPATION_ROLE_LABELS } from "../constants";
 import type { CommittedProposalDeliverySummary } from "../selectors/deliveryProgress";
-import type { CollaborationDraftSnapshot, CollaborationParticipant } from "../types";
+import type {
+  CollaborationDraftSnapshot,
+  CollaborationParticipant,
+} from "../types";
 import { CollaborationPlanPanel } from "./CollaborationPlanPanel";
 import { CommittedProposalDeliveryPanel } from "./CommittedProposalDeliveryPanel";
 import { OrganizationParticipantsPanel } from "./OrganizationParticipantsPanel";
@@ -36,10 +39,13 @@ export function CollaborationOverviewPanel({
   onMarkProjectsCompleted: () => Promise<void>;
   onArchiveProjects: () => Promise<void>;
   onSaveOrganizations: (snapshot: CollaborationDraftSnapshot) => Promise<void>;
-  onSaveRevision: (snapshot: CollaborationDraftSnapshot, summary: string) => Promise<void>;
+  onSaveRevision: (
+    snapshot: CollaborationDraftSnapshot,
+    summary: string,
+  ) => Promise<void>;
 }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {committed && (
         <CommittedProposalDeliveryPanel
           summary={delivery}
@@ -51,21 +57,51 @@ export function CollaborationOverviewPanel({
         />
       )}
 
-      <section className="rounded-2xl border border-neutral-200 bg-white p-5">
-        <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">Participating organizations</div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      {/* Participating Departments Section */}
+      <section className="eflow-section-card">
+        <header>
+          <h2>Participating departments &amp; governance</h2>
+          <p className="m-0 mt-1 text-xs text-secondary">
+            Departments and governance reviewers committed to this work plan.
+          </p>
+        </header>
+        <div className="p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {participants.map((participant) => {
-            const organization = organizations.find((item) => item.id === participant.orgId);
-            const governance = participant.participationRole === "governance";
+            const organization = organizations.find(
+              (item) => item.id === participant.orgId,
+            );
+            const isOwner = participant.participationRole === "owner";
+            const isGov = participant.participationRole === "governance";
             return (
-              <div key={participant.orgId} className="flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-3">
-                <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${governance ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>
-                  <ShieldCheck size={14} />
+              <div
+                key={participant.orgId}
+                className="flex items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50/60 p-3"
+              >
+                <div
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                    isGov
+                      ? "bg-amber-100 text-amber-800"
+                      : isOwner
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-neutral-200 text-neutral-700"
+                  }`}
+                >
+                  {isGov ? <ShieldCheck size={16} /> : <Building2 size={16} />}
                 </div>
-                <div>
-                  <div className="text-[11px] font-['Lexend:Medium',_sans-serif] text-neutral-900">{organization?.name || "Organization"}</div>
-                  <div className="text-[9px] text-neutral-400">
-                    {PARTICIPATION_ROLE_LABELS[participant.participationRole]} · {participant.staffingEnabled ? "Staffing enabled" : "Approval only"}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold text-neutral-900">
+                    {organization?.name || "Organization unavailable"}
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-1.5 text-xs text-secondary">
+                    <span>
+                      {PARTICIPATION_ROLE_LABELS[participant.participationRole]}
+                    </span>
+                    <span>·</span>
+                    <span>
+                      {participant.staffingEnabled
+                        ? "Staffing enabled"
+                        : "Approval only"}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -74,14 +110,24 @@ export function CollaborationOverviewPanel({
         </div>
       </section>
 
-      <OrganizationParticipantsPanel
-        snapshot={snapshot}
-        ownerOrgId={ownerOrgId}
-        organizations={organizations}
-        editable={canEditOrganizations}
-        onSave={onSaveOrganizations}
-      />
-      <CollaborationPlanPanel snapshot={snapshot} organizations={organizations} editable={false} onSave={onSaveRevision} />
+      {/* When in Draft / Planning Mode: show scope picker and plan */}
+      {!committed && (
+        <>
+          <OrganizationParticipantsPanel
+            snapshot={snapshot}
+            ownerOrgId={ownerOrgId}
+            organizations={organizations}
+            editable={canEditOrganizations}
+            onSave={onSaveOrganizations}
+          />
+          <CollaborationPlanPanel
+            snapshot={snapshot}
+            organizations={organizations}
+            editable={false}
+            onSave={onSaveRevision}
+          />
+        </>
+      )}
     </div>
   );
 }
