@@ -3,6 +3,22 @@ import { rowToProject } from './projectMappers';
 import type { Project } from './types';
 
 const projectListeners = new Set<(projects: Project[]) => void>();
+// Keep the latest project snapshot in memory so navigating away from and back
+// to Plans & Projects does not blank the workspace while the same query runs
+// again. Realtime events still invalidate and refresh this snapshot.
+const PROJECT_CACHE_TTL_MS = 30_000;
+let projectCache: Project[] | null = null;
+let projectCacheUpdatedAt = 0;
+let projectLoadPromise: Promise<Project[]> | null = null;
+let projectRealtimeChannel: ReturnType<typeof supabase.channel> | null = null;
+
+function broadcastProjects(projects: Project[]) {
+  projectCache = projects;
+  projectCacheUpdatedAt = Date.now();
+  projectListeners.forEach((callback) => {
+    try { callback(projects); } catch (error) { console.error(error); }
+  });
+}
 
 export async function fetchAllProjects(): Promise<Project[]> {
   const { data, error } = await supabase
@@ -19,23 +35,44 @@ export async function fetchAllProjects(): Promise<Project[]> {
 }
 
 export async function notifyProjectListeners() {
-  const projects = await fetchAllProjects();
-  projectListeners.forEach((cb) => { try { cb(projects); } catch (e) { console.error(e); } });
+  if (projectLoadPromise) return projectLoadPromise;
+  projectLoadPromise = fetchAllProjects()
+    .then((projects) => {
+      broadcastProjects(projects);
+      return projects;
+    })
+    .catch((error) => {
+      console.error('Failed to refresh projects:', error);
+      return projectCache || [];
+    })
+    .finally(() => { projectLoadPromise = null; });
+  return projectLoadPromise;
 }
 
 export function subscribeToProjects(callback: (projects: Project[]) => void): () => void {
   projectListeners.add(callback);
-  fetchAllProjects().then(callback);
 
-  const channelId = `projects-${Math.random().toString(36).slice(2)}`;
-  const channel = supabase
-    .channel(channelId)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => notifyProjectListeners())
-    .subscribe();
+  if (projectCache) callback(projectCache);
+  if (!projectCache || Date.now() - projectCacheUpdatedAt > PROJECT_CACHE_TTL_MS) {
+    void notifyProjectListeners();
+  }
+
+  // Share one realtime channel across all consumers. The channel remains
+  // active while the feature is mounted, while the snapshot survives page
+  // switches for instant rehydration.
+  if (!projectRealtimeChannel) {
+    projectRealtimeChannel = supabase
+      .channel('projects-changes-shared')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => void notifyProjectListeners())
+      .subscribe();
+  }
 
   return () => {
     projectListeners.delete(callback);
-    supabase.removeChannel(channel);
+    if (projectListeners.size === 0 && projectRealtimeChannel) {
+      void supabase.removeChannel(projectRealtimeChannel);
+      projectRealtimeChannel = null;
+    }
   };
 }
 

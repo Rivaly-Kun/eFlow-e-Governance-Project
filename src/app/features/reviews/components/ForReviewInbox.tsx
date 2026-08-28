@@ -1,8 +1,10 @@
 // ─── ForReviewInbox ──────────────────────────────────────────────
-// A dedicated review workspace, not a filtered Kanban column. Left: the queue
-// of for_review tasks; right: the selected submission with full context
-// (employee, project/milestone, submitted time, latest progress, attachments,
-// prior rejection feedback) and the approve / request-changes actions.
+// A dedicated review workspace, not a filtered Kanban column.
+// Single inbox for all review work across eFlow:
+// 1. Work Plan Reviews (incoming proposals & collaborative plans)
+// 2. Project Task Reviews (submitted tasks & completion evidence)
+// 3. Governance / Sign-off (formal approvals and governance commits)
+// 4. Subtasks & Budget reviews
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -49,6 +51,9 @@ import { TaskReviewStandards } from "./TaskReviewStandards";
 import { TaskSubtaskEvidenceSection } from "./TaskSubtaskEvidenceSection";
 import { ReviewDecisionForm } from "./ReviewDecisionForm";
 import { useTaskReviewEvidence } from "../hooks/useTaskReviewEvidence";
+import { WorkPlanReviewInbox } from "./WorkPlanReviewInbox";
+import { GovernanceReviewInbox } from "./GovernanceReviewInbox";
+import { useCollaborationDrafts, isActiveCollaborationDraft } from "../../interdepartment-collaboration";
 import {
   useNotificationNavigationIntent,
   type NotificationNavigationIntent,
@@ -69,9 +74,10 @@ export interface ForReviewInboxProps {
 }
 
 export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
-  const { tasks, loading } = useTasks();
+  const { tasks, loading: tasksLoading } = useTasks();
   const { isSuperAdmin } = useScopedOrgIds();
-  const { projects } = useProjectsData();
+  const { projects, loading: projectsLoading } = useProjectsData();
+  const collaboration = useCollaborationDrafts();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("oldest");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -84,6 +90,41 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
 
   const { user, userProfile } = useAuth();
   const canReviewBudget = canOpenBudgetReviewWorkspace(scope, userProfile?.role);
+
+  const currentOrgId = userProfile?.org_id || userProfile?.departmentId || "";
+  const accessibleOrgIds = useMemo(
+    () => new Set([currentOrgId, ...collaboration.membershipOrgIds].filter(Boolean)),
+    [collaboration.membershipOrgIds, currentOrgId],
+  );
+
+  // Incoming Work Plan Reviews count
+  const incomingWorkPlansCount = useMemo(() => {
+    return collaboration.drafts
+      .filter(isActiveCollaborationDraft)
+      .filter(
+        (draft) =>
+          ["in_review", "changes_requested", "ready_to_commit"].includes(draft.status) &&
+          draft.snapshot.organizations.some(
+            (org) => org.participationRole !== "owner" && accessibleOrgIds.has(org.orgId),
+          ),
+      ).length;
+  }, [accessibleOrgIds, collaboration.drafts]);
+
+  // Governance decisions count
+  const governanceReviewsCount = useMemo(() => {
+    return collaboration.drafts
+      .filter(isActiveCollaborationDraft)
+      .filter(
+        (draft) =>
+          ["in_review", "ready_to_commit"].includes(draft.status) &&
+          (isSuperAdmin ||
+            draft.ownerOrgId === currentOrgId ||
+            draft.snapshot.organizations.some(
+              (item) => item.participationRole === "governance" && accessibleOrgIds.has(item.orgId),
+            )),
+      ).length;
+  }, [accessibleOrgIds, collaboration.drafts, currentOrgId, isSuperAdmin]);
+
   const queue = useMemo(() => {
     let rows = tasks.filter(
       (task) => isTaskVisibleInReviewQueue(
@@ -116,7 +157,13 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
     projects,
   ]);
 
-  // Keep a valid selection.
+  const reviewCounts = useMemo(() => ({
+    workplans: incomingWorkPlansCount,
+    tasks: queue.length,
+    governance: governanceReviewsCount,
+  }), [governanceReviewsCount, incomingWorkPlansCount, queue.length]);
+
+  // Keep a valid selection in tasks tab.
   useEffect(() => {
     if (queue.length === 0) {
       setSelectedId(null);
@@ -128,15 +175,21 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
   const selected = queue.find((t) => t.id === selectedId) || null;
 
   useNotificationNavigationIntent(
-    (intent) => intent.kind === "task_review" || intent.kind === "subtask_review" || intent.kind === "budget",
+    (intent) =>
+      intent.kind === "task_review" ||
+      intent.kind === "subtask_review" ||
+      intent.kind === "budget" ||
+      intent.kind === "collaboration",
     (intent) => {
-      if (loading) return false;
+      if (tasksLoading || projectsLoading) return false;
       if (intent.kind === "budget" && canReviewBudget) {
         setBudgetFocus(intent);
         setReviewKind("budget");
       } else if (intent.kind === "subtask_review") {
         setSubtaskFocus(intent);
         setReviewKind("subtasks");
+      } else if (intent.kind === "collaboration") {
+        setReviewKind("workplans");
       } else {
         setReviewKind("tasks");
         const match = queue.find((task) => task.id === intent.taskId);
@@ -144,8 +197,9 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
       }
       return true;
     },
-    [canReviewBudget, loading, queue],
+    [canReviewBudget, projectsLoading, queue, tasksLoading],
   );
+
   const canReviewSelected = Boolean(
     selected &&
       canUserReviewTask(selected, user?.id, userProfile?.role),
@@ -168,7 +222,14 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
       <BudgetReviewInbox
         focus={budgetFocus}
         scope={scope}
-        actions={<ReviewKindSwitch active="budget" includeBudget onChange={setReviewKind} />}
+        actions={
+          <ReviewKindSwitch
+            active="budget"
+            includeBudget
+            counts={reviewCounts}
+            onChange={setReviewKind}
+          />
+        }
       />
     );
   }
@@ -183,10 +244,12 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
     );
   }
 
-  if (loading) return <div className="p-8"><LoadingState label="Loading the review queue…" /></div>;
+  if (tasksLoading || projectsLoading) {
+    return <div className="p-8"><LoadingState label="Loading the review queue…" /></div>;
+  }
 
   return (
-    <div className="p-6 sm:p-8 min-h-full">
+    <div className="p-6 sm:p-8 min-h-full font-['Montserrat',sans-serif]">
       <PageHeader
         eyebrow={
           scope === "leading"
@@ -196,174 +259,190 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
               : `${getHeadWorkspaceLabel(userProfile?.role)} · Reviews`
         }
         title="For Review"
-        subtitle="Validate submitted work and keep the pipeline moving."
+        subtitle="Validate submitted work, collaborate on proposals, and keep the pipeline moving."
         actions={
           <div className="flex items-center gap-2">
-            <ReviewKindSwitch active="tasks" includeBudget={canReviewBudget} onChange={setReviewKind} />
-            <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 text-[12px] font-['Lexend:Medium',_sans-serif] text-amber-700">
-              <Inbox size={14} /> {queue.length} awaiting review
-            </div>
+            <ReviewKindSwitch
+              active={reviewKind}
+              includeBudget={canReviewBudget}
+              counts={reviewCounts}
+              onChange={setReviewKind}
+            />
+            {reviewKind === "tasks" && (
+              <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-amber-700">
+                <Inbox size={14} /> {queue.length} awaiting review
+              </div>
+            )}
           </div>
         }
       />
 
-      {queue.length === 0 && !query ? (
-        <div className="bg-white border border-neutral-200 rounded-xl">
-          <SectionEmpty
-            icon={<CheckCircle2 size={30} />}
-            title="Inbox zero"
-            description="No submissions are waiting for review. Great job keeping up!"
-          />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(300px,380px)_1fr] gap-4">
-          {/* Queue */}
-          <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden flex flex-col">
-            <div className="p-3 border-b border-neutral-100 flex items-center gap-2">
-              <SearchInput value={query} onChange={setQuery} placeholder="Search submissions…" className="flex-1" />
-              <WSelect
-                value={sort}
-                onChange={setSort}
-                options={[
-                  { value: "oldest", label: "Oldest first" },
-                  { value: "newest", label: "Newest first" },
-                ]}
+      {/* Review Category Content */}
+      {reviewKind === "workplans" && <WorkPlanReviewInbox />}
+
+      {reviewKind === "governance" && <GovernanceReviewInbox />}
+
+      {reviewKind === "tasks" && (
+        <>
+          {queue.length === 0 && !query ? (
+            <div className="bg-white border border-neutral-200/80 rounded-2xl shadow-xs">
+              <SectionEmpty
+                icon={<CheckCircle2 size={36} className="text-emerald-500" />}
+                title="Inbox zero"
+                description="No submissions are waiting for review. Great job keeping up!"
               />
             </div>
-            <div className="divide-y divide-neutral-100 overflow-y-auto max-h-[calc(100vh-260px)]">
-              {queue.length === 0 ? (
-                <div className="py-10 text-center text-[12px] text-neutral-400">No matches for “{query}”.</div>
-              ) : (
-                queue.map((t) => {
-                  const isSel = t.id === selectedId;
-                  const submittedAt = t.latestSubmission?.submittedAt || t.updatedAt;
-                  const projectTitle = projects.find((project) => project.id === t.linkedProjectId)?.title || t.projectTitle;
-                  return (
-                    <button
-                      key={t.id}
-                      onClick={() => setSelectedId(t.id)}
-                      className={`w-full text-left p-3 flex gap-3 transition-colors ${isSel ? "bg-neutral-50" : "hover:bg-neutral-50/60"}`}
-                    >
-                      <InitialsAvatar name={t.assigneeName} size={32} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[12.5px] font-['Lexend:Medium',_sans-serif] text-neutral-900 truncate flex-1">
-                            {t.title}
-                          </span>
-                          <PriorityPill priority={t.priority} />
-                        </div>
-                        <div className="text-[11px] font-['Lexend:Regular',_sans-serif] text-neutral-500 truncate mt-0.5">
-                          {t.assigneeName || "Unassigned"}{t.teamMemberNames && t.teamMemberNames.length > 1 ? ` + ${t.teamMemberNames.length - 1}` : ""}
-                          {projectTitle ? ` · ${projectTitle}` : ""}
-                        </div>
-                        <div className="flex items-center gap-1 text-[10.5px] text-neutral-400 mt-0.5">
-                          <Clock size={10} /> {timeAgo(submittedAt)}
-                          {t.rejectionNote && (
-                            <span className="ml-1 text-rose-500 font-['Lexend:Medium',_sans-serif]">· resubmitted</span>
-                          )}
-                        </div>
-                      </div>
-                      <ChevronRight size={14} className={`self-center shrink-0 ${isSel ? "text-neutral-600" : "text-neutral-300"}`} />
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Detail */}
-          <div className="min-w-0">
-            {selected ? (
-              <div className="space-y-4">
-                <div className="bg-white border border-neutral-200 rounded-xl p-4">
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="min-w-0">
-                      <h2 className="text-[17px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">{selected.title}</h2>
-                      <div className="flex items-center gap-3 mt-1 text-[11.5px] font-['Lexend:Regular',_sans-serif] text-neutral-500 flex-wrap">
-                        <span className="flex items-center gap-1"><InitialsAvatar name={selected.assigneeName} size={18} /> {selected.teamMemberNames && selected.teamMemberNames.length > 0 ? selected.teamMemberNames.join(", ") : selected.assigneeName || "Unassigned"}</span>
-                        {selected.teamName && <span className="flex items-center gap-1"><Building2 size={12} /> {selected.teamName}</span>}
-                        {(projects.find((project) => project.id === selected.linkedProjectId)?.title || selected.projectTitle) && (
-                          <span className="flex items-center gap-1"><Layers size={12} /> {projects.find((project) => project.id === selected.linkedProjectId)?.title || selected.projectTitle}</span>
-                        )}
-                        <span className="flex items-center gap-1"><Clock size={12} /> {formatDate(selected.latestSubmission?.submittedAt || selected.updatedAt)}</span>
-                      </div>
-                    </div>
-                    <PriorityPill priority={selected.priority} />
-                  </div>
-
-                  {selected.description && (
-                    <div className="text-[12.5px] font-['Lexend:Regular',_sans-serif] text-neutral-600 mb-3 whitespace-pre-wrap">
-                      {selected.description}
-                    </div>
-                  )}
-
-                  {latestProgress && (
-                    <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-2.5 mb-3">
-                      <div className="flex items-center gap-1.5 text-[10.5px] font-['Lexend:Medium',_sans-serif] uppercase tracking-wide text-blue-700 mb-1">
-                        <Gauge size={12} /> Latest progress · {latestProgress.percentComplete ?? "—"}%
-                      </div>
-                      {latestProgress.nextStep && (
-                        <div className="text-[12px] text-neutral-700"><b className="font-['Lexend:Medium',_sans-serif]">Next:</b> {latestProgress.nextStep}</div>
-                      )}
-                      {latestProgress.note && (
-                        <div className="text-[12px] text-neutral-600">{latestProgress.note}</div>
-                      )}
-                    </div>
-                  )}
-
-                </div>
-
-                <TaskReviewStandards task={selected} tasks={tasks} />
-
-                <TaskSubtaskEvidenceSection
-                  task={selected}
-                  evidence={subtaskEvidence}
-                  loading={subtaskEvidenceLoading}
-                  error={subtaskEvidenceError}
-                />
-
-                <div className="bg-white border border-neutral-200 rounded-xl p-4">
-                  <div className="mb-3 flex items-start gap-2.5">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
-                      <ClipboardCheck size={16} />
-                    </span>
-                    <div>
-                      <div className="text-[13px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">Final task submission</div>
-                      <div className="mt-0.5 text-[11px] text-neutral-500">Review the completion note, parent-task attachments, and all previous attempts.</div>
-                    </div>
-                  </div>
-                  <TaskReviewPanel
-                    task={selected}
-                    compact
-                    canReview={canReviewSelected}
-                    showDecision={false}
-                    onDone={() => { /* realtime removes it from queue */ }}
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(300px,380px)_1fr] gap-4">
+              {/* Queue */}
+              <div className="bg-white border border-neutral-200/80 rounded-2xl overflow-hidden flex flex-col shadow-xs">
+                <div className="p-3 border-b border-neutral-100 flex items-center gap-2">
+                  <SearchInput value={query} onChange={setQuery} placeholder="Search submissions…" className="flex-1" />
+                  <WSelect
+                    value={sort}
+                    onChange={setSort}
+                    options={[
+                      { value: "oldest", label: "Oldest first" },
+                      { value: "newest", label: "Newest first" },
+                    ]}
                   />
                 </div>
-
-                <div className="bg-white border border-neutral-200 rounded-xl p-4">
-                  <div className="text-[12px] font-['Lexend:Medium',_sans-serif] text-neutral-900 mb-0.5">Complete task timeline</div>
-                  <div className="mb-3 text-[11px] text-neutral-500">Status changes and structured parent-task progress updates, newest first.</div>
-                  <TaskActivityTimeline taskId={selected.id} />
+                <div className="divide-y divide-neutral-100 overflow-y-auto max-h-[calc(100vh-260px)]">
+                  {queue.length === 0 ? (
+                    <div className="py-10 text-center text-xs text-neutral-400">No matches for “{query}”.</div>
+                  ) : (
+                    queue.map((t) => {
+                      const isSel = t.id === selectedId;
+                      const submittedAt = t.latestSubmission?.submittedAt || t.updatedAt;
+                      const projectTitle = projects.find((project) => project.id === t.linkedProjectId)?.title || t.projectTitle;
+                      return (
+                        <button
+                          key={t.id}
+                          onClick={() => setSelectedId(t.id)}
+                          className={`w-full text-left p-3.5 flex gap-3 transition-colors cursor-pointer ${isSel ? "bg-indigo-50/50" : "hover:bg-neutral-50/70"}`}
+                        >
+                          <InitialsAvatar name={t.assigneeName} size={32} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-neutral-900 truncate flex-1">
+                                {t.title}
+                              </span>
+                              <PriorityPill priority={t.priority} />
+                            </div>
+                            <div className="text-[11px] text-neutral-500 truncate mt-0.5">
+                              {t.assigneeName || "Unassigned"}{t.teamMemberNames && t.teamMemberNames.length > 1 ? ` + ${t.teamMemberNames.length - 1}` : ""}
+                              {projectTitle ? ` · ${projectTitle}` : ""}
+                            </div>
+                            <div className="flex items-center gap-1 text-[10.5px] text-neutral-400 mt-1">
+                              <Clock size={10} /> {timeAgo(submittedAt)}
+                              {t.rejectionNote && (
+                                <span className="ml-1 text-rose-500 font-semibold">· resubmitted</span>
+                              )}
+                            </div>
+                          </div>
+                          <ChevronRight size={14} className={`self-center shrink-0 ${isSel ? "text-indigo-600" : "text-neutral-300"}`} />
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
+              </div>
 
-                {canReviewSelected && (
-                  <div className="rounded-xl border border-neutral-300 bg-white p-4 shadow-sm">
-                    <div className="mb-3">
-                      <div className="text-[13px] font-['Lexend:SemiBold',_sans-serif] text-neutral-900">Head review decision</div>
-                      <div className="mt-0.5 text-[11px] text-neutral-500">Approve only after checking the completion standards, subtask execution records, evidence files, and final submission.</div>
+              {/* Detail */}
+              <div className="min-w-0">
+                {selected ? (
+                  <div className="space-y-4">
+                    <div className="bg-white border border-neutral-200/80 rounded-2xl p-5 shadow-xs">
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div className="min-w-0">
+                          <h2 className="text-base font-bold text-neutral-900">{selected.title}</h2>
+                          <div className="flex items-center gap-3 mt-1.5 text-xs text-neutral-500 flex-wrap">
+                            <span className="flex items-center gap-1"><InitialsAvatar name={selected.assigneeName} size={18} /> {selected.teamMemberNames && selected.teamMemberNames.length > 0 ? selected.teamMemberNames.join(", ") : selected.assigneeName || "Unassigned"}</span>
+                            {selected.teamName && <span className="flex items-center gap-1"><Building2 size={12} /> {selected.teamName}</span>}
+                            {(projects.find((project) => project.id === selected.linkedProjectId)?.title || selected.projectTitle) && (
+                              <span className="flex items-center gap-1"><Layers size={12} /> {projects.find((project) => project.id === selected.linkedProjectId)?.title || selected.projectTitle}</span>
+                            )}
+                            <span className="flex items-center gap-1"><Clock size={12} /> {formatDate(selected.latestSubmission?.submittedAt || selected.updatedAt)}</span>
+                          </div>
+                        </div>
+                        <PriorityPill priority={selected.priority} />
+                      </div>
+
+                      {selected.description && (
+                        <div className="text-xs text-neutral-600 mb-3 whitespace-pre-wrap leading-relaxed">
+                          {selected.description}
+                        </div>
+                      )}
+
+                      {latestProgress && (
+                        <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3 mb-3">
+                          <div className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wide text-blue-700 mb-1">
+                            <Gauge size={12} /> Latest progress · {latestProgress.percentComplete ?? "—"}%
+                          </div>
+                          {latestProgress.nextStep && (
+                            <div className="text-xs text-neutral-700"><b className="font-semibold">Next:</b> {latestProgress.nextStep}</div>
+                          )}
+                          {latestProgress.note && (
+                            <div className="text-xs text-neutral-600 mt-0.5">{latestProgress.note}</div>
+                          )}
+                        </div>
+                      )}
+
                     </div>
-                    <ReviewDecisionForm taskId={selected.id} onDone={() => { /* realtime removes it from queue */ }} />
+
+                    <TaskReviewStandards task={selected} tasks={tasks} />
+
+                    <TaskSubtaskEvidenceSection
+                      task={selected}
+                      evidence={subtaskEvidence}
+                      loading={subtaskEvidenceLoading}
+                      error={subtaskEvidenceError}
+                    />
+
+                    <div className="bg-white border border-neutral-200/80 rounded-2xl p-5 shadow-xs">
+                      <div className="mb-3 flex items-start gap-2.5">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+                          <ClipboardCheck size={16} />
+                        </span>
+                        <div>
+                          <div className="text-xs font-bold uppercase tracking-wide text-neutral-900">Final task submission</div>
+                          <div className="mt-0.5 text-xs text-neutral-500">Review the completion note, parent-task attachments, and all previous attempts.</div>
+                        </div>
+                      </div>
+                      <TaskReviewPanel
+                        task={selected}
+                        compact
+                        canReview={canReviewSelected}
+                        showDecision={false}
+                        onDone={() => { /* realtime removes it from queue */ }}
+                      />
+                    </div>
+
+                    <div className="bg-white border border-neutral-200/80 rounded-2xl p-5 shadow-xs">
+                      <div className="text-xs font-bold uppercase tracking-wide text-neutral-900 mb-0.5">Complete task timeline</div>
+                      <div className="mb-3 text-xs text-neutral-500">Status changes and structured parent-task progress updates, newest first.</div>
+                      <TaskActivityTimeline taskId={selected.id} />
+                    </div>
+
+                    {canReviewSelected && (
+                      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-xs">
+                        <div className="mb-3">
+                          <div className="text-xs font-bold uppercase tracking-wide text-neutral-900">Head review decision</div>
+                          <div className="mt-0.5 text-xs text-neutral-500">Approve only after checking the completion standards, subtask execution records, evidence files, and final submission.</div>
+                        </div>
+                        <ReviewDecisionForm taskId={selected.id} onDone={() => { /* realtime removes it from queue */ }} />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-white border border-neutral-200/80 rounded-2xl h-full flex items-center justify-center p-12 shadow-xs">
+                    <SectionEmpty icon={<Search size={26} />} title="Select a submission" description="Pick a task from the queue to review it." />
                   </div>
                 )}
               </div>
-            ) : (
-              <div className="bg-white border border-neutral-200 rounded-xl h-full flex items-center justify-center">
-                <SectionEmpty icon={<Search size={26} />} title="Select a submission" description="Pick a task from the queue to review it." />
-              </div>
-            )}
-          </div>
-        </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

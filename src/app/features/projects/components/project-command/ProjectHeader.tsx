@@ -1,6 +1,6 @@
 import * as React from "react";
-import { Button, Dialog, DialogContentContainer, Menu, MenuDivider, MenuItem } from "@vibe/core";
-import { Activity, Archive, Chart, Delete, File, MoreActions } from "@vibe/icons";
+import { Button, Dialog, DialogContentContainer, Menu, MenuItem } from "@vibe/core";
+import { Activity, Chart, File, MoreActions } from "@vibe/icons";
 import type { Organization, UserProfile } from "../../../../types";
 import type { Project } from "../../services/types";
 import { ProjectLifecycleLabel, ProjectScheduleLabel } from "../../presentation/projectPresentation";
@@ -11,12 +11,12 @@ export function ProjectHeader({
   organizations,
   profiles,
   metrics,
-  canArchive,
-  canDelete,
+  canArchive: _canArchive,
+  canDelete: _canDelete,
   onBack: _onBack,
-  onArchive,
-  onRestore,
-  onDelete,
+  onArchive: _onArchive,
+  onRestore: _onRestore,
+  onDelete: _onDelete,
   onOpenProposalContext,
   onOpenTool,
 }: {
@@ -24,12 +24,12 @@ export function ProjectHeader({
   organizations: Organization[];
   profiles?: UserProfile[];
   metrics?: ProjectCommandMetrics;
-  canArchive: boolean;
-  canDelete: boolean;
-  onBack: () => void;
-  onArchive: () => void;
-  onRestore: () => void;
-  onDelete: () => void;
+  canArchive?: boolean;
+  canDelete?: boolean;
+  onBack?: () => void;
+  onArchive?: () => void;
+  onRestore?: () => void;
+  onDelete?: () => void;
   onOpenProposalContext?: () => void;
   onOpenTool?: (tool: "reviews" | "activity" | "reports") => void;
   hasProposalContext?: boolean;
@@ -54,14 +54,14 @@ export function ProjectHeader({
             <ProjectLifecycleLabel status={project.status} />
             {metrics && <ProjectScheduleLabel health={metrics.scheduleHealth} />}
             {organization && (
-              <span className="text-xs text-secondary font-medium">
+              <span className="text-xs text-neutral-600 font-medium">
                 {organization.name}
               </span>
             )}
             {owner && (
               <>
                 <span className="text-xs text-neutral-300">·</span>
-                <span className="text-xs text-secondary font-medium">
+                <span className="text-xs text-neutral-600 font-medium">
                   {owner.full_name}
                 </span>
               </>
@@ -75,7 +75,7 @@ export function ProjectHeader({
 
           {/* Compact summary line in header — replaces persistent large strip */}
           {metrics && (
-            <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-secondary">
+            <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-neutral-600">
               <strong className="font-semibold text-neutral-800">{metrics.progress}% complete</strong>
               <span>·</span>
               <span>{metrics.milestoneOpen + metrics.milestoneCompleted} activities</span>
@@ -121,13 +121,6 @@ export function ProjectHeader({
                   <MenuItem title="Reviews" icon={Chart} onClick={() => chooseTool("reviews")} />
                   <MenuItem title="Activity" icon={Activity} onClick={() => chooseTool("activity")} />
                   <MenuItem title="Reports" icon={File} onClick={() => chooseTool("reports")} />
-                  {(canArchive || canDelete) && <MenuDivider />}
-                  {canArchive && (archived ? (
-                    <MenuItem title="Restore project" icon={Archive} onClick={() => { setToolsOpen(false); onRestore(); }} />
-                  ) : (
-                    <MenuItem title="Archive project" icon={Archive} onClick={() => { setToolsOpen(false); onArchive(); }} />
-                  ))}
-                  {canDelete && <MenuItem title="Delete project" icon={Delete} onClick={() => { setToolsOpen(false); onDelete(); }} />}
                 </Menu>
               </DialogContentContainer>
             )}
@@ -156,7 +149,7 @@ export function ProjectHeader({
       {archived && (
         <div
           role="status"
-          className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-secondary"
+          className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs font-medium text-neutral-700"
         >
           Archived projects are read-only. History and reports remain available.
         </div>

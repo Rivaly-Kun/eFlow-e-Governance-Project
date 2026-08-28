@@ -1,8 +1,8 @@
 import * as React from "react";
 import * as Icons from "lucide-react";
-import { Button, Dialog, DialogContentContainer, IconButton, Loader, Menu, MenuDivider, MenuItem } from "@vibe/core";
-import { Activity, Add, AddNewDoc, BoardTemplate, Chart, Dropdown, File, MoreActions, PDF } from "@vibe/icons";
-import { ManualPlanBuilder, ProposalImport } from "../../proposal-import";
+import { Button, Dialog, DialogContentContainer, IconButton, Loader, Menu, MenuItem } from "@vibe/core";
+import { Add, Archive, Delete, MoreActions } from "@vibe/icons";
+import { CreateWorkPlanDialog, type WorkPlanCreationMode } from "../../proposal-import";
 import { useDeptDirectoryEmployees } from "../../employees";
 import { isTaskLead, tasksForProject } from "../../tasks";
 import { ProjectTemplatesModal } from "../../work-templates";
@@ -16,6 +16,9 @@ import {
 } from "../../../hooks/useSupabaseData";
 import { useTasks } from "../../../hooks/useFirebaseData";
 import { useAuth } from "../../../contexts/AuthContext";
+import { useToast } from "../../../components/ui/Toast";
+import { ProjectArchiveDialog } from "./ProjectArchiveDialog";
+import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
 import { ProjectDetail } from "./ProjectDetail";
 import type { ProjectCommandTab } from "./project-command/types";
 import type { ProjectTool } from "./project-command/ProjectToolsInspector";
@@ -57,7 +60,7 @@ const PROJECT_WORKSPACE_TITLE: Partial<Record<ProjectCommandTab, string>> = {
 export function ProjectsWorkspace({
   scope,
   eyebrow: _eyebrow,
-  proposalGrouping = true,
+  proposalGrouping: _proposalGrouping = true,
   readOnly = false,
 }: {
   scope: ProjectScope;
@@ -70,6 +73,7 @@ export function ProjectsWorkspace({
   const { orgs } = useOrgs();
   const { profiles } = useProfiles();
   const { can, user, userProfile } = useAuth();
+  const { toast } = useToast();
   const { deptEmployees } = useDeptDirectoryEmployees({
     scope: "exact",
     includeCurrentUser: true,
@@ -91,12 +95,13 @@ export function ProjectsWorkspace({
   const [projectWorkspaceTab, setProjectWorkspaceTab] = React.useState<ProjectCommandTab>("overview");
   const [requestedProjectTool, setRequestedProjectTool] = React.useState<{ projectId: string; tool: ProjectTool } | null>(null);
   const [contextProjectMembers, setContextProjectMembers] = React.useState<ProjectMember[]>([]);
+  const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; title: string } | null>(null);
+  const [archiveTarget, setArchiveTarget] = React.useState<{ id: string; title: string; isArchived: boolean } | null>(null);
 
   const [workspaceView, setWorkspaceView] = React.useState<
-    "portfolio" | "drafts" | "signoff" | "incoming"
+    "portfolio" | "drafts" | "signoff"
   >("portfolio");
-  const [importOpen, setImportOpen] = React.useState(false);
-  const [manualPlanOpen, setManualPlanOpen] = React.useState(false);
+  const [creationMode, setCreationMode] = React.useState<WorkPlanCreationMode | null>(null);
   const [templatesOpen, setTemplatesOpen] = React.useState(false);
   const access = resolveProjectWorkspaceAccess(readOnly, can);
   const collaboration = useCollaborationDrafts();
@@ -138,9 +143,6 @@ export function ProjectsWorkspace({
       setActiveTabId(tabId);
       setWorkspaceView("portfolio");
 
-      // Newly opened projects start on Overview. When switching directly
-      // between project contexts, keep the current workspace view so users
-      // can compare the same surface across projects.
       setProjectWorkspaceTab((currentView) => {
         const current = tabs.find((tab) => tab.id === activeTabId);
         return current?.type === "project" ? currentView : "overview";
@@ -215,38 +217,29 @@ export function ProjectsWorkspace({
       !task.archivedAt &&
       !["for_review", "completed", "cancelled"].includes(task.status),
   );
-  const canUseTemplates =
-    canManageDepartmentTemplates || leadingTasks.length > 0;
   const planningCounts = React.useMemo(() => {
     const owned = activeCollaborationDrafts.filter((draft) => readOnly || draft.ownerOrgId === currentOrgId);
-    const accessible = new Set([currentOrgId, ...collaboration.membershipOrgIds].filter(Boolean));
-    const incoming = activeCollaborationDrafts.filter((draft) =>
-      ["in_review", "changes_requested", "ready_to_commit"].includes(draft.status) &&
-      draft.snapshot.organizations.some((item) => item.participationRole !== "owner" && accessible.has(item.orgId)),
-    );
     return {
       workplans: owned.length,
       signoff: owned.filter((draft) => draft.status === "in_review").length,
-      incoming: incoming.length,
     };
-  }, [activeCollaborationDrafts, collaboration.membershipOrgIds, currentOrgId, readOnly]);
+  }, [activeCollaborationDrafts, currentOrgId, readOnly]);
 
+  const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0];
+  const activeProject = activeTab.type === "project" && activeTab.projectId
+    ? dbProjects.find((p) => p.id === activeTab.projectId)
+    : undefined;
+
+  // Reactively open the first project on initial mount if workspace starts at default portfolio
+  const hasAutoOpenedRef = React.useRef(false);
   React.useEffect(() => {
-    if (loading || active.length === 0) return;
-    if (activeTabId === "portfolio" && workspaceView === "portfolio") {
+    if (!hasAutoOpenedRef.current && active.length > 0 && activeTabId === "portfolio" && workspaceView === "portfolio") {
+      hasAutoOpenedRef.current = true;
       openProject(active[0].id);
     }
-  }, [active, activeTabId, loading, openProject, workspaceView]);
-
-  const activeTab =
-    tabs.find((t) => t.id === activeTabId) || tabs[0];
-  const activeProject =
-    activeTab.type === "project" && activeTab.projectId
-      ? dbProjects.find((p) => p.id === activeTab.projectId)
-      : null;
+  }, [active, activeTabId, openProject, workspaceView]);
 
   React.useEffect(() => {
-    if (typeof document === "undefined") return;
     if (activeTab.type === "project" && activeProject) {
       const workspaceTitle = PROJECT_WORKSPACE_TITLE[projectWorkspaceTab] || "Workspace";
       document.title = `${workspaceTitle} · ${activeProject.title}`;
@@ -263,9 +256,7 @@ export function ProjectsWorkspace({
       ? "Work plans"
       : workspaceView === "signoff"
         ? "Waiting for sign-off"
-        : workspaceView === "incoming"
-          ? "Incoming reviews"
-          : "Plans & Projects";
+        : "Plans & Projects";
     document.title = planningTitle;
   }, [activeProject, activeTab, projectWorkspaceTab, workspaceView]);
 
@@ -307,12 +298,11 @@ export function ProjectsWorkspace({
   return (
     <div className="eflow-ide-workspace">
       <ProjectContextSidebar
-        activeProjectId={activeProject?.id}
+        activeProjectId={workspaceView === "portfolio" ? activeProject?.id : undefined}
         canAdd={!readOnly}
-        canUseTemplates={canUseTemplates}
-        onCreateWorkPlan={() => setManualPlanOpen(true)}
-        onImportProposal={() => setImportOpen(true)}
-        onOpenTemplates={() => setTemplatesOpen(true)}
+        canArchive={access.canArchive}
+        canDelete={access.canDelete}
+        onCreateWorkPlan={() => setCreationMode("manual")}
         onOpenPortfolio={() => {
           if (active[0]) {
             openProject(active[0].id);
@@ -322,10 +312,9 @@ export function ProjectsWorkspace({
           }
         }}
         onOpenProject={openProject}
-        onOpenProjectTool={(projectId, tool) => {
-          setRequestedProjectTool({ projectId, tool });
-          openProject(projectId);
-        }}
+        onArchiveProject={(id, title) => setArchiveTarget({ id, title, isArchived: false })}
+        onRestoreProject={(id, title) => setArchiveTarget({ id, title, isArchived: true })}
+        onDeleteProject={(id, title) => setDeleteTarget({ id, title })}
         profiles={profiles}
         projects={inScope}
         summaries={summaries}
@@ -394,12 +383,12 @@ export function ProjectsWorkspace({
             {workspaceView !== "portfolio" && (
               <div className="eflow-project-planning-heading">
                 <span className="eflow-project-view-heading__eyebrow"><Icons.FileClock size={14} /> Planning workspace</span>
-                <h2>{workspaceView === "drafts" ? "Work plans" : workspaceView === "signoff" ? "Waiting for sign-off" : "Incoming reviews"}</h2>
-                <p>{workspaceView === "drafts" ? "Plans in preparation and collaboration workspaces you own." : workspaceView === "signoff" ? "Owned work plans currently waiting on partner decisions." : "Review queues for work plans shared with your organization."}</p>
+                <h2>{workspaceView === "drafts" ? "Work plans" : "Waiting for sign-off"}</h2>
+                <p>{workspaceView === "drafts" ? "Plans in preparation and collaboration workspaces you own." : "Owned work plans currently waiting on partner decisions."}</p>
               </div>
             )}
 
-            {proposalGrouping && workspaceView !== "portfolio" ? (
+            {workspaceView !== "portfolio" ? (
               collaboration.loading ? (
                 <div className="flex items-center gap-2 py-12">
                   <Loader size="small" /> Loading proposals…
@@ -416,81 +405,87 @@ export function ProjectsWorkspace({
                   drafts={activeCollaborationDrafts}
                   organizations={orgs}
                   currentOrgId={currentOrgId}
-                  mode={workspaceView === "drafts" ? "owned" : workspaceView === "signoff" ? "waiting" : "incoming"}
+                  mode={workspaceView === "drafts" ? "owned" : "waiting"}
                   accessibleOrgIds={collaboration.membershipOrgIds}
                   showAll={readOnly && scope.isSuperAdmin}
                   onOpen={(draftId) => openProposal(draftId, workspaceView === "drafts" ? "overview" : "approvals")}
                 />
               )
-            ) : active.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <Icons.FolderKanban size={44} className="mb-3 text-neutral-300" />
-                <h3 className="text-base font-semibold text-neutral-800">No active projects yet</h3>
-                <p className="mt-1 text-xs text-neutral-500 max-w-sm">
-                  Create your first work plan to start tracking project delivery, activities, and tasks.
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-teal-50 text-teal-700 mb-4 shadow-sm">
+                  <Icons.Boxes size={32} />
+                </div>
+                <h3 className="text-lg font-semibold text-neutral-900 mb-1">Select or create a work plan</h3>
+                <p className="text-sm text-neutral-500 max-w-sm mb-6">
+                  Select a project from the left sidebar to open its workspace, or create a new plan to get started.
                 </p>
                 {!readOnly && (
-                  <button
-                    type="button"
-                    className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-emerald-800 transition"
-                    onClick={() => setManualPlanOpen(true)}
+                  <Button
+                    kind="primary"
+                    leftIcon={Add}
+                    onClick={() => setCreationMode("manual")}
                   >
-                    <Add size={14} /> Create work plan
-                  </button>
+                    Create work plan
+                  </Button>
                 )}
               </div>
-            ) : active[0] ? (
-              <ProjectDetail
-                project={active[0]}
-                initialTab={projectWorkspaceTab}
-                initialTool={undefined}
-                onWorkspaceTabChange={setProjectWorkspaceTab}
-                onBack={() => {}}
-                onDeleted={() => {}}
-                orgs={orgs}
-                canManage={access.canManage}
-                canArchive={access.canArchive}
-                canDelete={access.canDelete}
-                canReviewTasks={access.canReviewTasks}
-                canExport={access.canExport}
-                onOpenSourceGovernance={(draftId) => openProposal(draftId)}
-              />
-            ) : null}
-
+            )}
           </div>
         )}
+      </div>
+      </div>
 
-        {/* Creation surfaces stay mounted outside the active canvas so the sidebar
-            can open them from a selected project as well as from Planning. */}
-        {!readOnly && manualPlanOpen && (
-          <ManualPlanBuilder
-            onClose={() => {
-              setManualPlanOpen(false);
-              void collaboration.refresh();
-            }}
-          />
-        )}
-        {!readOnly && importOpen && (
-          <ProposalImport
-            onClose={() => {
-              setImportOpen(false);
-              void collaboration.refresh();
-            }}
-          />
-        )}
-        {templatesOpen && (
-          <ProjectTemplatesModal
-            open={templatesOpen}
-            onClose={() => setTemplatesOpen(false)}
-            orgId={userProfile?.departmentId || userProfile?.org_id || ""}
-            currentUserId={currentUserId}
-            canManageDepartment={canManageDepartmentTemplates}
-            leadingTasks={leadingTasks}
-            employees={deptEmployees}
-          />
-        )}
-      </div>
-      </div>
+      {!readOnly && creationMode && (
+        <CreateWorkPlanDialog
+          open
+          mode={creationMode}
+          onModeChange={setCreationMode}
+          onClose={() => {
+            setCreationMode(null);
+            void collaboration.refresh();
+          }}
+        />
+      )}
+
+      {templatesOpen && (
+        <ProjectTemplatesModal
+          open={templatesOpen}
+          onClose={() => setTemplatesOpen(false)}
+          orgId={userProfile?.departmentId || userProfile?.org_id || ""}
+          currentUserId={currentUserId}
+          canManageDepartment={canManageDepartmentTemplates}
+          leadingTasks={leadingTasks}
+          employees={deptEmployees}
+        />
+      )}
+
+      {archiveTarget && (
+        <ProjectArchiveDialog
+          projectId={archiveTarget.id}
+          projectTitle={archiveTarget.title}
+          isArchived={archiveTarget.isArchived}
+          open={Boolean(archiveTarget)}
+          onClose={() => setArchiveTarget(null)}
+          onSuccess={() => {
+            setArchiveTarget(null);
+            toast(archiveTarget.isArchived ? "Project restored." : "Project archived. History remains available.", "success");
+          }}
+        />
+      )}
+
+      {deleteTarget && (
+        <ProjectDeleteDialog
+          projectId={deleteTarget.id}
+          projectTitle={deleteTarget.title}
+          open={Boolean(deleteTarget)}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={() => {
+            closeTab(`project-${deleteTarget.id}`);
+            setDeleteTarget(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -503,13 +498,14 @@ export function ProjectsWorkspace({
 function ProjectContextSidebar({
   activeProjectId,
   canAdd,
-  canUseTemplates,
+  canArchive = true,
+  canDelete = true,
   onCreateWorkPlan,
-  onImportProposal,
-  onOpenTemplates,
   onOpenPortfolio,
   onOpenProject,
-  onOpenProjectTool,
+  onArchiveProject,
+  onRestoreProject,
+  onDeleteProject,
   profiles,
   projects,
   summaries,
@@ -521,26 +517,24 @@ function ProjectContextSidebar({
 }: {
   activeProjectId?: string;
   canAdd: boolean;
-  canUseTemplates: boolean;
+  canArchive?: boolean;
+  canDelete?: boolean;
   onCreateWorkPlan: () => void;
-  onImportProposal: () => void;
-  onOpenTemplates: () => void;
   onOpenPortfolio: () => void;
   onOpenProject: (projectId: string) => void;
-  onOpenProjectTool: (projectId: string, tool: ProjectTool) => void;
+  onArchiveProject?: (projectId: string, projectTitle: string) => void;
+  onRestoreProject?: (projectId: string, projectTitle: string) => void;
+  onDeleteProject?: (projectId: string, projectTitle: string) => void;
   profiles: any[];
   projects: any[];
   summaries: Map<string, any>;
   tasks: any[];
   projectMembers: ProjectMember[];
-  planningCounts: { workplans: number; signoff: number; incoming: number };
-  planningView: "portfolio" | "drafts" | "signoff" | "incoming";
-  onOpenPlanning: (view: "drafts" | "signoff" | "incoming") => void;
+  planningCounts: { workplans: number; signoff: number };
+  planningView: "portfolio" | "drafts" | "signoff";
+  onOpenPlanning: (view: "drafts" | "signoff") => void;
 }) {
-  const [createMenuOpen, setCreateMenuOpen] = React.useState(false);
   const [contextMenuProjectId, setContextMenuProjectId] = React.useState<string | null>(null);
-  // Preserve the canonical query order. Selection is visual state only; it
-  // must never promote or otherwise reorder projects in the sidebar.
   const contextProjects = projects;
   const selectedProject = contextProjects.find((project) => project.id === activeProjectId);
   const selectedTasks = selectedProject ? tasksForProject(tasks, selectedProject.id) : [];
@@ -565,7 +559,6 @@ function ProjectContextSidebar({
           onClick={onOpenPortfolio}
           type="button"
         >
-          <Icons.Boxes size={24} aria-hidden="true" />
           <span>Projects</span>
         </button>
         <div className="eflow-project-context__list">
@@ -585,36 +578,66 @@ function ProjectContextSidebar({
                 </span>
                 <span className="eflow-project-context__project-name">{project.title}</span>
               </button>
-              <Dialog
-                aria-label={`${project.title} actions`}
-                content={(
-                  <DialogContentContainer>
-                    <Menu id={`project-context-menu-${project.id}`}>
-                      <MenuItem title="Reviews" icon={Chart} onClick={() => { setContextMenuProjectId(null); onOpenProjectTool(project.id, "reviews"); }} />
-                      <MenuItem title="Activity" icon={Activity} onClick={() => { setContextMenuProjectId(null); onOpenProjectTool(project.id, "activity"); }} />
-                      <MenuItem title="Reports" icon={File} onClick={() => { setContextMenuProjectId(null); onOpenProjectTool(project.id, "reports"); }} />
-                    </Menu>
-                  </DialogContentContainer>
-                )}
-                hideTrigger={[]}
-                onDialogDidHide={() => setContextMenuProjectId(null)}
-                open={contextMenuProjectId === project.id}
-                position="bottom-end"
-                showTrigger={[]}
-              >
-                <span className="eflow-project-context__project-menu">
-                  <IconButton
-                    aria-label={`Open ${project.title} actions`}
-                    icon={MoreActions}
-                    kind="tertiary"
-                    onClick={(event: React.MouseEvent) => {
-                      event.stopPropagation();
-                      setContextMenuProjectId(project.id);
-                    }}
-                    size="small"
-                  />
-                </span>
-              </Dialog>
+              {(canArchive || canDelete) && (
+                <Dialog
+                  aria-label={`${project.title} actions`}
+                  content={(
+                    <DialogContentContainer>
+                      <Menu id={`project-context-menu-${project.id}`}>
+                        {canArchive && (project.status === "archived" ? (
+                          <MenuItem
+                            title="Restore project"
+                            icon={Archive}
+                            onClick={() => {
+                              setContextMenuProjectId(null);
+                              onRestoreProject?.(project.id, project.title);
+                            }}
+                          />
+                        ) : (
+                          <MenuItem
+                            title="Archive project"
+                            icon={Archive}
+                            onClick={() => {
+                              setContextMenuProjectId(null);
+                              onArchiveProject?.(project.id, project.title);
+                            }}
+                          />
+                        ))}
+                        {canDelete && (
+                          <MenuItem
+                            title="Delete project"
+                            icon={Delete}
+                            onClick={() => {
+                              setContextMenuProjectId(null);
+                              onDeleteProject?.(project.id, project.title);
+                            }}
+                          />
+                        )}
+                      </Menu>
+                    </DialogContentContainer>
+                  )}
+                  hideTrigger={["clickoutside", "esckey"]}
+                  onClickOutside={() => setContextMenuProjectId(null)}
+                  onDialogDidHide={() => setContextMenuProjectId(null)}
+                  open={contextMenuProjectId === project.id}
+                  position="bottom-end"
+                  showTrigger={[]}
+                >
+                  <span className="eflow-project-context__project-menu">
+                    <IconButton
+                      aria-expanded={contextMenuProjectId === project.id}
+                      aria-label={`Open ${project.title} actions`}
+                      icon={MoreActions}
+                      kind="tertiary"
+                      onClick={(event: React.MouseEvent) => {
+                        event.stopPropagation();
+                        setContextMenuProjectId((current) => current === project.id ? null : project.id);
+                      }}
+                      size="small"
+                    />
+                  </span>
+                </Dialog>
+              )}
             </div>
           ))}
           {contextProjects.length === 0 && (
@@ -623,53 +646,15 @@ function ProjectContextSidebar({
         </div>
         {canAdd && (
           <div className="eflow-project-context__create">
-            <Dialog
-              aria-label="Create work plan"
-              content={(
-                <DialogContentContainer>
-                  <Menu id="eflow-create-work-plan-menu">
-                    <MenuItem
-                      icon={AddNewDoc}
-                      onClick={() => { setCreateMenuOpen(false); onCreateWorkPlan(); }}
-                      title="New work plan"
-                    />
-                    <MenuItem
-                      icon={PDF}
-                      onClick={() => { setCreateMenuOpen(false); onImportProposal(); }}
-                      title="Import proposal"
-                    />
-                    {canUseTemplates && <>
-                      <MenuDivider />
-                      <MenuItem
-                        icon={BoardTemplate}
-                        onClick={() => { setCreateMenuOpen(false); onOpenTemplates(); }}
-                        title="Use template"
-                      />
-                    </>}
-                  </Menu>
-                </DialogContentContainer>
-              )}
-              hideTrigger={[]}
-              onDialogDidHide={() => setCreateMenuOpen(false)}
-              open={createMenuOpen}
-              position="bottom-start"
-              showTrigger={[]}
+            <Button
+              className="eflow-project-context__add"
+              kind="primary"
+              leftIcon={Add}
+              onClick={onCreateWorkPlan}
+              size="small"
             >
-              <span>
-                <Button
-                  aria-expanded={createMenuOpen}
-                  aria-haspopup="menu"
-                  className="eflow-project-context__add"
-                  kind="primary"
-                  leftIcon={Add}
-                  onClick={() => setCreateMenuOpen(true)}
-                  rightIcon={Dropdown}
-                  size="small"
-                >
-                  Create work plan
-                </Button>
-              </span>
-            </Dialog>
+              Create work plan
+            </Button>
           </div>
         )}
       </div>
@@ -681,9 +666,6 @@ function ProjectContextSidebar({
         </button>
         <button className={planningView === "signoff" ? "eflow-project-context__planning-item--active" : ""} type="button" onClick={() => onOpenPlanning("signoff")}>
           <span>Waiting for sign-off</span><strong>{planningCounts.signoff}</strong>
-        </button>
-        <button className={planningView === "incoming" ? "eflow-project-context__planning-item--active" : ""} type="button" onClick={() => onOpenPlanning("incoming")}>
-          <span>Incoming reviews</span><strong>{planningCounts.incoming}</strong>
         </button>
       </div>
 

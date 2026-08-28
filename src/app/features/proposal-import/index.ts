@@ -9,3 +9,5 @@ export type {
 } from "./types";
 export { default as ProposalImport } from "./components/ProposalImport";
 export { ManualPlanBuilder } from "./components/ManualPlanBuilder";
+export { CreateWorkPlanDialog } from "./components/CreateWorkPlanDialog";
+export type { WorkPlanCreationMode } from "./components/CreateWorkPlanDialog";

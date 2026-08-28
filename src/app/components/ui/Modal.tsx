@@ -4,13 +4,29 @@ import React, { useEffect, useCallback } from "react";
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
-  title: string;
+  /** Optional title. The child content may provide its own branded header. */
+  title?: string;
+  ariaLabel?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
   width?: string;
+  className?: string;
+  bodyClassName?: string;
+  overlayClassName?: string;
 }
 
-export function Modal({ isOpen, onClose, title, children, footer, width = "max-w-lg" }: ModalProps) {
+export function Modal({
+  isOpen,
+  onClose,
+  title,
+  ariaLabel,
+  children,
+  footer,
+  width = "max-w-lg",
+  className = "",
+  bodyClassName = "",
+  overlayClassName = "",
+}: ModalProps) {
   const handleEsc = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -33,30 +49,36 @@ export function Modal({ isOpen, onClose, title, children, footer, width = "max-w
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 animate-[fade-in_0.15s_ease-out]"
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/40 animate-[fade-in_0.15s_ease-out] ${overlayClassName}`}
       onClick={onClose}
     >
       <div
-        className={`bg-white rounded-2xl shadow-2xl ${width} w-full mx-4 max-h-[85vh] flex flex-col animate-[scale-in_0.2s_ease-out]`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={ariaLabel || title || undefined}
+        className={`relative bg-white rounded-2xl shadow-2xl ${width} w-full mx-4 max-h-[85vh] flex flex-col animate-[scale-in_0.2s_ease-out] ${className}`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between shrink-0">
-          <h3 className="text-[16px] font-['Lexend:SemiBold',_sans-serif] font-semibold text-neutral-900">
-            {title}
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-600 cursor-pointer transition-colors"
-          >
-            <svg viewBox="0 0 16 16" className="w-5 h-5" fill="currentColor">
-              <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
-            </svg>
-          </button>
-        </div>
+        {title && (
+          <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between shrink-0">
+            <h3 className="text-[16px] font-['Lexend:SemiBold',_sans-serif] font-semibold text-neutral-900">
+              {title}
+            </h3>
+            <button
+              aria-label="Close dialog"
+              onClick={onClose}
+              className="text-neutral-400 hover:text-neutral-600 cursor-pointer transition-colors"
+            >
+              <svg viewBox="0 0 16 16" className="w-5 h-5" fill="currentColor">
+                <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
+              </svg>
+            </button>
+          </div>
+        )}
 
         {/* Body */}
-        <div className="px-6 py-5 overflow-y-auto flex-1">{children}</div>
+        <div className={`px-6 py-5 overflow-y-auto flex-1 ${bodyClassName}`}>{children}</div>
 
         {/* Footer */}
         {footer && (
