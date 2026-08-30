@@ -123,7 +123,7 @@ export function BudgetApprovalQueue({
               key={item.id}
               recordId={item.id}
               focused={focusRecordId === item.id}
-              title={hierarchy || "Funded work"}
+              title={`FR-${String(item.requestNumber).padStart(5, "0")} · ${hierarchy || "Funded work"}`}
               meta={`${item.requesterName || "Employee"} · ${item.purpose} · ${peso.format(item.requestedAmount)} · ${item.status === "pending_leader_review" ? "Operational endorsement" : "Fiscal authorization"}${line ? ` · ${line.category} / ${line.particular} / ${line.fundSource}` : ""}`}
               status={item.status}
               details={attachments.length ? <div className="mt-2 flex flex-wrap gap-1.5">{attachments.map((attachment) => <button key={attachment.id} type="button" onClick={async () => window.open(await createReceiptSignedUrl(attachment.filePath), "_blank", "noopener,noreferrer")} className="rounded-md border border-neutral-200 bg-white px-2 py-1 text-[8.8px] text-neutral-600">{attachment.fileName}</button>)}</div> : undefined}
@@ -148,7 +148,7 @@ export function BudgetApprovalQueue({
               <div id={`financial-record-${item.id}`} key={item.id} className={`border-b border-neutral-100 p-4 last:border-0 ${focusRecordId === item.id ? "bg-blue-50 ring-1 ring-inset ring-blue-200" : ""}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="text-[11.5px] font-['Lexend:Medium',_sans-serif] text-neutral-900">{[request ? commitmentById.get(request.commitmentId)?.title : undefined, request?.taskTitle, request?.subtaskTitle].filter(Boolean).join(" → ") || "Cash liquidation"}</div>
+                    <div className="text-[11.5px] font-['Lexend:Medium',_sans-serif] text-neutral-900">{request && `FR-${String(request.requestNumber).padStart(5, "0")} · `}{[request ? commitmentById.get(request.commitmentId)?.title : undefined, request?.taskTitle, request?.subtaskTitle].filter(Boolean).join(" → ") || "Cash liquidation"}</div>
                     <div className="mt-1 text-[10px] text-neutral-500">{request?.requesterName} · spent {peso.format(item.declaredSpent)} · return {peso.format(item.returnedAmount)}</div>
                     <div className="mt-1 text-[10px] text-neutral-600">{item.note}</div>
                   </div>

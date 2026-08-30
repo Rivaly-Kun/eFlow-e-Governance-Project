@@ -1,10 +1,10 @@
 import * as React from "react";
 import * as Icons from "lucide-react";
-import { Button, Dialog, DialogContentContainer, IconButton, Loader, Menu, MenuItem } from "@vibe/core";
-import { Add, Archive, Delete, MoreActions } from "@vibe/icons";
+import { Button, Loader } from "@vibe/core";
+import { Add } from "@vibe/icons";
 import { CreateWorkPlanDialog, type WorkPlanCreationMode } from "../../proposal-import";
 import { useDeptDirectoryEmployees } from "../../employees";
-import { isTaskLead, tasksForProject } from "../../tasks";
+import { isTaskLead } from "../../tasks";
 import { ProjectTemplatesModal } from "../../work-templates";
 import { useNotificationNavigationIntent } from "../../notifications";
 import { fetchProjectMembers } from "../services/projectMemberService";
@@ -18,6 +18,9 @@ import { useTasks } from "../../../hooks/useFirebaseData";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../components/ui/Toast";
 import { ProjectArchiveDialog } from "./ProjectArchiveDialog";
+import { ProjectCompleteDialog } from "./ProjectCompleteDialog";
+import { ProjectContextSidebar } from "./ProjectContextSidebar";
+import { TaskDetailDrawer } from "../../../components/workflow/TaskDetailDrawer";
 import { ProjectDeleteDialog } from "./ProjectDeleteDialog";
 import { ProjectDetail } from "./ProjectDetail";
 import type { ProjectCommandTab } from "./project-command/types";
@@ -42,7 +45,7 @@ export interface WorkspaceEditorTab {
   title: string;
   projectId?: string;
   draftId?: string;
-  initialCollaborationTab?: "overview" | "approvals";
+  initialCollaborationTab?: "overview" | "approvals" | "governance";
   pinned?: boolean;
 }
 
@@ -97,6 +100,8 @@ export function ProjectsWorkspace({
   const [contextProjectMembers, setContextProjectMembers] = React.useState<ProjectMember[]>([]);
   const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; title: string } | null>(null);
   const [archiveTarget, setArchiveTarget] = React.useState<{ id: string; title: string; isArchived: boolean } | null>(null);
+  const [completeTarget, setCompleteTarget] = React.useState<{ id: string; title: string } | null>(null);
+  const [completionTaskId, setCompletionTaskId] = React.useState<string | null>(null);
 
   const [workspaceView, setWorkspaceView] = React.useState<
     "portfolio" | "drafts" | "signoff"
@@ -152,7 +157,7 @@ export function ProjectsWorkspace({
   );
 
   const openProposal = React.useCallback(
-    (draftId: string, initialCollaborationTab: "overview" | "approvals" = "overview") => {
+    (draftId: string, initialCollaborationTab: "overview" | "approvals" | "governance" = "overview") => {
       const draft = collaboration.drafts.find((d) => d.id === draftId);
       const tabId = `proposal-${draftId}`;
       const title = draft?.title || "Proposal Workspace";
@@ -301,6 +306,7 @@ export function ProjectsWorkspace({
         activeProjectId={workspaceView === "portfolio" ? activeProject?.id : undefined}
         canAdd={!readOnly}
         canArchive={access.canArchive}
+        canComplete={access.canManage}
         canDelete={access.canDelete}
         onCreateWorkPlan={() => setCreationMode("manual")}
         onOpenPortfolio={() => {
@@ -313,6 +319,7 @@ export function ProjectsWorkspace({
         }}
         onOpenProject={openProject}
         onArchiveProject={(id, title) => setArchiveTarget({ id, title, isArchived: false })}
+        onCompleteProject={(id, title) => setCompleteTarget({ id, title })}
         onRestoreProject={(id, title) => setArchiveTarget({ id, title, isArchived: true })}
         onDeleteProject={(id, title) => setDeleteTarget({ id, title })}
         profiles={profiles}
@@ -346,7 +353,7 @@ export function ProjectsWorkspace({
               canDelete={access.canDelete}
               canReviewTasks={access.canReviewTasks}
               canExport={access.canExport}
-              onOpenSourceGovernance={(draftId) => openProposal(draftId)}
+              onOpenSourceGovernance={(draftId) => openProposal(draftId, "governance")}
             />
           </div>
         )}
@@ -468,11 +475,29 @@ export function ProjectsWorkspace({
           open={Boolean(archiveTarget)}
           onClose={() => setArchiveTarget(null)}
           onSuccess={() => {
+            if (!archiveTarget.isArchived) closeTab(`project-${archiveTarget.id}`);
             setArchiveTarget(null);
             toast(archiveTarget.isArchived ? "Project restored." : "Project archived. History remains available.", "success");
           }}
         />
       )}
+
+      {completeTarget && <ProjectCompleteDialog
+        key={completeTarget.id}
+        projectId={completeTarget.id}
+        projectTitle={completeTarget.title}
+        onClose={() => setCompleteTarget(null)}
+        onSuccess={() => { setCompleteTarget(null); toast("Project completed. You can now archive it from the project dropdown.", "success"); }}
+        onOpenTask={(taskId) => {
+          if (!tasks.some((task) => task.id === taskId)) {
+            toast("This task is not in your current task list. Use the location shown on the blocker to review its record.", "error");
+            return;
+          }
+          setCompleteTarget(null); setCompletionTaskId(taskId);
+        }}
+        onOpenGovernance={(draftId) => { setCompleteTarget(null); openProposal(draftId, "governance"); }}
+      />}
+      {completionTaskId && <TaskDetailDrawer task={tasks.find((task) => task.id === completionTaskId) || null} onClose={() => setCompletionTaskId(null)} canReview={access.canReviewTasks} />}
 
       {deleteTarget && (
         <ProjectDeleteDialog
@@ -487,202 +512,5 @@ export function ProjectsWorkspace({
         />
       )}
     </div>
-  );
-}
-
-/**
- * The project context keeps project switching and the people responsible for
- * delivery visible without duplicating any project or task state. It is a
- * presentation-only companion to the existing portfolio and command tabs.
- */
-function ProjectContextSidebar({
-  activeProjectId,
-  canAdd,
-  canArchive = true,
-  canDelete = true,
-  onCreateWorkPlan,
-  onOpenPortfolio,
-  onOpenProject,
-  onArchiveProject,
-  onRestoreProject,
-  onDeleteProject,
-  profiles,
-  projects,
-  summaries,
-  tasks,
-  projectMembers,
-  planningCounts,
-  planningView,
-  onOpenPlanning,
-}: {
-  activeProjectId?: string;
-  canAdd: boolean;
-  canArchive?: boolean;
-  canDelete?: boolean;
-  onCreateWorkPlan: () => void;
-  onOpenPortfolio: () => void;
-  onOpenProject: (projectId: string) => void;
-  onArchiveProject?: (projectId: string, projectTitle: string) => void;
-  onRestoreProject?: (projectId: string, projectTitle: string) => void;
-  onDeleteProject?: (projectId: string, projectTitle: string) => void;
-  profiles: any[];
-  projects: any[];
-  summaries: Map<string, any>;
-  tasks: any[];
-  projectMembers: ProjectMember[];
-  planningCounts: { workplans: number; signoff: number };
-  planningView: "portfolio" | "drafts" | "signoff";
-  onOpenPlanning: (view: "drafts" | "signoff") => void;
-}) {
-  const [contextMenuProjectId, setContextMenuProjectId] = React.useState<string | null>(null);
-  const contextProjects = projects;
-  const selectedProject = contextProjects.find((project) => project.id === activeProjectId);
-  const selectedTasks = selectedProject ? tasksForProject(tasks, selectedProject.id) : [];
-  const selectedSummary = selectedProject ? summaries.get(selectedProject.id) : undefined;
-  const contributorIds = new Set(
-    selectedProject
-      ? [
-          ...projectMembers.map((member) => member.userId),
-          selectedProject.ownerId,
-          ...(selectedSummary?.leadIds || []),
-          ...selectedTasks.flatMap((task: any) => [task.assigneeId, ...(task.teamMemberIds || [])]),
-        ]
-      : contextProjects.flatMap((project) => [project.ownerId, ...(summaries.get(project.id)?.leadIds || [])]),
-  );
-  const members = profiles.filter((profile) => contributorIds.has(profile.id));
-
-  return (
-    <aside className="eflow-project-context" aria-label="Projects context">
-      <div className="eflow-project-context__section">
-        <button
-          className="eflow-project-context__title"
-          onClick={onOpenPortfolio}
-          type="button"
-        >
-          <span>Projects</span>
-        </button>
-        <div className="eflow-project-context__list">
-          {contextProjects.map((project, index) => (
-            <div
-              className={`eflow-project-context__project ${activeProjectId === project.id ? "eflow-project-context__project--active" : ""}`}
-              key={project.id}
-            >
-              <button
-                aria-current={activeProjectId === project.id ? "page" : undefined}
-                className="eflow-project-context__project-select"
-                onClick={() => onOpenProject(project.id)}
-                type="button"
-              >
-                <span className={`eflow-project-context__project-mark eflow-project-context__project-mark--${index % 4}`} aria-hidden="true">
-                  {project.title?.slice(0, 1)?.toUpperCase() || "P"}
-                </span>
-                <span className="eflow-project-context__project-name">{project.title}</span>
-              </button>
-              {(canArchive || canDelete) && (
-                <Dialog
-                  aria-label={`${project.title} actions`}
-                  content={(
-                    <DialogContentContainer>
-                      <Menu id={`project-context-menu-${project.id}`}>
-                        {canArchive && (project.status === "archived" ? (
-                          <MenuItem
-                            title="Restore project"
-                            icon={Archive}
-                            onClick={() => {
-                              setContextMenuProjectId(null);
-                              onRestoreProject?.(project.id, project.title);
-                            }}
-                          />
-                        ) : (
-                          <MenuItem
-                            title="Archive project"
-                            icon={Archive}
-                            onClick={() => {
-                              setContextMenuProjectId(null);
-                              onArchiveProject?.(project.id, project.title);
-                            }}
-                          />
-                        ))}
-                        {canDelete && (
-                          <MenuItem
-                            title="Delete project"
-                            icon={Delete}
-                            onClick={() => {
-                              setContextMenuProjectId(null);
-                              onDeleteProject?.(project.id, project.title);
-                            }}
-                          />
-                        )}
-                      </Menu>
-                    </DialogContentContainer>
-                  )}
-                  hideTrigger={["clickoutside", "esckey"]}
-                  onClickOutside={() => setContextMenuProjectId(null)}
-                  onDialogDidHide={() => setContextMenuProjectId(null)}
-                  open={contextMenuProjectId === project.id}
-                  position="bottom-end"
-                  showTrigger={[]}
-                >
-                  <span className="eflow-project-context__project-menu">
-                    <IconButton
-                      aria-expanded={contextMenuProjectId === project.id}
-                      aria-label={`Open ${project.title} actions`}
-                      icon={MoreActions}
-                      kind="tertiary"
-                      onClick={(event: React.MouseEvent) => {
-                        event.stopPropagation();
-                        setContextMenuProjectId((current) => current === project.id ? null : project.id);
-                      }}
-                      size="small"
-                    />
-                  </span>
-                </Dialog>
-              )}
-            </div>
-          ))}
-          {contextProjects.length === 0 && (
-            <p className="eflow-project-context__empty">No visible projects yet.</p>
-          )}
-        </div>
-        {canAdd && (
-          <div className="eflow-project-context__create">
-            <Button
-              className="eflow-project-context__add"
-              kind="primary"
-              leftIcon={Add}
-              onClick={onCreateWorkPlan}
-              size="small"
-            >
-              Create work plan
-            </Button>
-          </div>
-        )}
-      </div>
-
-      <div className="eflow-project-context__planning">
-        <h2>Planning</h2>
-        <button className={planningView === "drafts" ? "eflow-project-context__planning-item--active" : ""} type="button" onClick={() => onOpenPlanning("drafts")}>
-          <span>Work plans</span><strong>{planningCounts.workplans}</strong>
-        </button>
-        <button className={planningView === "signoff" ? "eflow-project-context__planning-item--active" : ""} type="button" onClick={() => onOpenPlanning("signoff")}>
-          <span>Waiting for sign-off</span><strong>{planningCounts.signoff}</strong>
-        </button>
-      </div>
-
-      <div className="eflow-project-context__members">
-        <h2>Team Members</h2>
-        {members.length ? members.map((member) => (
-          <div className="eflow-project-context__member" key={member.id}>
-            <span className="eflow-project-context__avatar" aria-hidden="true">
-              {(member.full_name || member.fullName || member.email || "?").split(/\s+/).map((name: string) => name[0]).join("").slice(0, 2).toUpperCase()}
-            </span>
-            <span className="eflow-project-context__member-copy">
-              <strong>{member.full_name || member.fullName || member.email}</strong>
-            <small>{selectedProject && projectMembers.find((projectMember) => projectMember.userId === member.id)?.role || (contextProjects.some((project) => project.ownerId === member.id) ? "Project owner" : contextProjects.some((project) => (summaries.get(project.id)?.leadIds || []).includes(member.id)) ? "Delivery lead" : "Project contributor")}</small>
-            </span>
-          </div>
-        )) : <p className="eflow-project-context__empty">Project members will appear here.</p>}
-      </div>
-    </aside>
   );
 }

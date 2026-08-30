@@ -40,7 +40,7 @@ export function CollaborationDraftWorkspace({ draftId, organizations, profiles, 
   operationalProjects: Project[];
   operationalTasks: Task[];
   readOnly?: boolean;
-  initialTab?: "overview" | "approvals";
+  initialTab?: "overview" | "approvals" | "governance";
   onBack: () => void;
   onCommitted: () => void;
   onOpenProject: (projectId: string) => void;
@@ -51,9 +51,9 @@ export function CollaborationDraftWorkspace({ draftId, organizations, profiles, 
   const { toast } = useToast();
   const state = useCollaborationDraft(draftId);
   const governance = useProposalGovernance(draftId);
-  const [tab, setTab] = React.useState<CollaborationWorkspaceTab>(initialTab);
-  const [primaryTab, setPrimaryTab] = React.useState<"overview" | "plan" | "discussion" | "approvals">(initialTab);
-  const [secondaryTab, setSecondaryTab] = React.useState<CollaborationWorkspaceTab | null>(null);
+  const [tab, setTab] = React.useState<CollaborationWorkspaceTab>(initialTab === "governance" ? "overview" : initialTab);
+  const [primaryTab, setPrimaryTab] = React.useState<"overview" | "plan" | "discussion" | "approvals">(initialTab === "governance" ? "overview" : initialTab);
+  const [secondaryTab, setSecondaryTab] = React.useState<CollaborationWorkspaceTab | null>(initialTab === "governance" ? "governance" : null);
   React.useEffect(() => {
     if (typeof document === "undefined" || !state.draft?.title) return;
     const tabLabels: Record<CollaborationWorkspaceTab, string> = {

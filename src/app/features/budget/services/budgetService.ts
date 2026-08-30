@@ -278,6 +278,17 @@ export async function markPettyCashReleased(releaseId: string) {
   const { error } = await supabase.rpc("mark_petty_cash_released", { p_release_id: releaseId }); throwIf(error);
 }
 
+export async function overridePettyCashReleaseSchedule(releaseId: string, reason: string) {
+  if (reason.trim().length < 10) throw new Error("Explain the schedule override in at least 10 characters.");
+  const { error } = await supabase.rpc("override_petty_cash_release_schedule", {
+    p_release_id: releaseId, p_reason: reason.trim(),
+  });
+  if (error?.code === "PGRST202" || (error && /could not find.*override_petty_cash_release_schedule/i.test(error.message))) {
+    throw new Error("The cash release override is not installed in Supabase yet. Apply migration 20260831000002_cash_release_schedule_override.sql, then try again.");
+  }
+  throwIf(error);
+}
+
 export async function acknowledgePettyCashRelease(releaseId: string) {
   const { error } = await supabase.rpc("acknowledge_petty_cash_release", { p_release_id: releaseId }); throwIf(error);
 }

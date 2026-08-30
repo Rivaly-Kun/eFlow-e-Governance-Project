@@ -14,3 +14,6 @@ export { WorkBudgetCard } from "./components/WorkBudgetCard";
 export { peso, pesoShort, StatusPill } from "./components/budgetUi";
 export { useTaskFundingContext } from "./hooks/useTaskFundingContext";
 export { BudgetReviewInbox } from "./components/BudgetReviewInbox";
+export { TaskCashClearancePanel } from "./components/TaskCashClearancePanel";
+export { useTaskCashClearance } from "./hooks/useTaskCashClearance";
+export { isCashCompletionError } from "./selectors/taskCashClearance";

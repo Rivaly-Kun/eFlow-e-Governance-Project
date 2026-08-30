@@ -3,6 +3,7 @@ import { recordAudit } from '../../../services/auditService';
 import { rowToProject } from './projectMappers';
 import { notifyProjectListeners } from './projectQueryService';
 import type { CreateProjectInput, Project } from './types';
+import { archiveCompletedProject } from './projectLifecycleService';
 
 export async function createProject(input: CreateProjectInput): Promise<Project> {
   const title = input.title.trim();
@@ -108,23 +109,7 @@ export async function updateProject(
 
 // ─── archiveProject / restoreProject ─────────────────────────────
 export async function archiveProject(id: string, reason?: string): Promise<void> {
-  const { data: before } = await supabase.from('projects').select('*').eq('id', id).maybeSingle();
-  const { error } = await supabase
-    .from('projects')
-    .update({ status: 'archived', archived_at: new Date().toISOString() })
-    .eq('id', id);
-  if (error) throw error;
-
-  await recordAudit({
-    entityType: 'project',
-    entityId: id,
-    action: 'project.archived',
-    reason,
-    beforeData: before ? { status: before.status } : undefined,
-    afterData: { status: 'archived' },
-    orgId: (before?.org_id as string) || null,
-  });
-  await notifyProjectListeners();
+  await archiveCompletedProject(id, reason);
 }
 
 export async function restoreProject(id: string, reason?: string): Promise<void> {

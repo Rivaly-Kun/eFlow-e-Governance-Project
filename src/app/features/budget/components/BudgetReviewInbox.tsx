@@ -8,19 +8,22 @@ import { BudgetCard, BudgetEmpty } from "./budgetUi";
 import { FiscalYearControl } from "./FiscalYearControl";
 import { getCurrentFiscalYear } from "../constants";
 import type { NotificationNavigationIntent } from "../../notifications";
+import type { CashReviewFocus } from "../types";
 
 export function BudgetReviewInbox({
   actions,
   focus,
+  cashReviewFocus,
   scope = "department",
 }: {
   actions?: ReactNode;
   focus?: NotificationNavigationIntent | null;
+  cashReviewFocus?: CashReviewFocus | null;
   scope?: "department" | "leading";
 }) {
   const { userProfile } = useAuth();
-  const orgId = userProfile?.org_id || userProfile?.departmentId || "";
-  const [fiscalYear, setFiscalYear] = useState(getCurrentFiscalYear());
+  const orgId = cashReviewFocus?.orgId || userProfile?.org_id || userProfile?.departmentId || "";
+  const [fiscalYear, setFiscalYear] = useState(cashReviewFocus?.fiscalYear || getCurrentFiscalYear());
   const budget = useDepartmentBudget(orgId, fiscalYear);
   const currentUserId = userProfile?.id || "";
   const isDepartmentApprover = ["dept_head", "department_head", "assistant_head"].includes(userProfile?.role || "");
@@ -66,7 +69,7 @@ export function BudgetReviewInbox({
             <BudgetCard label="Receipt packages" value={String(counts.liquidations)} note="Liquidations to verify" icon={<CheckCircle2 size={15} />} tone={counts.liquidations ? "warn" : "good"} />
             <BudgetCard label="Cash releases" value={String(counts.releases)} note="Scheduled tranches due" icon={<ReceiptText size={15} />} tone={counts.releases ? "warn" : "good"} />
           </div>
-          <BudgetApprovalQueue data={budget} onChanged={budget.refresh} focusRecordId={focus?.financialRecordId} />
+          <BudgetApprovalQueue data={budget} onChanged={budget.refresh} focusRecordId={cashReviewFocus?.recordId || focus?.financialRecordId} />
         </div>
       )}
     </div>

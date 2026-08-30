@@ -44,7 +44,7 @@ import { TaskReviewPanel } from "./TaskReviewPanel";
 import { TaskActivityTimeline } from "../../../components/workflow/TaskActivityTimeline";
 import { getHeadWorkspaceLabel } from "../../../shared/roles";
 import { canOpenBudgetReviewWorkspace } from "../selectors";
-import { BudgetReviewInbox } from "../../budget";
+import { BudgetReviewInbox, type CashReviewFocus } from "../../budget";
 import { SubtaskReviewInbox } from "./SubtaskReviewInbox";
 import { ReviewKindSwitch, type ReviewKind } from "./ReviewKindSwitch";
 import { TaskReviewStandards } from "./TaskReviewStandards";
@@ -87,6 +87,7 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
   );
   const [subtaskFocus, setSubtaskFocus] = useState<NotificationNavigationIntent | null>(null);
   const [budgetFocus, setBudgetFocus] = useState<NotificationNavigationIntent | null>(null);
+  const [cashReviewFocus, setCashReviewFocus] = useState<CashReviewFocus | null>(null);
 
   const { user, userProfile } = useAuth();
   const canReviewBudget = canOpenBudgetReviewWorkspace(scope, userProfile?.role);
@@ -183,6 +184,7 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
     (intent) => {
       if (tasksLoading || projectsLoading) return false;
       if (intent.kind === "budget" && canReviewBudget) {
+        setCashReviewFocus(null);
         setBudgetFocus(intent);
         setReviewKind("budget");
       } else if (intent.kind === "subtask_review") {
@@ -220,7 +222,9 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
   if (reviewKind === "budget" && canReviewBudget) {
     return (
       <BudgetReviewInbox
+        key={`${cashReviewFocus?.orgId || "default"}:${cashReviewFocus?.fiscalYear || "current"}`}
         focus={budgetFocus}
+        cashReviewFocus={cashReviewFocus}
         scope={scope}
         actions={
           <ReviewKindSwitch
@@ -430,7 +434,13 @@ export function ForReviewInbox({ scope = "department" }: ForReviewInboxProps) {
                           <div className="text-xs font-bold uppercase tracking-wide text-neutral-900">Head review decision</div>
                           <div className="mt-0.5 text-xs text-neutral-500">Approve only after checking the completion standards, subtask execution records, evidence files, and final submission.</div>
                         </div>
-                        <ReviewDecisionForm taskId={selected.id} onDone={() => { /* realtime removes it from queue */ }} />
+                        <ReviewDecisionForm taskId={selected.id} onDone={() => { /* realtime removes it from queue */ }}
+                          onOpenFinancialReview={canReviewBudget ? (focus) => {
+                            setCashReviewFocus(focus);
+                            setBudgetFocus(null);
+                            setReviewKind("budget");
+                          } : undefined}
+                        />
                       </div>
                     )}
                   </div>

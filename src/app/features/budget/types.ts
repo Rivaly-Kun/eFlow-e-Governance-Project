@@ -307,3 +307,21 @@ export interface ReceiptDraft {
   overrideReason?: string;
   file?: File;
 }
+
+export interface CashReviewFocus {
+  recordId: string;
+  orgId: string;
+  fiscalYear: number;
+}
+
+export interface TaskCashBlocker {
+  request: PettyCashRequest;
+  fiscalYear?: number;
+  sourceLabel?: string;
+  stage: string;
+  owner: string;
+  nextStep: string;
+  location: string;
+  reviewTarget?: { recordId: string; role: "leader" | "department" };
+  liquidation?: PettyCashLiquidation;
+}

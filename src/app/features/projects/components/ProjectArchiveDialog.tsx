@@ -103,7 +103,7 @@ export function ProjectArchiveDialog({
             <p className={`mt-1 text-xs leading-relaxed ${isArchived ? "text-blue-700" : "text-amber-800"}`}>
               {isArchived
                 ? "Restoring will reactivate this project. Team members will be able to edit tasks, milestones, and project details again."
-                : "Archiving makes this project read-only. Project history, reports, and audit logs remain available, but no new changes can be made."}
+                : "Only completed projects can be archived. This project will leave the active project list and become read-only. History, reports, audit logs, and restore remain available under Archived projects."}
             </p>
           </div>
         </div>
@@ -130,7 +130,7 @@ export function ProjectArchiveDialog({
 
         {/* Error message */}
         {error && (
-          <div className="flex items-center gap-2 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+          <div role="alert" className="flex items-center gap-2 whitespace-pre-line p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
             <Icons.AlertCircle size={15} className="shrink-0 text-rose-500" />
             <span>{error}</span>
           </div>
